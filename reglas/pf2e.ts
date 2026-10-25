@@ -1,6 +1,8 @@
 // Motor de reglas de Pathfinder 2e (remaster). TypeScript puro: no sabe nada de la interfaz ni de la red.
 // Cada número calculado trae su desglose (`partes`), para que la interfaz pueda explicar de dónde sale.
 
+import { penalizaciones, type Condicion, type Contexto } from './condiciones';
+
 export type Atributo = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 
 export const ATRIBUTOS: Record<Atributo, { nombre: string; abrev: string; ayuda: string }> = {
@@ -129,18 +131,19 @@ function parteAtributo(p: Personaje, atributo: Atributo): Parte {
   return { etiqueta: ATRIBUTOS[atributo].abrev, valor: p.atributos[atributo] };
 }
 
-// Modificador de un chequeo: atributo + competencia
-function chequeo(p: Personaje, atributo: Atributo, rango: Rango): Valor {
-  return valor([parteAtributo(p, atributo), parteCompetencia(rango, p.nivel)]);
-}
+export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalculada {
+  const con = (contexto: Contexto) => penalizaciones(condiciones, contexto);
+  // Modificador de un chequeo: atributo + competencia + lo que quiten las condiciones
+  const chequeo = (atributo: Atributo, rango: Rango, salvacion?: ClaveSalvacion) =>
+    valor([parteAtributo(p, atributo), parteCompetencia(rango, p.nivel), ...con({ tipo: 'chequeo', atributo, salvacion })]);
 
-export function calcular(p: Personaje): FichaCalculada {
   const dexEnCa = p.armadura.topeDex === null ? p.atributos.dex : Math.min(p.atributos.dex, p.armadura.topeDex);
   const ca = valor([
     { etiqueta: 'Base', valor: 10 },
     { etiqueta: p.armadura.topeDex !== null && dexEnCa < p.atributos.dex ? `Dex (tope ${p.armadura.topeDex})` : 'Dex', valor: dexEnCa },
     parteCompetencia(p.armadura.rango, p.nivel),
     ...(p.armadura.bonoObjeto ? [{ etiqueta: p.armadura.nombre || 'Armadura', valor: p.armadura.bonoObjeto }] : []),
+    ...con({ tipo: 'ca' }),
   ]);
 
   const pgMax = valor([
@@ -150,11 +153,11 @@ export function calcular(p: Personaje): FichaCalculada {
   ]);
 
   const salvaciones = Object.fromEntries(
-    SALVACIONES.map((s) => [s.clave, chequeo(p, s.atributo, p.salvaciones[s.clave])]),
+    SALVACIONES.map((s) => [s.clave, chequeo(s.atributo, p.salvaciones[s.clave], s.clave)]),
   ) as Record<ClaveSalvacion, Valor>;
 
   const habilidades = Object.fromEntries(
-    HABILIDADES.map((h) => [h.clave, chequeo(p, h.atributo, p.habilidades[h.clave])]),
+    HABILIDADES.map((h) => [h.clave, chequeo(h.atributo, p.habilidades[h.clave])]),
   ) as Record<ClaveHabilidad, Valor>;
 
   const golpes = p.golpes.map((g) => {
@@ -162,9 +165,10 @@ export function calcular(p: Personaje): FichaCalculada {
       parteAtributo(p, g.atributo),
       parteCompetencia(g.rango, p.nivel),
       ...(g.bonoObjeto ? [{ etiqueta: 'Objeto (runa)', valor: g.bonoObjeto }] : []),
+      ...con({ tipo: 'ataque', atributo: g.atributo }),
     ]);
     const paso = g.agil ? 4 : 5;
-    const bonoDano = g.sumarFuerza ? p.atributos.str : 0;
+    const bonoDano = bonoDeDano(p, g, condiciones);
     return {
       ataque,
       penalizaciones: [ataque.total, ataque.total - paso, ataque.total - paso * 2] as [number, number, number],
@@ -172,7 +176,55 @@ export function calcular(p: Personaje): FichaCalculada {
     };
   });
 
-  return { pgMax, ca, percepcion: chequeo(p, 'wis', p.percepcion), salvaciones, habilidades, golpes };
+  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion), salvaciones, habilidades, golpes };
+}
+
+// Lo que se suma a los dados de daño de un arma
+export function bonoDeDano(p: Personaje, g: Golpe, condiciones: Condicion[] = []): number {
+  const extra = penalizaciones(condiciones, { tipo: 'dano', conFuerza: g.sumarFuerza });
+  return (g.sumarFuerza ? p.atributos.str : 0) + extra.reduce((s, x) => s + x.valor, 0);
+}
+
+export type Grado = 'critico' | 'exito' | 'fallo' | 'pifia';
+
+export const GRADOS: Record<Grado, string> = {
+  critico: 'Éxito crítico',
+  exito: 'Éxito',
+  fallo: 'Fallo',
+  pifia: 'Fallo crítico',
+};
+
+// Los cuatro grados de éxito: pasar la CD por 10 es crítico, fallar por 10 es pifia.
+// Un 20 natural sube un grado y un 1 natural lo baja.
+export function gradoDeExito(total: number, dado: number, cd: number): Grado {
+  const orden: Grado[] = ['pifia', 'fallo', 'exito', 'critico'];
+  let i = total >= cd + 10 ? 3 : total >= cd ? 2 : total <= cd - 10 ? 0 : 1;
+  if (dado === 20) i = Math.min(3, i + 1);
+  if (dado === 1) i = Math.max(0, i - 1);
+  return orden[i]!;
+}
+
+// "2d6+1d4+3" → dados y modificador. Para la tirada libre.
+export function leerExpresion(texto: string): { dados: { cantidad: number; caras: number }[]; modificador: number } | null {
+  const limpio = texto.replace(/\s+/g, '').toLowerCase();
+  if (!limpio || limpio.length > 40 || !/^[+-]?(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/.test(limpio)) return null;
+  const dados: { cantidad: number; caras: number }[] = [];
+  let modificador = 0;
+  for (const [, signoTermino, termino] of limpio.matchAll(/([+-]?)(\d*d\d+|\d+)/g)) {
+    const negativo = signoTermino === '-';
+    if (termino!.includes('d')) {
+      if (negativo) return null;
+      const [c, k] = termino!.split('d');
+      const cantidad = c ? Number(c) : 1;
+      const caras = Number(k);
+      if (cantidad < 1 || cantidad > 20 || ![2, 4, 6, 8, 10, 12, 20, 100].includes(caras)) return null;
+      dados.push({ cantidad, caras });
+    } else {
+      modificador += negativo ? -Number(termino) : Number(termino);
+    }
+  }
+  if (dados.length === 0 || Math.abs(modificador) > 100) return null;
+  return { dados, modificador };
 }
 
 export function signo(n: number): string {

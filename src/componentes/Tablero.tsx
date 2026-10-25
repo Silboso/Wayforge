@@ -3,7 +3,9 @@ import { Circle, Group, Image as ImagenKonva, Layer, Rect, Shape, Stage, Text } 
 import type Konva from 'konva';
 import useImage from 'use-image';
 import { CornersInIcon } from '@phosphor-icons/react';
-import { COLORES_TOKEN, TAMANOS, puedeMoverToken, type EstadoSala, type Sesion, type Token } from '../../compartido/sala';
+import { calcular } from '../../reglas/pf2e';
+import { COLORES_TOKEN, TAMANOS, puedeMoverToken, tokenEnTurno, type EstadoSala, type Sesion, type Token } from '../../compartido/sala';
+import { resumenCondiciones } from './Condiciones';
 import type { ColoresTablero } from '../tema';
 
 interface Props {
@@ -27,6 +29,7 @@ export function Tablero({ estado, colores, quien, seleccionado, onSeleccionar, o
 
   const { mapa } = estado;
   const celda = mapa.tamanoCelda;
+  const enTurno = tokenEnTurno(estado)?.id ?? null;
   const ancho = imagenMapa ? imagenMapa.width : mapa.columnas * celda;
   const alto = imagenMapa ? imagenMapa.height : mapa.filas * celda;
 
@@ -125,6 +128,8 @@ export function Tablero({ estado, colores, quien, seleccionado, onSeleccionar, o
                 origen={{ x: mapa.desplazamientoX % celda, y: mapa.desplazamientoY % celda }}
                 colores={colores}
                 movible={puedeMoverToken(quien, token)}
+                pg={pgVisible(estado, token, quien)}
+                enTurno={token.id === enTurno}
                 seleccionado={token.id === seleccionado}
                 onSeleccionar={() => onSeleccionar(token.id)}
                 onMover={(x, y) => onMover(token.id, x, y)}
@@ -151,12 +156,14 @@ interface PropsFicha {
   colores: ColoresTablero;
   // Solo el GM y el dueño del personaje pueden arrastrarlo
   movible: boolean;
+  pg: { actual: number; max: number } | null;
+  enTurno: boolean;
   seleccionado: boolean;
   onSeleccionar: () => void;
   onMover: (x: number, y: number) => void;
 }
 
-function FichaToken({ token, celda, origen, colores, movible, seleccionado, onSeleccionar, onMover }: PropsFicha) {
+function FichaToken({ token, celda, origen, colores, movible, pg, enTurno, seleccionado, onSeleccionar, onMover }: PropsFicha) {
   const [imagen] = useImage(token.imagen || '', 'anonymous');
   const lado = TAMANOS[token.tamano] * celda;
   const radio = lado / 2;
@@ -181,6 +188,7 @@ function FichaToken({ token, celda, origen, colores, movible, seleccionado, onSe
         if (x !== token.x || y !== token.y) onMover(x, y);
       }}
     >
+      {enTurno && <Circle x={radio} y={radio} radius={radio + 9} stroke={colores.acento} strokeWidth={3} dash={[8, 5]} listening={false} />}
       {seleccionado && <Circle x={radio} y={radio} radius={radio + 4} stroke={colores.acento} strokeWidth={4} />}
       <Circle x={radio} y={radio} radius={radio - 2} fill={borde} />
       {imagen ? (
@@ -215,6 +223,27 @@ function FichaToken({ token, celda, origen, colores, movible, seleccionado, onSe
         fill={colores.texto}
         listening={false}
       />
+      {pg && (
+        <Group y={lado + 3 + Math.max(11, celda * 0.2) + 3} x={lado * 0.1} listening={false}>
+          <Rect width={lado * 0.8} height={Math.max(4, celda * 0.07)} cornerRadius={3} fill={colores.superficie} stroke={colores.cuadricula} strokeWidth={1} />
+          <Rect width={lado * 0.8 * Math.max(0, Math.min(1, pg.actual / pg.max))} height={Math.max(4, celda * 0.07)} cornerRadius={3}
+            fill={pg.actual / pg.max > 0.5 ? '#3f7d4e' : pg.actual / pg.max > 0.2 ? '#c08a2b' : '#a8382f'} />
+        </Group>
+      )}
+      {token.condiciones && token.condiciones.length > 0 && (
+        <Text
+          y={-Math.max(11, celda * 0.18) - 4}
+          x={-celda}
+          width={lado + celda * 2}
+          align="center"
+          text={resumenCondiciones(token.condiciones)}
+          fontSize={Math.max(10, celda * 0.16)}
+          fontStyle="bold"
+          fontFamily="Alegreya Sans, system-ui, sans-serif"
+          fill={colores.acento}
+          listening={false}
+        />
+      )}
     </Group>
   );
 }
@@ -225,4 +254,13 @@ function cubrir(imagen: HTMLImageElement, lado: number) {
   const ancho = imagen.width * escala;
   const alto = imagen.height * escala;
   return { width: ancho, height: alto, x: (lado - ancho) / 2, y: (lado - alto) / 2 };
+}
+
+// La barra de PG: la de los personajes la ven todos; la de los enemigos, solo el GM
+function pgVisible(estado: EstadoSala, token: Token, quien: Sesion): { actual: number; max: number } | null {
+  if (token.personajeId) {
+    const p = estado.personajes[token.personajeId];
+    return p ? { actual: p.pgActual, max: Math.max(1, calcular(p).pgMax.total) } : null;
+  }
+  return quien.rol === 'gm' && token.pg ? token.pg : null;
 }

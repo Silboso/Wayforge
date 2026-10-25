@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  CrownSimpleIcon, DiceFiveIcon, MapTrifoldIcon, ScrollIcon, SignOutIcon, UsersIcon, WrenchIcon,
+  CrownSimpleIcon, DiceFiveIcon, MapTrifoldIcon, ScrollIcon, SignOutIcon, SwordIcon, UsersIcon, WrenchIcon,
 } from '@phosphor-icons/react';
 import { personajeNuevo, type Personaje } from '../../reglas/pf2e';
-import type { EstadoSala, Sesion } from '../../compartido/sala';
+import { tokenEnTurno, type EstadoSala, type Sesion, type Token } from '../../compartido/sala';
 import { almacen, leer, useSala, type Sala } from '../conexion';
 import { leerColoresTablero, type useTema } from '../tema';
 import { BotonTema } from '../componentes/BotonTema';
@@ -12,7 +12,8 @@ import { Entrada, mensajeRechazo } from '../componentes/Entrada';
 import { Ficha } from '../componentes/Ficha';
 import { HerramientasGM } from '../componentes/Panel';
 import { Tablero } from '../componentes/Tablero';
-import { AvisoTirada, ListaTiradas } from '../componentes/Tiradas';
+import { AvisoTirada, ListaTiradas, TiradaLibre } from '../componentes/Tiradas';
+import { OrdenIniciativa, PanelCombateGM, PanelTurno } from '../componentes/Combate';
 import { claseBotonSecundario } from '../componentes/ui';
 
 type Tema = ReturnType<typeof useTema>;
@@ -57,7 +58,7 @@ function MesaConectada({ salaId, tema }: { salaId: string; tema: Tema }) {
   return <Mesa salaId={salaId} sala={sala} estado={sala.estado} tema={tema} />;
 }
 
-type Pestana = 'tablero' | 'ficha' | 'herramientas' | 'personajes' | 'tiradas';
+type Pestana = 'tablero' | 'ficha' | 'herramientas' | 'personajes' | 'combate' | 'tiradas';
 
 const PESTANAS: Record<Sesion['rol'], { clave: Pestana; nombre: string; icono: ReactNode }[]> = {
   visitante: [],
@@ -70,6 +71,7 @@ const PESTANAS: Record<Sesion['rol'], { clave: Pestana; nombre: string; icono: R
     { clave: 'tablero', nombre: 'Tablero', icono: <MapTrifoldIcon size={22} aria-hidden /> },
     { clave: 'herramientas', nombre: 'Mesa', icono: <WrenchIcon size={22} aria-hidden /> },
     { clave: 'personajes', nombre: 'Personajes', icono: <UsersIcon size={22} aria-hidden /> },
+    { clave: 'combate', nombre: 'Combate', icono: <SwordIcon size={22} aria-hidden /> },
     { clave: 'tiradas', nombre: 'Tiradas', icono: <DiceFiveIcon size={22} aria-hidden /> },
   ],
 };
@@ -125,6 +127,12 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
   }
 
   const miPersonaje = quien.rol === 'jugador' ? estado.personajes[quien.personajeId] : undefined;
+  const miToken = miPersonaje ? tokenDe(estado, miPersonaje.id) : undefined;
+  // El token tocado en el tablero es el objetivo de ataques y tiradas, salvo que sea el propio
+  const tokenElegido = seleccionado ? estado.tokens[seleccionado] : undefined;
+  const objetivo = tokenElegido && tokenElegido.id !== miToken?.id ? { id: tokenElegido.id, nombre: tokenElegido.nombre } : null;
+  const combate = estado.combate;
+  const miTurno = !!combate && !!miToken && tokenEnTurno(estado)?.id === miToken.id;
 
   return (
     <div className="flex h-full flex-col">
@@ -158,6 +166,7 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className={`relative min-h-0 min-w-0 flex-1 ${pestana === 'tablero' ? 'flex' : 'hidden'} lg:flex`}>
+          {combate && <OrdenIniciativa estado={estado} combate={combate} />}
           <Tablero
             estado={estado}
             colores={colores}
@@ -183,13 +192,20 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
           </nav>
           <div className="flex-1 overflow-y-auto p-4">
             {panel === 'ficha' && miPersonaje && (
-              <Ficha
-                personaje={miPersonaje}
-                puedeEditar
-                onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: miPersonaje.id, cambios })}
-                onTirar={(que) => sala.tirar(miPersonaje.id, que)}
-                onAbrirEditor={() => { setModoEditor('editar'); setEditando(miPersonaje); }}
-              />
+              <div className="flex flex-col gap-4">
+                {combate && <PanelTurno estado={estado} combate={combate} quien={quien} enviar={sala.enviar} />}
+                <Ficha
+                  personaje={miPersonaje}
+                  condiciones={miToken?.condiciones ?? []}
+                  puedeEditar
+                  objetivo={objetivo}
+                  siguienteAtaque={miTurno ? combate!.ataques : null}
+                  onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: miPersonaje.id, cambios })}
+                  onPonerCondicion={(clave, valor) => miToken && sala.enviar({ tipo: 'poner-condicion', tokenId: miToken.id, clave, valor })}
+                  onTirar={(que) => sala.tirar(miPersonaje.id, que)}
+                  onAbrirEditor={() => { setModoEditor('editar'); setEditando(miPersonaje); }}
+                />
+              </div>
             )}
             {panel === 'herramientas' && (
               <HerramientasGM salaId={salaId} codigoGM={codigoGM} estado={estado} seleccionado={seleccionado}
@@ -199,11 +215,21 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
               <PersonajesGM
                 estado={estado}
                 sala={sala}
+                objetivo={objetivo}
                 onCrear={() => { setModoEditor('crear'); setEditando(personajeNuevo(crypto.randomUUID())); }}
                 onEditar={(p) => { setModoEditor('editar'); setEditando(p); }}
               />
             )}
-            {panel === 'tiradas' && <ListaTiradas tiradas={estado.tiradas} />}
+            {panel === 'combate' && (
+              <PanelCombateGM estado={estado} quien={quien} enviar={sala.enviar} onIniciar={sala.iniciarCombate} />
+            )}
+            {panel === 'tiradas' && (
+              <div className="flex flex-col gap-4">
+                <TiradaLibre esGM={quien.rol === 'gm'} objetivo={objetivo}
+                  onTirar={(que) => sala.tirar(miPersonaje?.id, que)} />
+                <ListaTiradas tiradas={estado.tiradas} verCd={quien.rol === 'gm'} />
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -220,21 +246,23 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
         ))}
       </nav>
 
-      <AvisoTirada tiradas={estado.tiradas} />
+      <AvisoTirada tiradas={estado.tiradas} verCd={quien.rol === 'gm'} />
     </div>
   );
 }
 
 // El GM ve y maneja todas las fichas
-function PersonajesGM({ estado, sala, onCrear, onEditar }: {
+function PersonajesGM({ estado, sala, objetivo, onCrear, onEditar }: {
   estado: EstadoSala;
   sala: Sala;
+  objetivo: { id: string; nombre: string } | null;
   onCrear: () => void;
   onEditar: (p: Personaje) => void;
 }) {
   const [abierto, setAbierto] = useState<string | null>(null);
   const personajes = Object.values(estado.personajes);
   const abiertoP = abierto ? estado.personajes[abierto] : undefined;
+  const tokenAbierto = abiertoP ? tokenDe(estado, abiertoP.id) : undefined;
 
   if (abiertoP) {
     return (
@@ -242,7 +270,11 @@ function PersonajesGM({ estado, sala, onCrear, onEditar }: {
         <button className={`${claseBotonSecundario} self-start`} onClick={() => setAbierto(null)}>← Todos los personajes</button>
         <Ficha
           personaje={abiertoP}
+          condiciones={tokenAbierto?.condiciones ?? []}
           puedeEditar
+          objetivo={objetivo && objetivo.id !== tokenAbierto?.id ? objetivo : null}
+          siguienteAtaque={estado.combate && tokenAbierto && tokenEnTurno(estado)?.id === tokenAbierto.id ? estado.combate.ataques : null}
+          onPonerCondicion={(clave, valor) => tokenAbierto && sala.enviar({ tipo: 'poner-condicion', tokenId: tokenAbierto.id, clave, valor })}
           onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: abiertoP.id, cambios })}
           onTirar={(que) => sala.tirar(abiertoP.id, que)}
           onAbrirEditor={() => onEditar(abiertoP)}
@@ -290,4 +322,8 @@ function PersonajesGM({ estado, sala, onCrear, onEditar }: {
 
 function Centro({ children }: { children: ReactNode }) {
   return <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-texto-suave">{children}</div>;
+}
+
+function tokenDe(estado: EstadoSala, personajeId: string): Token | undefined {
+  return Object.values(estado.tokens).find((t) => t.personajeId === personajeId);
 }

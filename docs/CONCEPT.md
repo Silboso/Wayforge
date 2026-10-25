@@ -35,6 +35,29 @@ un minuto.
 | Jugador | Mover su token, editar su ficha, tirar con ella; ve el tablero y las tiradas de todos |
 | Visitante | Solo ver la lista de personajes para entrar |
 
+## Combate
+
+1. El GM marca quién pelea y la mesa tira la iniciativa (Perception) de todos. En un empate, los
+   enemigos van primero.
+2. Una barra sobre el tablero muestra el orden y de quién es el turno; su token tiene un anillo.
+3. Quien tiene el turno ve sus **◆◆◆** y los gasta al actuar. Los ataques los gastan solos y la ficha
+   marca cuál toca (1.º, 2.º o 3.º), con su penalización por ataque múltiple ya aplicada.
+4. La **reacción** (⟲) es una por ronda; cada jugador marca la suya, también en el turno de otro.
+5. Al **terminar el turno**: Frightened baja 1. Al empezar el siguiente, Slowed, Stunned y Quickened
+   ajustan sus acciones y recupera su reacción.
+
+**Objetivo:** tocar un token en el tablero lo vuelve el objetivo. El ataque se compara con su CA (con
+sus condiciones) y la mesa dice el grado de éxito: crítico, éxito, fallo o pifia, con el 20 y el 1
+naturales. Los jugadores ven el resultado pero no la CA de los enemigos.
+
+**Enemigos:** el GM les pone CA, PG y Perception desde el token, y tira por ellos con la tirada libre
+(`1d20+7`, "Goblin arquero"). Sus PG solo los ve el GM.
+
+**Condiciones:** viven en el token, tanto de personajes como de enemigos. Las comunes ya cambian los
+números: Frightened, Sickened, Clumsy, Enfeebled, Drained, Stupefied, Fatigued, Off-guard, Prone,
+Grabbed, Restrained y Unconscious. De las penalizaciones de estado solo cuenta la peor, como en las
+reglas. Cada condición tiene su explicación en español al tocarla.
+
 ## Para el jugador novato
 
 - **"¿Qué puedo hacer?"**: en tu turno, tus opciones como botones grandes con su costo (◆, ◆◆) y una

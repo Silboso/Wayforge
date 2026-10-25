@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { personajeNuevo } from '../reglas/pf2e';
-import { aplicar, esAccionValida, estadoInicial, puede, type EstadoSala, type Token } from './sala';
+import { aplicar, caDeToken, esAccionValida, estadoInicial, puede, tokenEnTurno, type EstadoSala, type Token } from './sala';
 
 const goblin: Token = { id: 'g1', nombre: 'Goblin', tipo: 'enemigo', tamano: 'Small', x: 0, y: 0, color: '#a8382f' };
 const kyra = { ...personajeNuevo('kyra'), nombre: 'Kyra', clase: 'Fighter' };
@@ -103,5 +103,69 @@ describe('esAccionValida', () => {
     expect(esAccionValida({ tipo: 'editar-mapa', cambios: { tamanoCelda: 5 } }, estado)).toBe(false);
     expect(esAccionValida({ tipo: 'editar-token', id: 'g1', cambios: { nombre: 'x'.repeat(61) } }, estado)).toBe(false);
     expect(esAccionValida({ tipo: 'editar-personaje', id: 'kyra', cambios: { nivel: 99 } }, estado)).toBe(false);
+  });
+});
+
+describe('combate', () => {
+  function enCombate(): EstadoSala {
+    return aplicar(conKyra(), { tipo: 'iniciar-combate', orden: [{ tokenId: 'kyra', iniciativa: 15 }, { tokenId: 'g1', iniciativa: 15 }] });
+  }
+
+  it('ordena por iniciativa y en un empate va primero el enemigo', () => {
+    const estado = enCombate();
+    expect(estado.combate?.orden.map((c) => c.tokenId)).toEqual(['g1', 'kyra']);
+    expect(estado.combate).toMatchObject({ ronda: 1, turno: 0, acciones: 3, usadas: 0 });
+  });
+
+  it('al pasar el turno Frightened baja, y al dar la vuelta sube la ronda', () => {
+    let estado = enCombate();
+    estado = aplicar(estado, { tipo: 'poner-condicion', tokenId: 'g1', clave: 'frightened', valor: 2 });
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(estado.tokens.g1?.condiciones).toEqual([{ clave: 'frightened', valor: 1 }]);
+    expect(tokenEnTurno(estado)?.id).toBe('kyra');
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(estado.combate).toMatchObject({ ronda: 2, turno: 0 });
+  });
+
+  it('Slowed quita acciones al empezar el turno y la reacción vuelve en tu turno', () => {
+    let estado = aplicar(conKyra(), { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'slowed', valor: 1 });
+    estado = aplicar(estado, { tipo: 'iniciar-combate', orden: [{ tokenId: 'kyra', iniciativa: 20 }, { tokenId: 'g1', iniciativa: 5 }] });
+    expect(estado.combate?.acciones).toBe(2);
+    estado = aplicar(estado, { tipo: 'usar-reaccion', tokenId: 'kyra', usada: true });
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(estado.combate?.reacciones).toEqual(['kyra']);
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(estado.combate?.reacciones).toEqual([]);
+  });
+
+  it('contar un ataque gasta una acción solo en el turno de ese token', () => {
+    let estado = enCombate();
+    estado = aplicar(estado, { tipo: 'contar-ataque', tokenId: 'kyra' });
+    expect(estado.combate).toMatchObject({ ataques: 0, usadas: 0 });
+    estado = aplicar(estado, { tipo: 'contar-ataque', tokenId: 'g1' });
+    expect(estado.combate).toMatchObject({ ataques: 1, usadas: 1 });
+  });
+
+  it('borrar un token lo saca del orden sin perder el turno', () => {
+    let estado = aplicar(enCombate(), { tipo: 'avanzar-turno' });
+    estado = aplicar(estado, { tipo: 'borrar-token', id: 'g1' });
+    expect(estado.combate?.orden.map((c) => c.tokenId)).toEqual(['kyra']);
+    expect(tokenEnTurno(estado)?.id).toBe('kyra');
+  });
+
+  it('la jugadora solo pasa su propio turno y no puede empezar combates', () => {
+    const estado = enCombate();
+    const jugadora = { rol: 'jugador', personajeId: 'kyra' } as const;
+    expect(puede(jugadora, { tipo: 'avanzar-turno' }, estado)).toBe(false);
+    expect(puede(jugadora, { tipo: 'avanzar-turno' }, aplicar(estado, { tipo: 'avanzar-turno' }))).toBe(true);
+    expect(puede(jugadora, { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'prone', valor: 1 }, estado)).toBe(true);
+    expect(puede(jugadora, { tipo: 'poner-condicion', tokenId: 'g1', clave: 'prone', valor: 1 }, estado)).toBe(false);
+    expect(puede({ rol: 'gm' }, { tipo: 'iniciar-combate', orden: [] }, estado)).toBe(false);
+  });
+
+  it('la CA de un enemigo baja con Off-guard', () => {
+    let estado = aplicar(conKyra(), { tipo: 'editar-token', id: 'g1', cambios: { ca: 16 } });
+    estado = aplicar(estado, { tipo: 'poner-condicion', tokenId: 'g1', clave: 'off-guard', valor: 1 });
+    expect(caDeToken(estado, estado.tokens.g1!)?.total).toBe(14);
   });
 });

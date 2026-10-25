@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
 import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type TipoToken, type Token } from '../../compartido/sala';
 import { subirImagen } from '../imagenes';
+import { EditorCondiciones } from './Condiciones';
 import {
   Campo, claseBotonIcono, claseBotonPrincipal, claseBotonSecundario, claseEntrada, Deslizador, ElegirImagen, Seccion,
 } from './ui';
@@ -185,6 +186,22 @@ function EditorToken({ salaId, token, enviar, onCerrar }: {
         )}
       </Campo>
       {!dePersonaje && (
+        <div className="grid grid-cols-2 gap-3">
+          <CampoNumero etiqueta="CA" valor={token.ca} min={0} max={80} onCambio={(ca) => editar({ ca })} />
+          <CampoNumero etiqueta="Perception" ayuda="Para la iniciativa" valor={token.percepcion} min={-10} max={60}
+            onCambio={(percepcion) => editar({ percepcion })} />
+          <CampoNumero etiqueta="PG actuales" valor={token.pg?.actual} min={0} max={9999}
+            onCambio={(actual) => editar({ pg: { actual, max: Math.max(1, token.pg?.max ?? actual) } })} />
+          <CampoNumero etiqueta="PG máximos" valor={token.pg?.max} min={1} max={9999}
+            onCambio={(max) => editar({ pg: { max, actual: Math.min(token.pg?.actual ?? max, max) } })} />
+        </div>
+      )}
+      <div className="flex flex-col gap-1">
+        <span className="text-sm text-texto-suave">Condiciones</span>
+        <EditorCondiciones condiciones={token.condiciones ?? []} puedeEditar
+          onPoner={(clave, valor) => enviar({ tipo: 'poner-condicion', tokenId: token.id, clave, valor })} />
+      </div>
+      {!dePersonaje && (
         <div className="flex gap-2">
           <ElegirImagen etiqueta={subiendo ? 'Subiendo…' : token.imagen ? 'Cambiar imagen' : 'Poner imagen'} onArchivo={cambiarImagen} />
           {token.imagen && <button className={claseBotonSecundario} onClick={() => editar({ imagen: '' })}>Quitar</button>}
@@ -279,6 +296,37 @@ function SelectorTamano({ valor, onCambio }: { valor: Tamano; onCambio: (tamano:
             </option>
           ))}
         </select>
+      )}
+    </Campo>
+  );
+}
+
+// Número que se guarda al salir del campo (o con Enter), para no mandar un cambio por cada tecla
+function CampoNumero({ etiqueta, ayuda, valor, min, max, onCambio }: {
+  etiqueta: string;
+  ayuda?: string;
+  valor: number | undefined;
+  min: number;
+  max: number;
+  onCambio: (valor: number) => void;
+}) {
+  return (
+    <Campo etiqueta={etiqueta} ayuda={ayuda}>
+      {(id) => (
+        <input
+          id={id}
+          key={valor ?? 'vacio'}
+          className={claseEntrada}
+          // Con negativos posibles, el teclado numérico del teléfono no sirve (no tiene el signo menos)
+          inputMode={min < 0 ? 'text' : 'numeric'}
+          placeholder="—"
+          defaultValue={valor ?? ''}
+          onBlur={(e) => {
+            const n = Number(e.target.value);
+            if (e.target.value.trim() !== '' && Number.isInteger(n) && n >= min && n <= max && n !== valor) onCambio(n);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        />
       )}
     </Campo>
   );

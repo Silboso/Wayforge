@@ -1,20 +1,31 @@
 import { useState, type ReactNode } from 'react';
-import { DiceFiveIcon, HeartIcon, PencilSimpleIcon, ShieldIcon } from '@phosphor-icons/react';
+import { CrosshairIcon, DiceFiveIcon, HeartIcon, PencilSimpleIcon, ShieldIcon } from '@phosphor-icons/react';
 import { ATRIBUTOS, calcular, HABILIDADES, SALVACIONES, signo, type Personaje } from '../../reglas/pf2e';
+import type { ClaveCondicion, Condicion } from '../../reglas/condiciones';
 import type { QueTirar } from '../../compartido/sala';
+import { EditorCondiciones } from './Condiciones';
 import { BotonExplicar, claseBotonSecundario, claseEntrada, Desglose, LetraRango, useAbierto } from './ui';
 
 interface Props {
   personaje: Personaje;
+  // Las condiciones viven en su token
+  condiciones: Condicion[];
   puedeEditar: boolean;
+  // El token que se tocó en el tablero, si no es el propio: los ataques van contra su CA
+  objetivo: { id: string; nombre: string } | null;
+  // En combate, en su turno: qué ataque toca (0, 1 o 2) según cuántos lleva
+  siguienteAtaque: number | null;
   onCambiar: (cambios: Partial<Personaje>) => void;
+  onPonerCondicion: (clave: ClaveCondicion, valor: number) => void;
   onTirar: (que: QueTirar) => void;
   onAbrirEditor: () => void;
 }
 
 // La ficha en juego. Pensada para el teléfono: lo que más se usa arriba y botones grandes para tirar.
-export function Ficha({ personaje: p, puedeEditar, onCambiar, onTirar, onAbrirEditor }: Props) {
-  const ficha = calcular(p);
+export function Ficha({
+  personaje: p, condiciones, puedeEditar, objetivo, siguienteAtaque, onCambiar, onPonerCondicion, onTirar, onAbrirEditor,
+}: Props) {
+  const ficha = calcular(p, condiciones);
   const { abierto, alternar } = useAbierto();
 
   return (
@@ -41,6 +52,10 @@ export function Ficha({ personaje: p, puedeEditar, onCambiar, onTirar, onAbrirEd
       <PuntosDeGolpe p={p} pgMax={ficha.pgMax.total} puedeEditar={puedeEditar} onCambiar={onCambiar}
         explicar={abierto === 'pg'} onExplicar={() => alternar('pg')} desglose={<Desglose valor={ficha.pgMax} />} />
 
+      <Bloque titulo="Condiciones" ayuda="Tócala para ver qué hace">
+        <EditorCondiciones condiciones={condiciones} puedeEditar={puedeEditar} onPoner={onPonerCondicion} />
+      </Bloque>
+
       <div className="grid grid-cols-3 gap-2">
         <Tarjeta etiqueta="CA" valor={`${ficha.ca.total}`} icono={<ShieldIcon size={16} aria-hidden />}
           onExplicar={() => alternar('ca')} explicando={abierto === 'ca'} />
@@ -64,6 +79,12 @@ export function Ficha({ personaje: p, puedeEditar, onCambiar, onTirar, onAbrirEd
 
       {p.golpes.length > 0 && (
         <Bloque titulo="Ataques" ayuda="1.º, 2.º y 3.º ataque del turno: cada uno es más difícil">
+          <p className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${objetivo ? 'bg-superficie-2' : 'text-texto-suave'}`}>
+            <CrosshairIcon size={18} aria-hidden className="shrink-0" />
+            {objetivo
+              ? <span>Atacas a <strong>{objetivo.nombre}</strong>: la mesa te dice si le das.</span>
+              : 'Toca un enemigo en el tablero para atacarlo; la mesa te dirá si le das.'}
+          </p>
           {p.golpes.map((g, i) => {
             const calculado = ficha.golpes[i]!;
             return (
@@ -73,17 +94,27 @@ export function Ficha({ personaje: p, puedeEditar, onCambiar, onTirar, onAbrirEd
                   <BotonExplicar que={`el ataque con ${g.nombre}`} abierto={abierto === g.id} onClick={() => alternar(g.id)} />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {calculado.penalizaciones.map((mod, n) => (
-                    <button key={n} className="flex h-11 items-center justify-center gap-1 rounded-lg bg-acento font-medium text-sobre-acento transition active:scale-[0.97]"
-                      aria-label={`Tirar ${n + 1}.º ataque con ${g.nombre}: ${signo(mod)}`}
-                      onClick={() => onTirar({ tipo: 'ataque', golpe: g.id, numero: n as 0 | 1 | 2 })}>
-                      <DiceFiveIcon size={16} aria-hidden /> {signo(mod)}
-                    </button>
-                  ))}
+                  {calculado.penalizaciones.map((mod, n) => {
+                    // En su turno se marca el ataque que toca; los otros quedan más tenues
+                    const toca = siguienteAtaque === null || Math.min(siguienteAtaque, 2) === n;
+                    return (
+                      <button key={n}
+                        className={`flex h-11 items-center justify-center gap-1 rounded-lg font-medium transition active:scale-[0.97] ${toca ? 'bg-acento text-sobre-acento' : 'border border-borde text-texto-suave'}`}
+                        aria-label={`Tirar ${n + 1}.º ataque con ${g.nombre}: ${signo(mod)}`}
+                        onClick={() => onTirar({ tipo: 'ataque', golpe: g.id, numero: n as 0 | 1 | 2, ...(objetivo ? { objetivo: objetivo.id } : {}) })}>
+                        <DiceFiveIcon size={16} aria-hidden /> {signo(mod)}
+                      </button>
+                    );
+                  })}
                 </div>
-                <button className={claseBotonSecundario} onClick={() => onTirar({ tipo: 'dano', golpe: g.id })}>
-                  Daño {calculado.dano}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button className={claseBotonSecundario} onClick={() => onTirar({ tipo: 'dano', golpe: g.id })}>
+                    Daño {calculado.dano}
+                  </button>
+                  <button className={claseBotonSecundario} onClick={() => onTirar({ tipo: 'dano', golpe: g.id, critico: true })}>
+                    Crítico ×2
+                  </button>
+                </div>
                 {abierto === g.id && <Desglose valor={calculado.ataque} />}
               </div>
             );

@@ -1,10 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
-import { esPersonajeValido } from '../reglas/pf2e';
+import { calcular, gradoDeExito, leerExpresion } from '../reglas/pf2e';
 import {
-  aplicar, casillaLibre, esAccionValida, estadoInicial, puede, resumen,
-  type Accion, type EstadoSala, type MensajeSala, type Presente, type Sesion, type Tirada,
+  aplicar, caDeToken, casillaLibre, esAccionValida, estadoInicial, puede, resumen, tokenEnTurno,
+  type Accion, type Combatiente, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
 } from '../compartido/sala';
-import { queSeTira } from '../compartido/tiradas';
+import { queSeTira, type QueSeTira } from '../compartido/tiradas';
 
 // Lo que la sala recuerda de cada conexión (sobrevive a la hibernación)
 interface Conexion {
@@ -105,6 +105,8 @@ export class Sala extends DurableObject<Env> {
         return this.accion(ws, conexion.quien, m.accion);
       case 'tirar':
         return this.tirar(conexion.quien, m);
+      case 'iniciar-combate':
+        return this.iniciarCombate(conexion.quien, m);
     }
   }
 
@@ -207,24 +209,83 @@ export class Sala extends DurableObject<Env> {
 
   // La sala tira los dados: así nadie puede inventar un 20
   private async tirar(quien: Sesion, m: Record<string, unknown>) {
-    const personaje = typeof m.personajeId === 'string' ? this.estado.personajes[m.personajeId] : undefined;
-    if (!personaje) return;
-    if (quien.rol !== 'gm' && !(quien.rol === 'jugador' && quien.personajeId === personaje.id)) return;
-    const que = typeof m.que === 'object' && m.que !== null ? queSeTira(personaje, m.que as never) : null;
-    if (!que) return;
+    if (quien.rol === 'visitante') return;
+    const que = m.que as QueTirar | null;
+    if (typeof que !== 'object' || que === null || typeof que.tipo !== 'string') return;
+    // El jugador tira siempre por su personaje; el GM por cualquiera, o por nadie en una tirada libre
+    if (quien.rol === 'jugador' && m.personajeId !== undefined && m.personajeId !== quien.personajeId) return;
+    const personajeId = quien.rol === 'jugador' ? quien.personajeId : typeof m.personajeId === 'string' ? m.personajeId : undefined;
+    const personaje = personajeId ? this.estado.personajes[personajeId] : undefined;
+    if (personajeId && !personaje) return;
+    const tokenPropio = personaje && Object.values(this.estado.tokens).find((t) => t.personajeId === personaje.id);
 
-    const dados = Array.from({ length: que.cantidad }, () => dado(que.caras));
+    let plan: QueSeTira | null;
+    let nombre = personaje?.nombre ?? 'GM';
+    if (que.tipo === 'libre') {
+      const expresion = typeof que.expresion === 'string' ? que.expresion.trim() : '';
+      const leida = leerExpresion(expresion);
+      if (!leida) return;
+      const etiqueta = typeof que.etiqueta === 'string' ? que.etiqueta.trim().slice(0, 40) : '';
+      // El GM pone el nombre del enemigo como etiqueta: "Goblin · 1d20+7"
+      if (!personaje && etiqueta) nombre = etiqueta;
+      plan = { etiqueta: personaje && etiqueta ? `${etiqueta} (${expresion})` : expresion, ...leida, multiplicador: 1, esAtaque: false };
+    } else {
+      plan = personaje ? queSeTira(personaje, que, tokenPropio?.condiciones ?? []) : null;
+    }
+    if (!plan) return;
+
+    const dados = plan.dados.flatMap((d) => Array.from({ length: d.cantidad }, () => dado(d.caras)));
+    const total = (dados.reduce((s, d) => s + d, 0) + plan.modificador) * plan.multiplicador;
+    const esD20 = dados.length === 1 && plan.dados[0]?.caras === 20;
+
+    // Contra la CA de un objetivo: la sala dice el grado de éxito
+    const objetivoId = (que.tipo === 'ataque' || que.tipo === 'libre') && typeof que.objetivo === 'string' ? que.objetivo : undefined;
+    const objetivoToken = objetivoId ? this.estado.tokens[objetivoId] : undefined;
+    const ca = objetivoToken && esD20 ? caDeToken(this.estado, objetivoToken) : null;
+
     const tirada: Tirada = {
       id: crypto.randomUUID(),
-      quien: personaje.nombre,
-      etiqueta: que.etiqueta,
+      quien: nombre,
+      etiqueta: plan.etiqueta,
       dados,
-      caras: que.caras,
-      modificador: que.modificador,
-      total: dados.reduce((s, d) => s + d, 0) + que.modificador,
+      caras: plan.dados.length === 1 ? plan.dados[0]!.caras : 0,
+      modificador: plan.modificador,
+      total,
       cuando: Date.now(),
+      ...(objetivoToken && ca ? { objetivo: { nombre: objetivoToken.nombre, cd: ca.total, grado: gradoDeExito(total, dados[0]!, ca.total) } } : {}),
     };
-    const accion: Accion = { tipo: 'registrar-tirada', tirada };
+    await this.guardarYRepartir({ tipo: 'registrar-tirada', tirada });
+
+    // Un ataque en su turno gasta una acción y sube la penalización del siguiente
+    if (plan.esAtaque && tokenPropio && tokenEnTurno(this.estado)?.id === tokenPropio.id) {
+      await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: tokenPropio.id });
+    }
+  }
+
+  // El GM empieza el combate: la sala tira la iniciativa (Perception) de cada uno
+  private async iniciarCombate(quien: Sesion, m: Record<string, unknown>) {
+    if (quien.rol !== 'gm' || !Array.isArray(m.tokens)) return;
+    const tokens = [...new Set(m.tokens)].map((id) => (typeof id === 'string' ? this.estado.tokens[id] : undefined)).filter((t) => !!t);
+    if (tokens.length === 0) return;
+
+    const orden: Combatiente[] = [];
+    for (const token of tokens) {
+      const personaje = token.personajeId ? this.estado.personajes[token.personajeId] : undefined;
+      const modificador = personaje ? calcular(personaje, token.condiciones ?? []).percepcion.total : token.percepcion ?? 0;
+      const d = dado(20);
+      orden.push({ tokenId: token.id, iniciativa: d + modificador });
+      await this.guardarYRepartir({
+        tipo: 'registrar-tirada',
+        tirada: {
+          id: crypto.randomUUID(), quien: token.nombre, etiqueta: 'Iniciativa', dados: [d], caras: 20,
+          modificador, total: d + modificador, cuando: Date.now(),
+        },
+      });
+    }
+    await this.guardarYRepartir({ tipo: 'iniciar-combate', orden });
+  }
+
+  private async guardarYRepartir(accion: Accion) {
     await this.guardar(accion);
     this.repartir({ tipo: 'accion', accion });
   }

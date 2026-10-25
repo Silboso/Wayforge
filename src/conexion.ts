@@ -167,13 +167,18 @@ export function useSala(salaId: string) {
     setFase('entrada');
   }, [mandar, salaId]);
 
-  const tirar = useCallback((personajeId: string, que: QueTirar) => {
-    mandar({ tipo: 'tirar', personajeId, que });
+  // Sin personaje: tirada libre del GM (por ejemplo, el ataque de un enemigo)
+  const tirar = useCallback((personajeId: string | undefined, que: QueTirar) => {
+    mandar({ tipo: 'tirar', ...(personajeId ? { personajeId } : {}), que });
+  }, [mandar]);
+
+  const iniciarCombate = useCallback((tokens: string[]) => {
+    mandar({ tipo: 'iniciar-combate', tokens });
   }, [mandar]);
 
   return {
     fase, lobby, quien, estado, presentes, conectado, rechazo,
-    enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar,
+    enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate,
     limpiarRechazo: () => setRechazo(null),
   };
 }
