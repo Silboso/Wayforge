@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wayforge",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Una partida = un Durable Object Sala: guarda el estado en su SQLite y reparte los cambios por WebSocket
+  "durable_objects": { "bindings": [{ "name": "SALAS", "class_name": "Sala" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }],
+  // Imágenes de mapas y tokens. En local, wrangler la simula en .wrangler/
+  "r2_buckets": [{ "binding": "IMAGENES", "bucket_name": "wayforge-imagenes" }]
+}

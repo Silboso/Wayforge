@@ -1,0 +1,285 @@
+import { useState } from 'react';
+import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
+import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type TipoToken, type Token } from '../../compartido/sala';
+import { subirImagen } from '../imagenes';
+import {
+  Campo, claseBotonIcono, claseBotonPrincipal, claseBotonSecundario, claseEntrada, Deslizador, ElegirImagen, Seccion,
+} from './ui';
+
+interface Props {
+  salaId: string;
+  codigoGM: string | null;
+  estado: EstadoSala;
+  seleccionado: string | null;
+  onSeleccionar: (id: string | null) => void;
+  enviar: (accion: Accion) => void;
+}
+
+const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
+  { valor: 'personaje', etiqueta: 'Personaje' },
+  { valor: 'enemigo', etiqueta: 'Enemigo' },
+  { valor: 'npc', etiqueta: 'NPC' },
+];
+
+// Herramientas del GM: tokens, mapa y códigos de la mesa
+export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar }: Props) {
+  const token = seleccionado ? estado.tokens[seleccionado] : undefined;
+  return (
+    <div className="flex flex-col gap-4">
+      {token ? (
+        <EditorToken key={token.id} salaId={salaId} token={token} enviar={enviar} onCerrar={() => onSeleccionar(null)} />
+      ) : (
+        <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={onSeleccionar} />
+      )}
+      <EditorMapa salaId={salaId} estado={estado} enviar={enviar} />
+      <Codigos salaId={salaId} codigoGM={codigoGM} />
+    </div>
+  );
+}
+
+function Codigos({ salaId, codigoGM }: { salaId: string; codigoGM: string | null }) {
+  const [copiado, setCopiado] = useState(false);
+  return (
+    <Seccion titulo="Códigos">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-sm text-texto-suave">Código de la mesa</div>
+          <div className="font-mono text-2xl font-bold tracking-widest">{salaId.toUpperCase()}</div>
+        </div>
+        <button className={claseBotonSecundario} onClick={async () => {
+          await navigator.clipboard.writeText(`${location.origin}/sala/${salaId}`);
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 2000);
+        }}>
+          <CopyIcon size={18} aria-hidden /> {copiado ? 'Copiado' : 'Copiar link'}
+        </button>
+      </div>
+      <p className="text-sm text-texto-suave">Dáselo a tus jugadores: con él entran, eligen su personaje y escriben su código.</p>
+      {codigoGM && (
+        <div className="rounded-lg bg-superficie-2 p-3">
+          <div className="text-sm text-texto-suave">Tu código de GM</div>
+          <div className="font-mono text-2xl font-bold tracking-widest">{codigoGM}</div>
+          <p className="text-xs text-texto-suave">Guárdalo: lo necesitas para volver a entrar como GM si sales o cambias de dispositivo.</p>
+        </div>
+      )}
+    </Seccion>
+  );
+}
+
+function NuevoToken({ salaId, estado, enviar, onCreado }: {
+  salaId: string;
+  estado: EstadoSala;
+  enviar: (accion: Accion) => void;
+  onCreado: (id: string) => void;
+}) {
+  const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState<TipoToken>('enemigo');
+  const [tamano, setTamano] = useState<Tamano>('Medium');
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState('');
+
+  async function agregar() {
+    if (!nombre.trim()) {
+      setError('Ponle un nombre al token');
+      return;
+    }
+    setSubiendo(true);
+    setError('');
+    try {
+      const imagen = archivo ? await subirImagen(salaId, archivo) : undefined;
+      const nuevo: Token = {
+        id: crypto.randomUUID(),
+        nombre: nombre.trim(),
+        tipo,
+        tamano,
+        ...casillaLibre(estado),
+        color: COLORES_TOKEN[tipo],
+        ...(imagen ? { imagen } : {}),
+      };
+      enviar({ tipo: 'crear-token', token: nuevo });
+      setNombre('');
+      setArchivo(null);
+      onCreado(nuevo.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo subir la imagen');
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  return (
+    <Seccion titulo="Agregar enemigo o NPC">
+      <Campo etiqueta="Nombre">
+        {(id) => (
+          <input id={id} className={claseEntrada} value={nombre} placeholder="Goblin arquero" maxLength={60}
+            onChange={(e) => { setNombre(e.target.value); setError(''); }}
+            onKeyDown={(e) => e.key === 'Enter' && agregar()} />
+        )}
+      </Campo>
+      <SelectorTipo valor={tipo} onCambio={setTipo} />
+      <SelectorTamano valor={tamano} onCambio={setTamano} />
+      <ElegirImagen etiqueta={archivo ? archivo.name : 'Imagen (opcional)'} onArchivo={setArchivo} />
+      {error && <p className="text-sm text-peligro">{error}</p>}
+      <button className={claseBotonPrincipal} onClick={agregar} disabled={subiendo}>
+        <PlusIcon size={18} weight="bold" aria-hidden />
+        {subiendo ? 'Subiendo imagen…' : 'Agregar al tablero'}
+      </button>
+    </Seccion>
+  );
+}
+
+function EditorToken({ salaId, token, enviar, onCerrar }: {
+  salaId: string;
+  token: Token;
+  enviar: (accion: Accion) => void;
+  onCerrar: () => void;
+}) {
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState('');
+  const editar = (cambios: Partial<Omit<Token, 'id' | 'personajeId'>>) => enviar({ tipo: 'editar-token', id: token.id, cambios });
+  // El nombre y la imagen de un personaje jugador se cambian desde su ficha
+  const dePersonaje = !!token.personajeId;
+
+  async function cambiarImagen(archivo: File | null) {
+    if (!archivo) return;
+    setSubiendo(true);
+    setError('');
+    try {
+      editar({ imagen: await subirImagen(salaId, archivo) });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo subir la imagen');
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  return (
+    <Seccion
+      titulo={token.nombre}
+      accion={
+        <button className={claseBotonIcono} onClick={onCerrar} aria-label="Cerrar">
+          <XIcon size={18} aria-hidden />
+        </button>
+      }
+    >
+      {dePersonaje ? (
+        <p className="text-sm text-texto-suave">Es el token de un personaje: su nombre y su imagen salen de la ficha.</p>
+      ) : (
+        <>
+          <Campo etiqueta="Nombre">
+            {(id) => (
+              <input id={id} className={claseEntrada} defaultValue={token.nombre} maxLength={60}
+                onBlur={(e) => e.target.value.trim() && e.target.value !== token.nombre && editar({ nombre: e.target.value.trim() })}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+            )}
+          </Campo>
+          <SelectorTipo valor={token.tipo} onCambio={(tipo) => editar({ tipo, color: COLORES_TOKEN[tipo] })} />
+        </>
+      )}
+      <SelectorTamano valor={token.tamano} onCambio={(tamano) => editar({ tamano })} />
+      <Campo etiqueta="Color del borde">
+        {(id) => (
+          <input id={id} type="color" className="h-10 w-full cursor-pointer rounded-lg border border-borde bg-superficie"
+            value={token.color} onChange={(e) => editar({ color: e.target.value })} />
+        )}
+      </Campo>
+      {!dePersonaje && (
+        <div className="flex gap-2">
+          <ElegirImagen etiqueta={subiendo ? 'Subiendo…' : token.imagen ? 'Cambiar imagen' : 'Poner imagen'} onArchivo={cambiarImagen} />
+          {token.imagen && <button className={claseBotonSecundario} onClick={() => editar({ imagen: '' })}>Quitar</button>}
+        </div>
+      )}
+      {error && <p className="text-sm text-peligro">{error}</p>}
+      {!dePersonaje && (
+        <button className={`${claseBotonSecundario} text-peligro`} onClick={() => { enviar({ tipo: 'borrar-token', id: token.id }); onCerrar(); }}>
+          <TrashIcon size={18} aria-hidden /> Quitar del tablero
+        </button>
+      )}
+    </Seccion>
+  );
+}
+
+function EditorMapa({ salaId, estado, enviar }: {
+  salaId: string;
+  estado: EstadoSala;
+  enviar: (accion: Accion) => void;
+}) {
+  const { mapa } = estado;
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState('');
+  const editar = (cambios: Partial<typeof mapa>) => enviar({ tipo: 'editar-mapa', cambios });
+
+  async function cambiarImagen(archivo: File | null) {
+    if (!archivo) return;
+    setSubiendo(true);
+    setError('');
+    try {
+      editar({ imagen: await subirImagen(salaId, archivo) });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo subir la imagen');
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  return (
+    <Seccion titulo="Mapa">
+      <div className="flex gap-2">
+        <ElegirImagen etiqueta={subiendo ? 'Subiendo…' : mapa.imagen ? 'Cambiar mapa' : 'Subir imagen de mapa'} onArchivo={cambiarImagen} />
+        {mapa.imagen && <button className={claseBotonSecundario} onClick={() => editar({ imagen: '' })}>Quitar</button>}
+      </div>
+      {error && <p className="text-sm text-peligro">{error}</p>}
+      <Deslizador etiqueta="Tamaño de casilla" valor={mapa.tamanoCelda} min={20} max={200} unidad="px"
+        onCambio={(tamanoCelda) => editar({ tamanoCelda })} />
+      <Deslizador etiqueta="Mover cuadrícula →" valor={mapa.desplazamientoX} min={0} max={mapa.tamanoCelda - 1} unidad="px"
+        onCambio={(desplazamientoX) => editar({ desplazamientoX })} />
+      <Deslizador etiqueta="Mover cuadrícula ↓" valor={mapa.desplazamientoY} min={0} max={mapa.tamanoCelda - 1} unidad="px"
+        onCambio={(desplazamientoY) => editar({ desplazamientoY })} />
+      {!mapa.imagen && (
+        <>
+          <Deslizador etiqueta="Columnas" valor={mapa.columnas} min={4} max={80} onCambio={(columnas) => editar({ columnas })} />
+          <Deslizador etiqueta="Filas" valor={mapa.filas} min={4} max={80} onCambio={(filas) => editar({ filas })} />
+        </>
+      )}
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-acento" checked={mapa.mostrarCuadricula}
+          onChange={(e) => editar({ mostrarCuadricula: e.target.checked })} />
+        Mostrar cuadrícula
+      </label>
+    </Seccion>
+  );
+}
+
+function SelectorTipo({ valor, onCambio }: { valor: TipoToken; onCambio: (tipo: TipoToken) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-sm text-texto-suave">Tipo</span>
+      <div className="grid grid-cols-3 gap-1 rounded-lg border border-borde bg-superficie-2 p-1" role="radiogroup">
+        {TIPOS.map((t) => (
+          <button key={t.valor} role="radio" aria-checked={valor === t.valor}
+            className={`h-8 rounded-md text-sm transition ${valor === t.valor ? 'bg-superficie font-medium shadow-sm' : 'text-texto-suave'}`}
+            onClick={() => onCambio(t.valor)}>
+            {t.etiqueta}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SelectorTamano({ valor, onCambio }: { valor: Tamano; onCambio: (tamano: Tamano) => void }) {
+  return (
+    <Campo etiqueta="Tamaño">
+      {(id) => (
+        <select id={id} className={claseEntrada} value={valor} onChange={(e) => onCambio(e.target.value as Tamano)}>
+          {(Object.keys(TAMANOS) as Tamano[]).map((t) => (
+            <option key={t} value={t}>
+              {t} · {TAMANOS[t] < 1 ? '½ casilla' : `${TAMANOS[t]}×${TAMANOS[t]}`}
+            </option>
+          ))}
+        </select>
+      )}
+    </Campo>
+  );
+}

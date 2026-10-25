@@ -1,0 +1,67 @@
+@import 'tailwindcss';
+
+/* Temas. Cada uno es solo un juego de variables: agregar otro tema es agregar un bloque. */
+:root,
+:root[data-tema='taberna'] {
+  color-scheme: light;
+  --fondo: #f3e9d2;
+  --superficie: #fbf5e6;
+  --superficie-2: #eadbb8;
+  --borde: #c9ae7c;
+  --texto: #3b2a1a;
+  --texto-suave: #6e5536;
+  --acento: #8e3b2e;
+  --sobre-acento: #fff8ec;
+  --peligro: #a8382f;
+  --tablero: #e8dcc0;
+  --cuadricula: rgba(59, 42, 26, 0.35);
+}
+
+:root[data-tema='obsidiana'] {
+  color-scheme: dark;
+  --fondo: #14121a;
+  --superficie: #1d1a25;
+  --superficie-2: #2a2433;
+  --borde: #3a3245;
+  --texto: #e9e2cf;
+  --texto-suave: #a79fb3;
+  --acento: #d9b26a;
+  --sobre-acento: #1a1408;
+  --peligro: #e0675d;
+  --tablero: #241e2c;
+  --cuadricula: rgba(217, 178, 106, 0.32);
+}
+
+@theme inline {
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-borde: var(--borde);
+  --color-texto: var(--texto);
+  --color-texto-suave: var(--texto-suave);
+  --color-acento: var(--acento);
+  --color-sobre-acento: var(--sobre-acento);
+  --color-peligro: var(--peligro);
+  --color-tablero: var(--tablero);
+  --font-titulo: 'Alegreya', Georgia, serif;
+  --font-sans: 'Alegreya Sans', system-ui, sans-serif;
+}
+
+html,
+body,
+#raiz {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
