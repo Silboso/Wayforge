@@ -154,8 +154,33 @@ export function Ficha({
             </div>
           ))}
         </div>
+        {ficha.claseCD && <p className="text-sm text-texto-suave">CD de clase <b className="text-texto">{ficha.claseCD.total}</b></p>}
       </Bloque>
+
+      <LoQueTrae p={p} />
     </div>
+  );
+}
+
+// Lo que dejó el creador: dotes, idiomas, Lores, escudo, mochila y monedas
+function LoQueTrae({ p }: { p: Personaje }) {
+  const hay = p.dotes?.length || p.idiomas?.length || p.inventario?.length || p.saberes?.length || p.escudo || p.monedas;
+  if (!hay) return null;
+  const monedas = p.monedas ? [p.monedas.oro && `${p.monedas.oro} po`, p.monedas.plata && `${p.monedas.plata} pp`, p.monedas.cobre && `${p.monedas.cobre} pc`].filter(Boolean).join(' · ') : '';
+  return (
+    <Bloque titulo="Lo que trae">
+      <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+        {p.dotes && p.dotes.length > 0 && (<><dt className="text-texto-suave">Dotes</dt><dd>{p.dotes.map((d) => d.nombre).join(' · ')}</dd></>)}
+        {p.saberes && p.saberes.length > 0 && (<><dt className="text-texto-suave">Lore (Trained)</dt><dd>{p.saberes.join(' · ')}</dd></>)}
+        {p.idiomas && p.idiomas.length > 0 && (<><dt className="text-texto-suave">Idiomas</dt><dd>{p.idiomas.join(', ')}</dd></>)}
+        {p.sentidos && (<><dt className="text-texto-suave">Sentidos</dt><dd>{p.sentidos}</dd></>)}
+        {p.escudo && (<><dt className="text-texto-suave">Escudo</dt><dd>{p.escudo.nombre}: +{p.escudo.ca} CA levantado · Dureza {p.escudo.dureza} · {p.escudo.pgActual}/{p.escudo.pg} PG</dd></>)}
+        {p.inventario && p.inventario.length > 0 && (
+          <><dt className="text-texto-suave">Mochila</dt><dd>{p.inventario.map((x) => (x.cantidad > 1 ? `${x.nombre} ×${x.cantidad}` : x.nombre)).join(' · ')}</dd></>
+        )}
+        {monedas && (<><dt className="text-texto-suave">Monedas</dt><dd>{monedas}</dd></>)}
+      </dl>
+    </Bloque>
   );
 }
 

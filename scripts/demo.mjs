@@ -74,8 +74,15 @@ for (const p of personajes) {
   enviar({ tipo: 'nuevo-personaje', personaje: p.ficha, codigo: p.codigo });
   await esperar(250);
 }
-for (const [id, nombre, x, y] of [['goblin-1', 'Goblin', 3, 2], ['goblin-2', 'Goblin arquero', 6, 1]]) {
-  enviar({ tipo: 'accion', accion: { tipo: 'crear-token', token: { id, nombre, tipo: 'enemigo', tamano: 'Small', x, y, color: '#c8392b', ca: 15, pg: { actual: 20, max: 20 }, percepcion: 5 } } });
+// Los goblins traen su ficha de criatura: el GM los juega con sus ataques, su turno y su alcance
+const criatura = (ataques) => ({
+  nivel: 1, salvaciones: { fortitude: 6, reflex: 8, will: 4 }, velocidad: 25, ataques,
+  habilidades: [{ nombre: 'Stealth', bono: 7 }], rasgos: ['Goblin', 'Humanoid'], notas: '',
+});
+const dogslicer = { id: 'dogslicer', nombre: 'Dogslicer', bono: 8, dano: '1d6+2', tipoDano: 'slashing', agil: true, rasgos: ['agile', 'finesse'] };
+const shortbow = { id: 'shortbow', nombre: 'Shortbow', bono: 8, dano: '1d6', tipoDano: 'piercing', agil: false, rasgos: ['deadly d10'], distancia: 60 };
+for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 3, 2, [dogslicer, shortbow]], ['goblin-2', 'Goblin arquero', 6, 1, [shortbow, dogslicer]]]) {
+  enviar({ tipo: 'accion', accion: { tipo: 'crear-token', token: { id, nombre, tipo: 'enemigo', tamano: 'Small', x, y, color: '#c8392b', ca: 15, pg: { actual: 20, max: 20 }, percepcion: 5, criatura: criatura(ataques) } } });
   await esperar(150);
 }
 await esperar(300);
@@ -89,6 +96,6 @@ Mesa de prueba lista
   Personajes:
     Kyra  (Human Fighter 3: Shield Block, Reactive Strike, Power Attack)  código 1234
     Ezren (Human Wizard 3: Nimble Dodge, conjuros y foco)                 código 5678
-  Enemigos: Goblin y Goblin arquero (CA 15, 20 PG)
+  Enemigos: Goblin y Goblin arquero (CA 15, 20 PG, con dogslicer y arco; el bestiario tiene más)
 
 Para jugar GM y jugador a la vez en la misma PC, abre al jugador en una ventana de incógnito.`);

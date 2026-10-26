@@ -1,6 +1,7 @@
 // Protocolo de la sala: el estado de una partida y las acciones que lo cambian.
 // Lo usan la interfaz y el Durable Object con el mismo `aplicar`, así los dos lados llegan al mismo estado.
 
+import { esCriaturaValida, type Criatura } from '../reglas/criaturas';
 import { calcular, esPersonajeValido, type Grado, type Personaje, type Valor } from '../reglas/pf2e';
 import {
   accionesAlEmpezar, alEmpezarTurno, alTerminarTurno, CONDICIONES, esCondicionesValida, penalizaciones, ponerCondicion,
@@ -42,6 +43,8 @@ export interface Token {
   pg?: { actual: number; max: number };
   // Modificador de Perception, para la iniciativa
   percepcion?: number;
+  // Los números de un enemigo o NPC: nivel, salvaciones, velocidad y ataques
+  criatura?: Criatura;
 }
 
 export interface Mapa {
@@ -183,7 +186,11 @@ export type QueTirar =
   // Lo que tire una aptitud (una skill, un ataque de conjuro, unos dados, un Strike)
   | { tipo: 'aptitud'; id: string; objetivo?: string; numero?: 0 | 1 | 2 }
   // Cualquier expresión ("1d20+7"); el GM la usa para los enemigos
-  | { tipo: 'libre'; expresion: string; etiqueta?: string; objetivo?: string; critico?: boolean };
+  | { tipo: 'libre'; expresion: string; etiqueta?: string; objetivo?: string; critico?: boolean }
+  // Lo que tira una criatura del GM: un ataque (con su penalización), su daño, o una salvación o Perception
+  | { tipo: 'criatura'; tokenId: string; ataque: string; numero: 0 | 1 | 2; objetivo?: string }
+  | { tipo: 'dano-criatura'; tokenId: string; ataque: string; critico?: boolean; objetivo?: string }
+  | { tipo: 'chequeo-criatura'; tokenId: string; clave: 'fortitude' | 'reflex' | 'will' | 'percepcion' };
 
 // Interfaz → sala
 export type MensajeCliente =
@@ -200,7 +207,22 @@ export type MensajeCliente =
   // Usar una aptitud: la sala revisa turno, acciones, usos y alcance, y hace todo junto
   | { tipo: 'usar'; aptitudId: string; objetivo?: string }
   // Respuesta a un ataque en pausa: la reacción elegida, o null para dejarlo pasar
-  | { tipo: 'responder'; esperaId: string; aptitudId: string | null };
+  | { tipo: 'responder'; esperaId: string; aptitudId: string | null }
+  // Dónde está mi puntero en el tablero (en casillas; null si salió) y a quién apunto. No se guarda.
+  | { tipo: 'puntero'; x: number | null; y: number | null; apunta: string | null }
+  // "¡Aquí!": una señal en un punto del tablero que ven todos
+  | { tipo: 'senal'; x: number; y: number };
+
+// Alguien más en el tablero: su puntero y su objetivo (efímero: viaja por el socket, no toca el estado)
+export interface Puntero {
+  idConexion: string;
+  nombre: string;
+  rol: Sesion['rol'];
+  personajeId?: string;
+  x: number | null;
+  y: number | null;
+  apunta: string | null;
+}
 
 // Sala → interfaz
 export type MensajeSala =
@@ -211,7 +233,9 @@ export type MensajeSala =
   | { tipo: 'accion'; accion: Accion }
   | { tipo: 'presentes'; presentes: Presente[] }
   // La sala no dejó hacer algo: el motivo, para mostrarlo
-  | { tipo: 'negado'; motivo: string };
+  | { tipo: 'negado'; motivo: string }
+  | ({ tipo: 'puntero' } & Puntero)
+  | { tipo: 'senal'; idConexion: string; nombre: string; personajeId?: string; x: number; y: number };
 
 // Tintas del cuaderno: bolígrafo azul para los personajes, rojo para enemigos, lápiz para los NPC
 export const COLORES_TOKEN: Record<TipoToken, string> = {
@@ -515,7 +539,7 @@ export function ladoDe(t: Token): number {
 }
 
 export function velocidadDe(estado: EstadoSala, t: Token): number {
-  return (t.personajeId ? estado.personajes[t.personajeId]?.velocidad : undefined) ?? 25;
+  return (t.personajeId ? estado.personajes[t.personajeId]?.velocidad : t.criatura?.velocidad) ?? 25;
 }
 
 const esEnemigoDe = (a: Token, b: Token) => Boolean(a.personajeId) !== Boolean(b.personajeId) && (a.tipo === 'enemigo' || b.tipo === 'enemigo');
@@ -563,16 +587,26 @@ export function planMovimiento(estado: EstadoSala, t: Token, destino: Casilla, l
 
 // ¿Puede actuar ahora un personaje con algo que cuesta `costo`? null si sí; si no, por qué
 export function motivoParaActuar(estado: EstadoSala, personajeId: string, costo: number | 'reaccion' | 'libre' | 'larga'): string | null {
+  return motivoParaActuarToken(estado, tokenDePersonaje(estado, personajeId), costo);
+}
+
+// Lo mismo para cualquier token (las criaturas del GM siguen las mismas reglas que los personajes)
+export function motivoParaActuarToken(estado: EstadoSala, token: Token | undefined, costo: number | 'reaccion' | 'libre' | 'larga'): string | null {
   const c = estado.combate;
-  const token = tokenDePersonaje(estado, personajeId);
   if (costo === 'larga') return c ? 'Es una actividad de minutos: no se puede en combate.' : null;
   if (!c || !token || !c.orden.some((x) => x.tokenId === token.id)) return null;
-  if (costo === 'reaccion') return c.reacciones.includes(token.id) ? 'Ya usaste tu reacción esta ronda.' : null;
+  // A un jugador se le habla de tú; al GM, de su criatura
+  const propio = !!token.personajeId;
+  if (costo === 'reaccion') return c.reacciones.includes(token.id) ? (propio ? 'Ya usaste tu reacción esta ronda.' : `${token.nombre} ya usó su reacción esta ronda.`) : null;
   const enTurno = tokenEnTurno(estado);
-  if (enTurno?.id !== token.id) return `No es tu turno: ahora juega ${enTurno?.nombre ?? 'otro'}.`;
+  if (enTurno?.id !== token.id) return `${propio ? 'No es tu turno' : `No es el turno de ${token.nombre}`}: ahora juega ${enTurno?.nombre ?? 'otro'}.`;
   if (costo === 'libre') return null;
   const libres = c.acciones - c.usadas;
-  if (costo > libres) return libres === 0 ? 'No te quedan acciones este turno.' : `Te ${costo - libres === 1 ? 'falta 1 acción' : `faltan ${costo - libres} acciones`}.`;
+  if (costo > libres) {
+    if (libres === 0) return propio ? 'No te quedan acciones este turno.' : `A ${token.nombre} no le quedan acciones.`;
+    const falta = costo - libres === 1 ? 'falta 1 acción' : `faltan ${costo - libres} acciones`;
+    return propio ? `Te ${falta}.` : `A ${token.nombre} le ${falta}.`;
+  }
   return null;
 }
 
@@ -667,6 +701,7 @@ function esTokenValido(t: unknown): boolean {
     && (k.condiciones === undefined || esCondicionesValida(k.condiciones))
     && (k.ca === undefined || esEntero(k.ca, 0, 80))
     && (k.percepcion === undefined || esEntero(k.percepcion, -10, 60))
+    && (k.criatura === undefined || esCriaturaValida(k.criatura))
     && (pg === undefined || (esObjeto(pg) && esEntero(pg.actual, 0, 9999) && esEntero(pg.max, 1, 9999)));
 }
 

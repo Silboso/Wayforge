@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { ArrowBendUpLeftIcon, ClockIcon } from '@phosphor-icons/react';
+import { ArrowBendUpLeftIcon, ClockIcon, PencilSimpleIcon } from '@phosphor-icons/react';
 import type { Costo } from '../../../reglas/aptitudes';
 import { CONDICIONES, type Condicion } from '../../../reglas/condiciones';
 
@@ -29,17 +29,34 @@ export function CostoAccion({ costo, tachado = false, className = '' }: { costo:
   );
 }
 
-// El retrato como foto pegada con cinta
-export function FotoPegada({ src, inicial, tamano = 'size-[72px]' }: { src?: string; inicial: string; tamano?: string }) {
-  return (
-    <div className="relative shrink-0">
-      <div className={`${tamano} -rotate-3 overflow-hidden rounded-[3px] border-4 border-white bg-superficie-2 shadow-[0_5px_12px_-4px_var(--sombra)]`}>
+// El retrato como foto pegada con cinta. Con `onEditar`, tocarla abre el editor del personaje.
+export function FotoPegada({ src, inicial, tamano = 'size-[72px]', onEditar, nombre }: {
+  src?: string;
+  inicial: string;
+  tamano?: string;
+  onEditar?: () => void;
+  nombre?: string;
+}) {
+  const foto = (
+    <>
+      <div className={`${tamano} -rotate-3 overflow-hidden rounded-[3px] border-4 border-white bg-superficie-2 shadow-[0_5px_12px_-4px_var(--sombra)] transition-transform ${onEditar ? 'group-hover:-rotate-1 group-hover:scale-[1.04] group-active:scale-95' : ''}`}>
         {src
           ? <img src={src} alt="" className="size-full object-cover" />
           : <span className="flex size-full items-center justify-center font-titulo text-2xl font-bold text-acento">{inicial}</span>}
       </div>
       <span aria-hidden className="absolute -top-2 left-3 h-4 w-11 -rotate-[8deg] bg-[var(--cinta)]" />
-    </div>
+    </>
+  );
+  if (!onEditar) return <div className="relative shrink-0">{foto}</div>;
+  return (
+    <button type="button" className="group relative shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-acento"
+      onClick={onEditar} title={`Editar ${nombre ?? 'personaje'}`} aria-label={`Editar ${nombre ?? 'personaje'}`}>
+      {foto}
+      {/* Un lápiz en la esquina: se ve siempre en el teléfono y al pasar el cursor en la PC */}
+      <span aria-hidden className="absolute -right-1.5 -bottom-1.5 flex size-7 items-center justify-center rounded-full bg-acento text-sobre-acento shadow-[0_3px_8px_-3px_var(--sombra)] transition pointer-fine:scale-75 pointer-fine:opacity-0 pointer-fine:group-hover:scale-100 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-visible:opacity-100">
+        <PencilSimpleIcon size={15} weight="bold" />
+      </span>
+    </button>
   );
 }
 

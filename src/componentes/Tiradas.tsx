@@ -3,6 +3,9 @@ import { GRADOS, leerExpresion, type Grado } from '../../reglas/pf2e';
 import type { QueTirar, Tirada } from '../../compartido/sala';
 import { textoTirada } from '../../compartido/tiradas';
 import { claseBotonPrincipal, claseEntrada, Seccion } from './ui';
+import { Dados3D } from './dados/Dados3D';
+import type { DadoPedido } from './dados/motor';
+import { CirculoTinta, Estampa, FlechaTinta, Salpicadura, semillaDe } from './dados/Tinta';
 
 function natural(t: Tirada): 'critico' | 'pifia' | null {
   if (t.caras !== 20 || t.dados.length !== 1) return null;
@@ -98,98 +101,110 @@ export function TiradaLibre({ esGM, objetivo, onTirar }: {
   );
 }
 
-const RUEDA_MS = 700;
+// Lo que tarda el dado en caer (igual que el motor 3D) y cuánto queda a la vista la tarjeta
+const CAIDA_MS = 800;
+const DURA_MS = 5400;
 
-// Aviso flotante con la última tirada, para que todos la vean aunque estén mirando el tablero.
-// Primero el dado rueda y sus números cambian; luego cae el resultado.
+// Tarjeta flotante con la última tirada, para que todos la vean aunque estén mirando el tablero.
+// El dado 3D empieza a girar al apretar (la tirada viene en camino), cae en su cara y entonces
+// la cuenta se escribe a tinta: el total en un círculo a mano y el resultado como un sello.
 // `lugar`: dónde flota la tarjeta (en la mesa del jugador, en escritorio, arriba para no tapar la hoja)
 export function AvisoTirada({ tiradas, verCd, pendiente = null, lugar = 'bottom-[156px] lg:bottom-6' }: {
-  tiradas: Tirada[]; verCd: boolean; pendiente?: { etiqueta: string; desde: number } | null; lugar?: string;
+  tiradas: Tirada[];
+  verCd: boolean;
+  pendiente?: { etiqueta: string; desde: number; caras?: number } | null;
+  lugar?: string;
 }) {
   const ultima = tiradas.at(-1);
   const [visible, setVisible] = useState<Tirada | null>(null);
-  const [rodando, setRodando] = useState(false);
-  const [caras, setCaras] = useState<number[]>([]);
+  // Ya cayó el dado: se escribe la cuenta
+  const [asentada, setAsentada] = useState(false);
   const vista = useRef(ultima?.id);
-  const rodandoDesde = useRef(0);
-  const [carasPendientes, setCarasPendientes] = useState(20);
-  // Mientras la sala responde, el dado ya rueda: se siente la tirada en el mismo instante del clic
+
+  // El motor 3D se trae en cuanto la mesa está tranquila: así el primer dado ya gira al apretar
   useEffect(() => {
-    if (!pendiente || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    rodandoDesde.current = pendiente.desde;
-    const t = setInterval(() => setCarasPendientes(1 + Math.floor(Math.random() * 20)), 70);
-    return () => clearInterval(t);
-  }, [pendiente]);
+    const t = setTimeout(() => void import('./dados/motor').catch(() => undefined), 1200);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     if (!ultima || ultima.id === vista.current) return;
     vista.current = ultima.id;
     setVisible(ultima);
+    setAsentada(false);
     const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // Si ya venía rodando desde que se apretó, cae enseguida (lo justo para que el giro se vea)
-    const yaRodo = rodandoDesde.current ? Date.now() - rodandoDesde.current : 0;
-    rodandoDesde.current = 0;
-    setRodando(!quieto);
-    const lados = ultima.caras || 6;
-    const cambio = quieto ? undefined : setInterval(() => setCaras(ultima.dados.map(() => 1 + Math.floor(Math.random() * lados))), 70);
-    const fin = setTimeout(() => { clearInterval(cambio); setRodando(false); }, quieto ? 0 : Math.max(250, RUEDA_MS - yaRodo));
-    const ocultar = setTimeout(() => setVisible(null), 4500 + RUEDA_MS);
-    return () => { clearInterval(cambio); clearTimeout(fin); clearTimeout(ocultar); };
+    const cae = setTimeout(() => setAsentada(true), quieto ? 0 : CAIDA_MS + 120 + Math.min(3, ultima.dados.length - 1) * 90);
+    const ocultar = setTimeout(() => setVisible(null), DURA_MS);
+    return () => { clearTimeout(cae); clearTimeout(ocultar); };
   }, [ultima]);
 
-  if (pendiente && (!visible || visible.cuando < pendiente.desde)) {
-    return (
-      <div role="status" className={`pointer-events-none fixed inset-x-0 z-20 flex justify-center px-4 ${lugar}`}>
-        <div className="tarjeta flex items-center gap-4 px-5 py-3">
-          <div className="font-titulo text-[15px]">{pendiente.etiqueta}…</div>
-          <Dado valor={carasPendientes} caras={20} />
-        </div>
-      </div>
-    );
-  }
-  if (!visible) return null;
-  const nat = natural(visible);
-  if (rodando) {
-    return (
-      <div role="status" className={`pointer-events-none fixed inset-x-0 z-20 flex justify-center px-4 ${lugar}`}>
-        <div className="tarjeta flex items-center gap-4 px-5 py-3">
-          <div className="text-sm"><span className="font-medium">{visible.quien}</span> · {visible.etiqueta}</div>
-          <div className="flex gap-1.5">
-            {visible.dados.slice(0, 4).map((_, i) => <Dado key={i} valor={caras[i] ?? '?'} caras={visible.caras} />)}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const esperando = !!pendiente && (!visible || visible.cuando < pendiente.desde);
+  if (!esperando && !visible) return null;
+  const dados: DadoPedido[] = esperando || !visible
+    ? [{ caras: pendiente?.caras ?? 20 }]
+    : visible.dados.map((valor) => ({ caras: visible.caras, valor }));
+  const nat = visible && !esperando ? natural(visible) : null;
+
   return (
     <div role="status" className={`pointer-events-none fixed inset-x-0 z-20 flex justify-center px-4 ${lugar}`}>
-      <div className={`flex items-center gap-4 rounded-2xl border-2 bg-superficie px-5 py-3 shadow-lg ${nat === 'critico' ? 'border-acento' : nat === 'pifia' ? 'border-peligro' : 'border-borde'}`}>
-        <div>
-          <div className="text-sm"><span className="font-medium">{visible.quien}</span> · {visible.etiqueta}</div>
-          <div className="text-xs text-texto-suave tabular-nums">{textoTirada(visible)}</div>
-          <Resultado t={visible} verCd={verCd} />
+      <div className={`tarjeta relative flex max-w-full items-center gap-2 py-2 pr-5 pl-2 ${nat === 'critico' && asentada ? 'ring-2 ring-acento/60' : ''}`}>
+        <span aria-hidden className="absolute -top-2 left-9 h-4 w-14 -rotate-3 bg-[var(--cinta)]" />
+        <Dados3D dados={dados} tamano={92} />
+        <div className="min-w-0">
+          <p className="truncate font-titulo text-[14px] text-texto-suave">
+            {esperando || !visible ? `${pendiente!.etiqueta}…` : <><span className="text-texto">{visible.quien}</span> · {visible.etiqueta}</>}
+          </p>
+          {visible && !esperando && (asentada
+            ? <NotaTirada t={visible} verCd={verCd} nat={nat} />
+            : <p className="font-titulo text-[15px] text-texto-suave">rodando…</p>)}
         </div>
-        <span className="resultado-pop font-titulo text-4xl font-bold tabular-nums">{visible.total}</span>
       </div>
     </div>
   );
 }
 
-// Un dado dibujado a mano que rueda: un d20 es un hexágono con su triángulo; los demás, un cuadrado con esquinas blandas
-function Dado({ valor, caras }: { valor: number | string; caras: number }) {
+const SELLO: Record<Grado, { texto: string; color: string }> = {
+  critico: { texto: '¡Crítico!', color: 'var(--acento)' },
+  exito: { texto: '¡Le diste!', color: 'var(--exito)' },
+  fallo: { texto: 'Falló', color: 'var(--texto-suave)' },
+  pifia: { texto: 'Pifia', color: 'var(--peligro)' },
+};
+
+// La cuenta a tinta: los dados y el modificador a lápiz, el total en un círculo; el daño, sobre una mancha roja
+function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critico' | 'pifia' | null }) {
+  const dano = !t.objetivo?.grado && t.etiqueta.startsWith('Daño');
+  const critico = t.etiqueta.startsWith('Daño crítico');
+  const suma = t.modificador ? `${t.dados.join(' + ')} ${t.modificador > 0 ? '+' : '−'} ${Math.abs(t.modificador)}` : t.dados.join(' + ');
+  const cuenta = critico ? `(${suma}) × 2` : suma;
+  const sello = t.objetivo?.grado ? SELLO[t.objetivo.grado] : null;
   return (
-    <span className="dado-rueda relative flex size-12 items-center justify-center text-acento">
-      <svg viewBox="0 0 48 48" className="absolute inset-0" aria-hidden>
-        {caras === 20 ? (
-          <>
-            <path d="M24 2.5 L43.5 13.4 L43.2 35.2 L24.3 45.6 L4.6 34.9 L4.4 13.1 Z" fill="var(--superficie)" stroke="currentColor" strokeWidth={2.2} strokeLinejoin="round" />
-            <path d="M24 9 L37 31.5 L11 31.5 Z" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" opacity={0.55} />
-          </>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="font-titulo text-[15px] whitespace-nowrap text-texto-suave tabular-nums">{cuenta} =</span>
+        {dano ? (
+          <span className="relative inline-flex items-center justify-center px-2">
+            <Salpicadura semilla={semillaDe(t.id)} className="absolute -inset-x-1 -inset-y-3 h-[calc(100%+24px)] w-[calc(100%+8px)]" />
+            <b className="resultado-pop relative font-titulo text-[30px] leading-none text-white tabular-nums">{t.total}</b>
+          </span>
         ) : (
-          <rect x={5} y={5} width={38} height={38} rx={8} fill="var(--superficie)" stroke="currentColor" strokeWidth={2.2} />
+          <CirculoTinta color={nat === 'pifia' ? 'var(--peligro)' : 'var(--acento)'}>
+            <b className="resultado-pop font-titulo text-[32px] leading-none tabular-nums">{t.total}</b>
+          </CirculoTinta>
         )}
-      </svg>
-      <span className="relative font-titulo text-[17px] font-bold tabular-nums text-texto">{valor}</span>
-    </span>
+        {nat && (
+          <span className={`flex items-center gap-0.5 font-titulo text-[13px] font-semibold ${nat === 'critico' ? 'text-acento' : 'text-peligro'}`}>
+            <FlechaTinta className="h-3.5 w-6" />
+            {nat === 'critico' ? '¡20 natural!' : '1 natural'}
+          </span>
+        )}
+      </div>
+      {sello && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Estampa color={sello.color}>{sello.texto}</Estampa>
+          <span className="font-titulo text-[13px] text-texto-suave">contra {t.objetivo!.nombre}{verCd && t.objetivo!.cd ? ` (CA ${t.objetivo!.cd})` : ''}</span>
+        </div>
+      )}
+      {!sello && t.objetivo && <span className="font-titulo text-[13px] text-texto-suave">{dano ? 'de daño a' : 'contra'} {t.objetivo.nombre}</span>}
+    </div>
   );
 }

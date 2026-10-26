@@ -2,32 +2,10 @@ import { useState } from 'react';
 import { ArrowsClockwiseIcon, SwordIcon, TrashIcon } from '@phosphor-icons/react';
 import { tokenEnTurno, type Accion, type Combate, type EstadoSala, type Sesion, type Token } from '../../compartido/sala';
 import { resumenCondiciones } from './Condiciones';
+import { useConfirmar } from './hud/Modal';
 import { claseBotonIcono, claseBotonPrincipal, claseBotonSecundario, claseEntrada, Seccion } from './ui';
 
-// Barra con el orden de iniciativa, encima del tablero. La ven todos.
-export function OrdenIniciativa({ estado, combate }: { estado: EstadoSala; combate: Combate }) {
-  return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
-      <ol className="pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-xl border border-borde bg-superficie/95 p-1.5 shadow-sm">
-        <li className="shrink-0 px-2 text-xs text-texto-suave">Ronda {combate.ronda}</li>
-        {combate.orden.map((c, i) => {
-          const token = estado.tokens[c.tokenId];
-          if (!token) return null;
-          const enTurno = i === combate.turno;
-          return (
-            <li key={c.tokenId} title={`${token.nombre} · iniciativa ${c.iniciativa}${token.condiciones?.length ? ` · ${resumenCondiciones(token.condiciones)}` : ''}`}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 ${enTurno ? 'bg-acento text-sobre-acento' : ''}`}>
-              <Avatar token={token} />
-              <span className={`max-w-24 truncate text-sm ${enTurno ? 'font-medium' : 'hidden sm:inline'}`}>{token.nombre}</span>
-              <span className="text-xs tabular-nums opacity-80">{c.iniciativa}</span>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
-
+// El retrato chiquito de un token (o su inicial sobre su color)
 function Avatar({ token }: { token: Token }) {
   return (
     <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 text-xs font-bold"
@@ -39,7 +17,7 @@ function Avatar({ token }: { token: Token }) {
 
 // El turno en curso: las 3 acciones (◆◆◆), la reacción y "Terminar turno".
 // Lo manejan el GM y quien tiene el turno; el resto solo lo ve.
-export function PanelTurno({ estado, combate, quien, enviar }: {
+function PanelTurno({ estado, combate, quien, enviar }: {
   estado: EstadoSala;
   combate: Combate;
   quien: Sesion;
@@ -112,6 +90,7 @@ export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
   enviar: (accion: Accion) => void;
   onIniciar: (tokens: string[]) => void;
 }) {
+  const confirmar = useConfirmar();
   const tokens = Object.values(estado.tokens);
   // Se guardan los que NO pelean, para que un token nuevo entre marcado
   const [fuera, setFuera] = useState<Set<string>>(() => new Set());
@@ -198,9 +177,10 @@ export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
         )}
       </Seccion>
       <button className={`${claseBotonSecundario} text-peligro`}
-        onClick={() => confirm('¿Terminar el combate?') && enviar({ tipo: 'terminar-combate' })}>
+        onClick={() => confirmar.pedir({ titulo: '¿Terminar el combate?', texto: 'Se borra el orden de iniciativa y todos vuelven a moverse libres.', si: 'Terminar', hacer: () => enviar({ tipo: 'terminar-combate' }) })}>
         Terminar combate
       </button>
+      {confirmar.ventana}
     </div>
   );
 }

@@ -40,6 +40,9 @@ export interface ColoresTablero {
   peligro: string;
   marca: string;
   postit: string;
+  sombra: string;
+  exito: string;
+  sobreAcento: string;
 }
 
 export function leerColoresTablero(): ColoresTablero {
@@ -55,5 +58,8 @@ export function leerColoresTablero(): ColoresTablero {
     peligro: leer('peligro'),
     marca: leer('marca'),
     postit: leer('postit'),
+    sombra: leer('sombra'),
+    exito: leer('exito'),
+    sobreAcento: leer('sobre-acento'),
   };
 }

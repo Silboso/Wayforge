@@ -1,0 +1,127 @@
+import type { Ascendencia } from './tipos';
+
+// Ascendencias del Player Core (remaster), con algunas herencias. Licencia ORC.
+export const ASCENDENCIAS: Ascendencia[] = [
+  {
+    id: 'dwarf', nombre: 'Dwarf',
+    descripcion: 'Bajos, macizos y tercos. Viven en fortalezas de piedra, cuidan sus tradiciones y aguantan lo que les echen.',
+    pg: 10, tamano: 'medium', velocidad: 20, mejoras: ['con', 'wis', 'libre'], defecto: 'cha',
+    idiomas: ['Common', 'Dwarven'], idiomasOpcionales: ['Gnomish', 'Goblin', 'Jotun', 'Orcish', 'Petran', 'Sakvroth'],
+    sentidos: 'Darkvision', rasgos: ['Dwarf', 'Humanoid'],
+    especial: 'Clan Dagger: empiezas con la daga de tu clan, gratis. Venderla es un tabú.',
+    herencias: [
+      { id: 'ancient-blooded', nombre: 'Ancient-Blooded Dwarf', descripcion: 'La magia te resbala: tienes la reacción Call on Ancient Blood (+1 a la salvación contra un efecto mágico).' },
+      { id: 'death-warden', nombre: 'Death Warden Dwarf', descripcion: 'Resistes la necromancia: tus éxitos al salvarte contra efectos de vacío (void) son críticos.' },
+      { id: 'forge', nombre: 'Forge Dwarf', descripcion: 'Resistencia al fuego igual a la mitad de tu nivel (mínimo 1) y el calor ambiental te afecta como un nivel menos.' },
+      { id: 'rock', nombre: 'Rock Dwarf', descripcion: 'Firme como la roca: +2 a tu CD contra Shove y Trip, y moverte a la fuerza te cuesta menos.' },
+      { id: 'strong-blooded', nombre: 'Strong-Blooded Dwarf', descripcion: 'Resistencia al veneno igual a la mitad de tu nivel (mínimo 1), y los venenos te duran menos.' },
+    ],
+  },
+  {
+    id: 'elf', nombre: 'Elf',
+    descripcion: 'Longevos, gráciles y atentos a lo que otros pasan por alto. Su larga vida los vuelve pacientes y, a veces, distantes.',
+    pg: 6, tamano: 'medium', velocidad: 30, mejoras: ['dex', 'int', 'libre'], defecto: 'con',
+    idiomas: ['Common', 'Elven'], idiomasOpcionales: ['Draconic', 'Empyrean', 'Fey', 'Gnomish', 'Goblin', 'Orcish'],
+    sentidos: 'Low-light vision', rasgos: ['Elf', 'Humanoid'], especial: null,
+    herencias: [
+      { id: 'ancient', nombre: 'Ancient Elf', descripcion: 'Has vivido lo suficiente para formarte en otro oficio: ganas una dote de nivel 1 de otra clase (Multitalented).' },
+      { id: 'arctic', nombre: 'Arctic Elf', descripcion: 'Resistencia al frío igual a la mitad de tu nivel (mínimo 1); el frío ambiental te afecta como un paso menos.' },
+      { id: 'cavern', nombre: 'Cavern Elf', descripcion: 'Creciste bajo tierra: ves en la oscuridad (darkvision).', efecto: { sentidos: 'Darkvision' } },
+      { id: 'seer', nombre: 'Seer Elf', descripcion: 'Percibes la magia: el truco Detect Magic como innato y +1 para identificar magia.' },
+      { id: 'whisper', nombre: 'Whisper Elf', descripcion: 'Oído finísimo: localizas mejor lo que no ves y tienes +2 para Seek con el oído cerca.' },
+      { id: 'woodland', nombre: 'Woodland Elf', descripcion: 'Trepas con facilidad entre árboles y lianas, y te cubres mejor entre el follaje.' },
+    ],
+  },
+  {
+    id: 'gnome', nombre: 'Gnome',
+    descripcion: 'Pequeños, curiosos y de colores vivos. Vienen del Primer Mundo de las hadas y necesitan novedades para no apagarse.',
+    pg: 8, tamano: 'small', velocidad: 25, mejoras: ['con', 'cha', 'libre'], defecto: 'str',
+    idiomas: ['Common', 'Fey', 'Gnomish'], idiomasOpcionales: ['Draconic', 'Dwarven', 'Elven', 'Goblin', 'Jotun', 'Orcish'],
+    sentidos: 'Low-light vision', rasgos: ['Gnome', 'Humanoid'], especial: null,
+    herencias: [
+      { id: 'chameleon', nombre: 'Chameleon Gnome', descripcion: 'Tu piel y pelo cambian de color: +2 a Stealth si te quedas en un entorno de colores parecidos.' },
+      { id: 'fey-touched', nombre: 'Fey-Touched Gnome', descripcion: 'Un truco primal a elección como innato, y lo puedes cambiar una vez al día.' },
+      { id: 'sensate', nombre: 'Sensate Gnome', descripcion: 'Sentido del olfato impreciso a 30 ft y +2 para localizar criaturas por el olor.' },
+      { id: 'umbral', nombre: 'Umbral Gnome', descripcion: 'Ves en la oscuridad (darkvision).', efecto: { sentidos: 'Darkvision' } },
+      { id: 'wellspring', nombre: 'Wellspring Gnome', descripcion: 'Un truco arcano, divino u oculto como innato.' },
+    ],
+  },
+  {
+    id: 'goblin', nombre: 'Goblin',
+    descripcion: 'Bajitos, ruidosos y llenos de ingenio. Les encantan el fuego, las canciones y la chatarra útil.',
+    pg: 6, tamano: 'small', velocidad: 25, mejoras: ['dex', 'cha', 'libre'], defecto: 'wis',
+    idiomas: ['Common', 'Goblin'], idiomasOpcionales: ['Draconic', 'Dwarven', 'Gnomish', 'Halfling', 'Orcish'],
+    sentidos: 'Darkvision', rasgos: ['Goblin', 'Humanoid'], especial: null,
+    herencias: [
+      { id: 'charhide', nombre: 'Charhide Goblin', descripcion: 'Resistencia al fuego igual a la mitad de tu nivel (mínimo 1), y te apagas más fácil cuando ardes.' },
+      { id: 'irongut', nombre: 'Irongut Goblin', descripcion: 'Comes casi cualquier cosa: +2 contra venenos y enfermedades al comer, y ganas Sickened menos.' },
+      { id: 'razortooth', nombre: 'Razortooth Goblin', descripcion: 'Tus dientes son un ataque sin armas: jaws, 1d6 piercing.' },
+      { id: 'snow', nombre: 'Snow Goblin', descripcion: 'Resistencia al frío igual a la mitad de tu nivel (mínimo 1).' },
+      { id: 'unbreakable', nombre: 'Unbreakable Goblin', descripcion: 'Más duro de lo que pareces: 10 PG de ascendencia en lugar de 6, y caer te hace menos daño.', efecto: { pg: 10 } },
+    ],
+  },
+  {
+    id: 'halfling', nombre: 'Halfling',
+    descripcion: 'Pequeños, optimistas y con una suerte que parece de otro mundo. Se adaptan a donde los lleve el camino.',
+    pg: 6, tamano: 'small', velocidad: 25, mejoras: ['dex', 'wis', 'libre'], defecto: 'str',
+    idiomas: ['Common', 'Halfling'], idiomasOpcionales: ['Dwarven', 'Elven', 'Gnomish', 'Goblin'],
+    sentidos: 'Visión normal', rasgos: ['Halfling', 'Humanoid'],
+    especial: 'Keen Eyes: +2 para Seek criaturas escondidas a 30 ft, y las ocultas o escondidas te cuestan menos de apuntar.',
+    herencias: [
+      { id: 'gutsy', nombre: 'Gutsy Halfling', descripcion: 'Valiente: tus éxitos al salvarte contra efectos de miedo (emotion) son críticos.' },
+      { id: 'hillock', nombre: 'Hillock Halfling', descripcion: 'Recuperas más PG al descansar y con Treat Wounds sumas tu nivel.' },
+      { id: 'nomadic', nombre: 'Nomadic Halfling', descripcion: 'Dos idiomas extra y Multilingual como dote de trasfondo.' },
+      { id: 'twilight', nombre: 'Twilight Halfling', descripcion: 'Ves bien con poca luz (low-light vision).', efecto: { sentidos: 'Low-light vision' } },
+      { id: 'wildwood', nombre: 'Wildwood Halfling', descripcion: 'Te mueves por follaje y maleza sin que cuente como terreno difícil.' },
+    ],
+  },
+  {
+    id: 'human', nombre: 'Human',
+    descripcion: 'Diversos, ambiciosos y adaptables. Lo que les falta de longevidad lo compensan con versatilidad.',
+    pg: 8, tamano: 'medium', velocidad: 25, mejoras: ['libre', 'libre'], defecto: null,
+    idiomas: ['Common'], idiomasOpcionales: ['Draconic', 'Dwarven', 'Elven', 'Gnomish', 'Goblin', 'Halfling', 'Jotun', 'Orcish', 'Sakvroth'],
+    sentidos: 'Visión normal', rasgos: ['Human', 'Humanoid'],
+    especial: 'Un idioma extra a elección, además de los que te dé tu Int.',
+    herencias: [
+      { id: 'skilled', nombre: 'Skilled Human', descripcion: 'Una skill más en Trained (Expert a nivel 5).' },
+      { id: 'versatile', nombre: 'Versatile Human', descripcion: 'Una dote general extra a nivel 1.' },
+      { id: 'aiuvarin', nombre: 'Aiuvarin', descripcion: 'Sangre élfica: low-light vision y puedes tomar dotes de Elf.', efecto: { sentidos: 'Low-light vision' } },
+      { id: 'dromaar', nombre: 'Dromaar', descripcion: 'Sangre orca: low-light vision y puedes tomar dotes de Orc.', efecto: { sentidos: 'Low-light vision' } },
+    ],
+  },
+  {
+    id: 'leshy', nombre: 'Leshy',
+    descripcion: 'Espíritus de la naturaleza en cuerpos de planta, hongo o semilla. Curiosos por el mundo de los que caminan.',
+    pg: 8, tamano: 'small', velocidad: 25, mejoras: ['con', 'wis', 'libre'], defecto: 'int',
+    idiomas: ['Common', 'Fey'], idiomasOpcionales: ['Draconic', 'Elven', 'Gnomish', 'Goblin', 'Halfling', 'Muan'],
+    sentidos: 'Low-light vision', rasgos: ['Leshy', 'Plant'],
+    especial: 'Plant Nourishment: te alimentas de luz, agua y tierra, no de comida.',
+    herencias: [
+      { id: 'cactus', nombre: 'Cactus Leshy', descripcion: 'Tus espinas son un ataque sin armas (1d6 piercing) y aguantas mucho sin agua.' },
+      { id: 'fungus', nombre: 'Fungus Leshy', descripcion: 'Ves en la oscuridad (darkvision), pero la luz fuerte te molesta.', efecto: { sentidos: 'Darkvision' } },
+      { id: 'gourd', nombre: 'Gourd Leshy', descripcion: 'Tu cabeza hueca guarda un objeto ligero, que sacas sin manos.' },
+      { id: 'leaf', nombre: 'Leaf Leshy', descripcion: 'Caes despacio, como una hoja: no recibes daño por caídas.' },
+      { id: 'vine', nombre: 'Vine Leshy', descripcion: 'Tus lianas te ayudan a trepar: ganas trepar sin manos libres.' },
+    ],
+  },
+  {
+    id: 'orc', nombre: 'Orc',
+    descripcion: 'Fuertes, intensos y orgullosos de sus cicatrices. Valoran la libertad y el respeto ganado.',
+    pg: 10, tamano: 'medium', velocidad: 25, mejoras: ['str', 'libre'], defecto: null,
+    idiomas: ['Common', 'Orcish'], idiomasOpcionales: ['Goblin', 'Jotun', 'Petran', 'Sakvroth'],
+    sentidos: 'Darkvision', rasgos: ['Orc', 'Humanoid'], especial: null,
+    herencias: [
+      { id: 'badlands', nombre: 'Badlands Orc', descripcion: 'Aguantas el calor y la sed; avanzas más rápido por terreno abierto.' },
+      { id: 'battle-ready', nombre: 'Battle-Ready Orc', descripcion: 'Trained en Intimidation y la dote Intimidating Glare.' },
+      { id: 'deep', nombre: 'Deep Orc', descripcion: 'Moverte y luchar bajo tierra se te da natural: Terrain Expertise (underground) o Combat Climber.' },
+      { id: 'grave', nombre: 'Grave Orc', descripcion: 'Resistencia al vacío (void) igual a la mitad de tu nivel, y la no-muerte te espanta menos.' },
+      { id: 'hold-scarred', nombre: 'Hold-Scarred Orc', descripcion: 'Curtido en cicatrices: 12 PG de ascendencia en lugar de 10 y Diehard.', efecto: { pg: 12 } },
+      { id: 'winter', nombre: 'Winter Orc', descripcion: 'Resistencia al frío igual a la mitad de tu nivel (mínimo 1).' },
+    ],
+  },
+];
+
+export const IDIOMAS = [
+  'Common', 'Draconic', 'Dwarven', 'Elven', 'Empyrean', 'Fey', 'Gnomish', 'Goblin', 'Halfling', 'Jotun', 'Muan',
+  'Orcish', 'Petran', 'Sakvroth', 'Chthonian', 'Diabolic', 'Necril', 'Shadowtongue',
+];

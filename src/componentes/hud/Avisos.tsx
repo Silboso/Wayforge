@@ -41,6 +41,24 @@ const COLOR: Record<Tono, string> = {
 
 // Convierte los eventos nuevos en avisos con `generar`, y quita los que vencen.
 // Cada evento se procesa una sola vez aunque el componente se vuelva a dibujar.
+// "Ezren entró a la mesa" / "Ezren salió": un aviso corto cuando cambia quién está (sin contarse a uno mismo)
+export function useLlegadas(presentes: { nombre: string }[], miNombre: string, agregar: (a: Aviso) => void) {
+  const antes = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ahora = new Set(presentes.map((x) => x.nombre));
+    const previos = antes.current;
+    antes.current = ahora;
+    // La primera lista es la de los que ya estaban: no se anuncia
+    if (!previos) return;
+    for (const n of ahora) {
+      if (!previos.has(n) && n !== miNombre) agregar({ id: crypto.randomUUID(), tono: 'nota', titulo: `${n} entró a la mesa`, cuerpo: '', dura: 3500 });
+    }
+    for (const n of previos) {
+      if (!ahora.has(n) && n !== miNombre) agregar({ id: crypto.randomUUID(), tono: 'nota', titulo: `${n} salió de la mesa`, cuerpo: '', dura: 3500 });
+    }
+  }, [presentes]);
+}
+
 export function useAvisos(eventos: { id: number; evento: Evento }[], generar: (e: Evento) => Aviso[]) {
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const visto = useRef(eventos.at(-1)?.id ?? 0);

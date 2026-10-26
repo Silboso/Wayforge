@@ -1,11 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import { calcular, gradoDeExito, leerExpresion } from '../reglas/pf2e';
 import {
-  aplicar, caDeToken, casillaLibre, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, planMovimiento, puede,
+  aplicar, caDeToken, casillaLibre, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, puede,
   puedeMoverToken, reaccionesPara, resumen, tokenDePersonaje, tokenEnTurno,
   type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
 } from '../compartido/sala';
-import { queSeTira, type QueSeTira } from '../compartido/tiradas';
+import { queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
 import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
 
 // Lo que la sala recuerda de cada conexión (sobrevive a la hibernación)
@@ -115,6 +115,9 @@ export class Sala extends DurableObject<Env> {
         return this.iniciarCombate(conexion.quien, m);
       case 'responder':
         return this.responder(conexion.quien, m.esperaId, m.aptitudId);
+      case 'puntero':
+      case 'senal':
+        return this.presencia(ws, conexion, m);
     }
   }
 
@@ -226,7 +229,12 @@ export class Sala extends DurableObject<Env> {
     const personajeId = quien.rol === 'jugador' ? quien.personajeId : typeof m.personajeId === 'string' ? m.personajeId : undefined;
     const personaje = personajeId ? this.estado.personajes[personajeId] : undefined;
     if (personajeId && !personaje) return;
-    const tokenPropio = personaje && tokenDePersonaje(this.estado, personaje.id);
+    // Las criaturas del GM tiran desde su token (solo el GM puede)
+    const deCriatura = que.tipo === 'criatura' || que.tipo === 'dano-criatura' || que.tipo === 'chequeo-criatura';
+    if (deCriatura && quien.rol !== 'gm') return;
+    const criatura = deCriatura && typeof que.tokenId === 'string' ? this.estado.tokens[que.tokenId] : undefined;
+    if (deCriatura && !criatura?.criatura) return;
+    const tokenPropio = personaje ? tokenDePersonaje(this.estado, personaje.id) : criatura;
 
     // Un Strike del jugador sigue las reglas: en su turno, con una acción, y llegando al objetivo
     if (!validado && quien.rol === 'jugador' && personaje && que.tipo === 'ataque') {
@@ -240,8 +248,20 @@ export class Sala extends DurableObject<Env> {
       }
     }
 
+    // El ataque de una criatura también sigue las reglas: en su turno, con una acción, y llegando al objetivo
+    if (!validado && criatura && que.tipo === 'criatura') {
+      const motivo = motivoParaActuarToken(this.estado, criatura, 1);
+      if (motivo) return ws && this.negar(ws, motivo);
+      const a = criatura.criatura!.ataques.find((x) => x.id === que.ataque);
+      const objetivo = typeof que.objetivo === 'string' ? this.estado.tokens[que.objetivo] : undefined;
+      if (a && objetivo) {
+        const lejos = motivoAlcance(criatura, objetivo, a.distancia ?? 5);
+        if (lejos) return ws && this.negar(ws, lejos);
+      }
+    }
+
     let plan: QueSeTira | null;
-    let nombre = personaje?.nombre ?? 'GM';
+    let nombre = personaje?.nombre ?? criatura?.nombre ?? 'GM';
     if (que.tipo === 'libre') {
       const expresion = typeof que.expresion === 'string' ? que.expresion.trim() : '';
       const leida = leerExpresion(expresion);
@@ -255,6 +275,8 @@ export class Sala extends DurableObject<Env> {
         etiqueta: `${personaje && etiqueta ? `${critico ? 'Crítico: ' : ''}${etiqueta} (${expresion})` : expresion}`,
         ...leida, multiplicador: critico ? 2 : 1, esAtaque: false,
       };
+    } else if (criatura) {
+      plan = queTiraCriatura(criatura, que);
     } else {
       plan = personaje ? queSeTira(personaje, que, tokenPropio?.condiciones ?? []) : null;
     }
@@ -306,7 +328,7 @@ export class Sala extends DurableObject<Env> {
 
     // Un ataque en su turno sube la penalización del siguiente (y un Strike gasta su acción)
     if (plan.esAtaque && tokenPropio && tokenEnTurno(this.estado)?.id === tokenPropio.id) {
-      await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: tokenPropio.id, gastaAccion: que.tipo === 'ataque' });
+      await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: tokenPropio.id, gastaAccion: que.tipo === 'ataque' || que.tipo === 'criatura' });
     }
   }
 
@@ -330,10 +352,17 @@ export class Sala extends DurableObject<Env> {
       if (motivo) return this.negar(ws, motivo);
       libres = c!.acciones - c!.usadas;
     }
+    // La criatura que tiene el turno se mueve como un personaje: gasta Strides y no atraviesa enemigos
+    const criaturaEnTurno = quien.rol === 'gm' && enCombate && !t.personajeId && tokenEnTurno(this.estado)?.id === t.id;
+    if (criaturaEnTurno) {
+      const motivo = motivoParaActuarToken(this.estado, t, 1);
+      if (motivo) return this.negar(ws, motivo);
+      libres = c!.acciones - c!.usadas;
+    }
     const plan = planMovimiento(this.estado, t, destino, libres);
     if ('motivo' in plan) {
-      // El GM manda: si no hay camino libre, pone el token donde dice
-      if (quien.rol === 'gm') return this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: [{ x: t.x, y: t.y }, destino], acciones: 0 });
+      // El GM manda: si no hay camino libre, pone el token donde dice (salvo la criatura que está jugando su turno)
+      if (quien.rol === 'gm' && !criaturaEnTurno) return this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: [{ x: t.x, y: t.y }, destino], acciones: 0 });
       return this.negar(ws, plan.motivo);
     }
     if (plan.camino.length < 2) return;
@@ -481,10 +510,34 @@ export class Sala extends DurableObject<Env> {
         continue;
       }
       if (quien.rol === 'visitante') continue;
-      const nombre = quien.rol === 'gm' ? 'GM' : this.estado.personajes[quien.personajeId]?.nombre ?? '¿?';
+      const nombre = this.nombreDe(quien);
       lista.push({ idConexion, nombre, rol: quien.rol });
     }
     return lista;
+  }
+
+  // Punteros, objetivos y señales: se reparten a los demás tal cual llegan, sin guardar nada
+  private presencia(ws: WebSocket, conexion: Conexion, m: Record<string, unknown>) {
+    const { quien, idConexion } = conexion;
+    if (quien.rol === 'visitante') return;
+    const coordenada = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 10_000;
+    const nombre = this.nombreDe(quien);
+    const personajeId = quien.rol === 'jugador' ? { personajeId: quien.personajeId } : {};
+    if (m.tipo === 'senal') {
+      if (!coordenada(m.x) || !coordenada(m.y)) return;
+      return this.repartir({ tipo: 'senal', idConexion, nombre, ...personajeId, x: m.x as number, y: m.y as number });
+    }
+    const fuera = m.x === null || m.y === null;
+    if (!fuera && (!coordenada(m.x) || !coordenada(m.y))) return;
+    const apunta = typeof m.apunta === 'string' && this.estado.tokens[m.apunta] ? m.apunta : null;
+    this.repartir({
+      tipo: 'puntero', idConexion, nombre, rol: quien.rol, ...personajeId,
+      x: fuera ? null : m.x as number, y: fuera ? null : m.y as number, apunta,
+    }, ws);
+  }
+
+  private nombreDe(quien: Sesion): string {
+    return quien.rol === 'gm' ? 'GM' : quien.rol === 'jugador' ? this.estado.personajes[quien.personajeId]?.nombre ?? '¿?' : '';
   }
 
   // Reparte a quienes ya entraron (los visitantes no ven la mesa)

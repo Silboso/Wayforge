@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowsClockwiseIcon, BedIcon, CaretDownIcon, CaretUpIcon, CoffeeIcon, DiceFiveIcon, MapTrifoldIcon, NotebookIcon,
-  SignOutIcon, SwordIcon, UsersIcon, XIcon,
+  ArrowsClockwiseIcon, BackpackIcon, BedIcon, BookOpenTextIcon, CaretDownIcon, CaretUpIcon, CoffeeIcon, CrosshairIcon, DiceFiveIcon,
+  DotsThreeOutlineIcon, MapTrifoldIcon, NotebookIcon, NotePencilIcon, PencilSimpleIcon, QuestionIcon, StickerIcon, SignOutIcon, SwordIcon, UsersIcon, UsersThreeIcon, XIcon,
 } from '@phosphor-icons/react';
-import { calcular, signo, type Personaje } from '../../reglas/pf2e';
+import { calcular, leerDados, signo, type Personaje } from '../../reglas/pf2e';
 import { DESCANSOS, disponibilidad, recursosDe, todasLasAptitudes, type Aptitud, type Descanso } from '../../reglas/aptitudes';
 import { CONDICIONES, type Condicion } from '../../reglas/condiciones';
 import { tieneMomento } from '../../reglas/disparadores';
@@ -16,21 +16,30 @@ import { textoTirada } from '../../compartido/tiradas';
 import type { Sala } from '../conexion';
 import { leerColoresTablero, type useTema } from '../tema';
 import { BotonTema } from '../componentes/BotonTema';
-import { EditorFicha } from '../componentes/EditorFicha';
-import { mensajeRechazo } from '../componentes/Entrada';
+import { EditarPersonaje } from '../componentes/EditarPersonaje';
 import { Ficha } from '../componentes/Ficha';
 import { Tablero } from '../componentes/Tablero';
 import { AvisoTirada, ListaTiradas, TiradaLibre } from '../componentes/Tiradas';
 import { Detalle, ListaAcciones } from '../componentes/hud/Acciones';
 import { BarraPG, FotoPegada, PostitCondicion, RayaAMano, Rombo, Tecla } from '../componentes/hud/piezas';
-import { secciones, type Fila, type Seccion } from '../componentes/hud/secciones';
-import { PanelEspera, PilaAvisos, useAvisos, type Aviso } from '../componentes/hud/Avisos';
+import { alcanceDe, ponerAtajo, secciones, TECLAS, type Fila, type Seccion } from '../componentes/hud/secciones';
+import { ElegirAtajo, Modal, useConfirmar } from '../componentes/hud/Modal';
+import { AyudaTeclas, ModalCondiciones, PanelGrupo, PanelMochila, PanelNotas, PanelReglas } from '../componentes/hud/Paneles';
+import { PanelEspera, PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
 
 type Tema = ReturnType<typeof useTema>;
 type PestanaMovil = 'turno' | 'ficha' | 'tablero' | 'tiradas';
+// Lo que se abre en el cajón lateral (en el teléfono, en una ventana)
+type Cajon = 'ficha' | 'grupo' | 'mochila' | 'notas' | 'tiradas' | 'reglas';
 
-// Las primeras filas de "Tu turno" se abren con el teclado, como en un juego
-const TECLAS = ['Q', 'W', 'E', 'R', 'T', 'Y'];
+const CAJONES: { clave: Cajon; nombre: string; tecla?: string }[] = [
+  { clave: 'ficha', nombre: 'Ficha' },
+  { clave: 'grupo', nombre: 'Grupo', tecla: 'G' },
+  { clave: 'mochila', nombre: 'Mochila', tecla: 'I' },
+  { clave: 'notas', nombre: 'Notas', tecla: 'N' },
+  { clave: 'tiradas', nombre: 'Tiradas' },
+  { clave: 'reglas', nombre: 'Reglas', tecla: 'H' },
+];
 
 // La mesa vista por un jugador. En pantalla grande: el tablero entero y, apoyada abajo, la página de su
 // personaje. En el teléfono: la página es el mando (el tablero suele estar en la tele) y el tablero es una pestaña.
@@ -44,13 +53,26 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [elegida, setElegida] = useState<string | null>(null);
   const [seccionActiva, setSeccionActiva] = useState<Seccion['id']>('turno');
-  const [cajon, setCajon] = useState<'ficha' | 'tiradas' | null>(null);
+  const [cajon, setCajon] = useState<Cajon | null>(null);
+  // El atajo que se está eligiendo (abre la ventana para elegir qué va en esa tecla)
+  const [eligiendoAtajo, setEligiendoAtajo] = useState<number | null>(null);
+  // En el teléfono: la lista de "Más" y el panel abierto desde ahí
+  const [masAbierto, setMasAbierto] = useState(false);
+  const [panelMovil, setPanelMovil] = useState<Cajon | null>(null);
+  const [ayuda, setAyuda] = useState(false);
+  // Tocar un nombre del orden de iniciativa lleva la vista a su token
+  const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
+  const [viendoCondiciones, setViendoCondiciones] = useState(false);
   const [plegada, setPlegada] = useState(false);
   const [pestana, setPestana] = useState<PestanaMovil>('turno');
   const [editando, setEditando] = useState(false);
   const [colores, setColores] = useState(leerColoresTablero);
   // El menú pegado a un token tocado en el tablero (las opciones contra él)
   const [menuAbierto, setMenuAbierto] = useState(false);
+  // La fila bajo el cursor: su alcance se ve en el tablero antes de elegirla
+  const [asomada, setAsomada] = useState<string | null>(null);
+  // Elegida una acción sin objetivo: el tablero espera a que toques a quién (con el alcance a la vista)
+  const [eligiendo, setEligiendo] = useState<{ clave: string; numero: 0 | 1 | 2 } | null>(null);
 
   useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
 
@@ -66,8 +88,12 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const objetivoToken = seleccionado && seleccionado !== miToken?.id ? estado.tokens[seleccionado] : undefined;
   const objetivo = objetivoToken ? { id: objetivoToken.id, nombre: objetivoToken.nombre } : null;
   const filaElegida = lista.flatMap((s) => s.filas).find((f) => f.clave === elegida) ?? null;
+  const todasFilas = lista.flatMap((s) => s.filas).filter((f, i, xs) => xs.findIndex((x) => x.clave === f.clave) === i);
   // Lo que probablemente toca: en tu turno, atacar si te quedan acciones
   const marcada = miTurno && combate!.usadas < combate!.acciones ? lista[0]?.filas[0]?.clave ?? null : null;
+
+  // Los demás ven a quién apunto
+  useEffect(() => { sala.apuntar(objetivoToken?.id ?? null); }, [objetivoToken?.id]);
 
   // Si otra persona borra el token que tenía seleccionado, se deselecciona
   useEffect(() => {
@@ -83,40 +109,68 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     .filter((f, i, todas) => f.tipo === 'aptitud' && tieneMomento(f.aptitud, 'al-atacar') && todas.findIndex((x) => x.clave === f.clave) === i);
 
   // Usar una aptitud: la pantalla avisa al instante si no se puede (la sala lo vuelve a revisar y hace todo junto)
-  const usarAptitud = (a: Aptitud, objetivoId?: string) => {
+  const hayOtros = Object.values(estado.tokens).some((t) => t.id !== miToken?.id);
+  const elegirObjetivo = (clave: string, numero: 0 | 1 | 2 = 0) => {
+    setEligiendo({ clave, numero });
+    setElegida(null);
+    setMenuAbierto(false);
+    setPestana('tablero');
+  };
+  const usarAptitud = (a: Aptitud, objetivoId?: string): boolean => {
     if (a.id === 'basica:stride' || a.id === 'basica:step') {
       setPestana('tablero');
       setElegida(null);
-      return agregarAviso({ id: crypto.randomUUID(), tono: 'nota', titulo: 'Toca la casilla a la que vas', cuerpo: 'Las que alcanzas están marcadas con resaltador. También puedes arrastrar tu token.', dura: 5000 });
+      agregarAviso({ id: crypto.randomUUID(), tono: 'nota', titulo: 'Arrastra tu token', cuerpo: 'Mientras lo llevas se marcan las casillas a las que llegas y cuánto te cuesta. Suéltalo donde quieras ir.', dura: 5000 });
+      return true;
     }
     const motivo = motivoParaActuar(estado, p.id, a.costo);
-    if (motivo) return sala.negarLocal(motivo);
+    if (motivo) return sala.negarLocal(motivo), false;
     const disp = disponibilidad(p, a);
-    if (!disp.puede) return sala.negarLocal(`${a.verbo || a.nombre}: ${disp.texto}.`);
+    if (!disp.puede) return sala.negarLocal(`${a.verbo || a.nombre}: ${disp.texto}.`), false;
+    const fila = todasFilas.find((f) => f.clave === a.id);
+    const alcance = fila ? alcanceDe(p, fila) : null;
+    if (alcance && !objetivoId && hayOtros && miToken) return elegirObjetivo(a.id), false;
+    const destino = objetivoId ? estado.tokens[objetivoId] : undefined;
+    const lejos = alcance?.pies != null && destino && miToken ? motivoAlcance(miToken, destino, alcance.pies) : null;
+    if (lejos) return sala.negarLocal(lejos), false;
     if (a.tirada?.tipo === 'golpe' && p.golpes[0]) { ultimoGolpe.current = p.golpes[0].id; ultimoConjuro.current = null; }
     if (a.tirada?.tipo === 'ataque-conjuro') ultimoConjuro.current = a;
     const apunta = a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion' ? objetivoId : undefined;
     sala.usar(a.id, apunta, a.tirada ? a.verbo || a.nombre : undefined);
     setElegida(null);
     setMenuAbierto(false);
+    return true;
   };
   const usarReaccion = (a: Aptitud, objetivoId?: string) => usarAptitud(a, objetivoId);
   // Un Strike: en tu turno, con acciones y llegando al objetivo; si no, el aviso dice por qué
-  const atacar = (golpeId: string, numero: 0 | 1 | 2, objetivoId?: string) => {
+  const atacar = (golpeId: string, numero: 0 | 1 | 2, objetivoId?: string): boolean => {
     const golpe = p.golpes.find((g) => g.id === golpeId);
     const motivo = motivoParaActuar(estado, p.id, 1);
-    if (motivo) return sala.negarLocal(motivo);
+    if (motivo) return sala.negarLocal(motivo), false;
+    if (!objetivoId && hayOtros && miToken) return elegirObjetivo(`golpe:${golpeId}`, numero), false;
     const destino = objetivoId ? estado.tokens[objetivoId] : undefined;
     const lejos = golpe && destino && miToken ? motivoAlcance(miToken, destino, golpe.distancia ?? 5) : null;
-    if (lejos) return sala.negarLocal(lejos);
+    if (lejos) return sala.negarLocal(lejos), false;
     ultimoGolpe.current = golpeId;
     ultimoConjuro.current = null;
     sala.tirar(p.id, { tipo: 'ataque', golpe: golpeId, numero, ...(objetivoId ? { objetivo: objetivoId } : {}) }, golpe ? `Atacando con ${golpe.nombre}` : 'Atacando');
     setElegida(null);
     setMenuAbierto(false);
+    return true;
   };
-  const tirarDano = (golpeId: string, critico: boolean, objetivoId?: string) =>
-    tirar({ tipo: 'dano', golpe: golpeId, ...(critico ? { critico } : {}), ...(objetivoId ? { objetivo: objetivoId } : {}) });
+  // En el modo de elegir objetivo: tocar a alguien hace la acción contra él (si no llega, se queda esperando otro)
+  const elegirA = (tokenId: string) => {
+    if (!eligiendo) return;
+    const fila = todasFilas.find((f) => f.clave === eligiendo.clave);
+    if (!fila) return setEligiendo(null);
+    const hecho = fila.tipo === 'golpe' ? atacar(fila.golpe.id, eligiendo.numero, tokenId) : usarAptitud(fila.aptitud, tokenId);
+    if (hecho) { setEligiendo(null); setSeleccionado(tokenId); }
+  };
+  const tirarDano = (golpeId: string, critico: boolean, objetivoId?: string) => {
+    const golpe = p.golpes.find((g) => g.id === golpeId);
+    sala.tirar(p.id, { tipo: 'dano', golpe: golpeId, ...(critico ? { critico } : {}), ...(objetivoId ? { objetivo: objetivoId } : {}) },
+      critico ? 'Daño crítico' : 'Daño', golpe ? leerDados(golpe.dados)?.caras : undefined);
+  };
   const restarPG = (n: number) => {
     const deTemporales = Math.min(p.pgTemporales, n);
     sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { pgTemporales: p.pgTemporales - deTemporales, pgActual: Math.max(0, p.pgActual - (n - deTemporales)) } });
@@ -160,7 +214,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       const objetivoId = t.objetivo.tokenId;
       const tirarSuDano = (critico: boolean) => conjuro?.dano
         ? tirar({ tipo: 'libre', expresion: conjuro.dano, etiqueta: `Daño de ${conjuro.verbo || conjuro.nombre}`, ...(objetivoId ? { objetivo: objetivoId } : {}), ...(critico ? { critico } : {}) })
-        : golpe && tirarDano(golpe, critico, objetivoId);
+        : golpe ? tirarDano(golpe, critico, objetivoId) : undefined;
       if (t.objetivo.grado === 'critico' || t.objetivo.grado === 'exito') {
         const critico = t.objetivo.grado === 'critico';
         const extra = aptitudesPara(p, critico ? 'al-criticar' : 'al-acertar');
@@ -201,6 +255,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     return avisos;
   };
   const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  useLlegadas(sala.presentes, p.nombre, agregarAviso);
   // Lo que la sala (o la propia pantalla) no dejó hacer: un aviso con el motivo
   const negacionVista = useRef(sala.negaciones.at(-1)?.id ?? 0);
   useEffect(() => {
@@ -230,16 +285,26 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   useEffect(() => {
     function alPulsar(e: KeyboardEvent) {
       const destino = e.target as HTMLElement;
-      if (editando || e.ctrlKey || e.metaKey || e.altKey || destino.closest('input, textarea, select')) return;
+      if (editando || e.ctrlKey || e.metaKey || e.altKey || destino.closest('input, textarea, select, [aria-modal]')) return;
+      if (document.querySelector('[aria-modal]')) return;
       const tecla = e.key.toUpperCase();
       const i = TECLAS.indexOf(tecla);
-      const turno = lista[0];
-      if (i >= 0 && turno?.filas[i]) {
-        setSeccionActiva('turno');
-        setElegida(turno.filas[i]!.clave);
-        setPlegada(false);
+      const ranura = i >= 0 ? ranuras[i] : undefined;
+      const panel = CAJONES.find((c) => c.tecla === tecla);
+      if (i >= 0) {
+        // Un atajo vacío abre la ventana para llenarlo
+        if (ranura) {
+          setSeccionActiva('turno');
+          setElegida(ranura.clave);
+          setPlegada(false);
+        } else setEligiendoAtajo(i);
+      } else if (panel) {
+        setCajon(cajon === panel.clave ? null : panel.clave);
+      } else if (e.key === '?') {
+        setAyuda(true);
       } else if (tecla === 'ESCAPE') {
         setElegida(null);
+        setEligiendo(null);
       } else if (tecla === 'ENTER' && filaElegida && !destino.closest('button')) {
         const a = acciones(filaElegida);
         if (filaElegida.tipo === 'golpe') a.onAtacar(Math.min(ataquesHechos ?? 0, 2) as 0 | 1 | 2);
@@ -252,24 +317,22 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     return () => removeEventListener('keydown', alPulsar);
   });
 
-  if (editando) {
-    return (
-      <div className="h-full overflow-y-auto">
-        <EditorFicha
-          salaId={salaId}
-          inicial={p}
-          modo="editar"
-          error={mensajeRechazo(sala.rechazo)}
-          onCancelar={() => { setEditando(false); sala.limpiarRechazo(); }}
-          onGuardar={(nueva) => {
-            const { id, ...cambios } = nueva;
-            sala.enviar({ tipo: 'editar-personaje', id, cambios });
-            setEditando(false);
-          }}
-        />
-      </div>
-    );
-  }
+  // Los seis atajos y cómo cambiarlos: se guardan en la ficha, así siguen al personaje en cualquier dispositivo
+  const ranuras = lista[0]?.ranuras ?? [];
+  const asignarAtajo = (i: number, clave: string | null) => {
+    sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { atajos: ponerAtajo(ranuras, i, clave) } });
+  };
+  const atajoDe = (f: Fila) => ({
+    actual: ranuras.findIndex((r) => r?.clave === f.clave) >= 0 ? ranuras.findIndex((r) => r?.clave === f.clave) : null,
+    onAsignar: (i: number) => asignarAtajo(i, f.clave),
+  });
+  const usarObjeto = (a: Aptitud) => usarAptitud(a);
+  const panelDe = (c: Cajon) => c === 'ficha' ? fichaCompleta
+    : c === 'tiradas' ? tiradas
+    : c === 'grupo' ? <PanelGrupo estado={estado} presentes={sala.presentes} miId={p.id} />
+    : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} />
+    : c === 'notas' ? <PanelNotas p={p} onGuardar={(notas) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { notas } })} />
+    : <PanelReglas />;
 
   const fichaCompleta = (
     <Ficha
@@ -286,8 +349,13 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   );
   // En su turno: su alcance de movimiento y la línea a su objetivo, dibujados en el tablero
   // En su turno se marcan las casillas a las que llega; fuera de combate se mueve libre
-  const movimiento = miToken ? (miTurno ? { tokenId: miToken.id, libres: libres ?? 0 } : !combate ? { tokenId: miToken.id, libres: null } : null) : null;
-  const todasFilas = lista.flatMap((s) => s.filas).filter((f, i, xs) => xs.findIndex((x) => x.clave === f.clave) === i);
+  const movimiento = miToken && !eligiendo ? (miTurno ? { tokenId: miToken.id, libres: libres ?? 0 } : !combate ? { tokenId: miToken.id, libres: null } : null) : null;
+  // El alcance que se ve: el de la acción que espera objetivo, la que está bajo el cursor o la abierta
+  const filaRango = todasFilas.find((f) => f.clave === (eligiendo?.clave ?? asomada ?? elegida)) ?? null;
+  const alcanceRango = filaRango ? alcanceDe(p, filaRango) : null;
+  const rango = miToken && filaRango && alcanceRango?.pies != null
+    ? { tokenId: miToken.id, pies: alcanceRango.pies, etiqueta: `${filaRango.nombre} · ${alcanceRango.pies <= 5 ? 'cuerpo a cuerpo' : `${alcanceRango.pies} ft`}` }
+    : null;
   const menu = menuAbierto && objetivoToken && miToken ? {
     tokenId: objetivoToken.id,
     contenido: (
@@ -315,25 +383,36 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       movimiento={movimiento}
       apunta={apunta}
       eventos={sala.eventos}
-      menu={menu}
+      menu={eligiendo ? null : menu}
+      rango={rango}
+      enfocar={enfoque}
+      presencia={{ punteros: Object.values(sala.punteros), senales: sala.senales }}
+      onPuntero={sala.moverPuntero}
+      onSenal={sala.senalar}
       onNegar={sala.negarLocal}
       seleccionado={seleccionado}
-      onSeleccionar={(id) => { setSeleccionado(id); setMenuAbierto(!!id && id !== miToken?.id); }}
+      onSeleccionar={(id) => {
+        if (eligiendo) return id && id !== miToken?.id ? elegirA(id) : undefined;
+        setSeleccionado(id);
+        setMenuAbierto(!!id && id !== miToken?.id);
+      }}
       onMover={(id, x, y) => sala.mover(id, x, y)}
     />
   );
 
-  const contexto: Contexto = { estado, combate, miToken, miTurno, enTurno, p, sala, ficha };
+  const contexto: Contexto = { estado, combate, miToken, miTurno, enTurno, p, sala, ficha, onEditar: () => setEditando(true), onCondiciones: () => setViendoCondiciones(true) };
 
   return (
     <div className="flex h-full flex-col">
-      <Cabecera salaId={salaId} sala={sala} tema={tema} />
+      <Cabecera salaId={salaId} sala={sala} tema={tema} onAyuda={() => setAyuda(true)} />
 
       {/* Pantalla grande: tablero + página apoyada encima */}
       <div className="relative hidden min-h-0 flex-1 lg:block">
         {tablero(plegada ? 70 : 320)}
-        {combate && <OrdenEscrito estado={estado} combate={combate} />}
+        {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
+        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} onCancelar={() => setEligiendo(null)} className={plegada ? 'bottom-[92px]' : 'bottom-[342px]'} />}
         {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} />}
+        <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} />
 
         <section aria-label={`Página de ${p.nombre}`}
           className={`hoja absolute inset-x-5 bottom-5 z-10 transition-transform duration-300 ease-out ${plegada ? 'translate-y-[calc(100%-56px)]' : ''}`}>
@@ -352,8 +431,14 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
                 {lista.filter((s) => s.id === seccionActiva).map((s) => (
                   <div key={s.id}>
                     {s.resumen && <p className="px-1.5 pt-1 font-titulo text-[13px] text-texto-suave">{s.resumen}</p>}
-                    <ListaAcciones seccion={s} elegida={elegida} marcada={marcada} teclas={s.id === 'turno' ? TECLAS : undefined} libres={libres}
-                      onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} />
+                    {s.id === 'turno' ? (
+                      <ListaAtajos seccion={s} elegida={elegida} marcada={marcada} libres={libres}
+                        onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} onAsomar={(f) => setAsomada(f?.clave ?? null)}
+                        onCambiar={setEligiendoAtajo} />
+                    ) : (
+                      <ListaAcciones seccion={s} elegida={elegida} marcada={marcada} libres={libres}
+                        onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} onAsomar={(f) => setAsomada(f?.clave ?? null)} />
+                    )}
                   </div>
                 ))}
               </div>
@@ -362,11 +447,12 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
             <ColumnaLado contexto={contexto} condiciones={condiciones} />
           </div>
           {filaElegida && (
-            <div className="tarjeta absolute right-4 bottom-[calc(100%+52px)] z-20 w-[400px] px-4 py-3.5">
+            // Sobre la lista de la que salió (no a la derecha, donde caen los avisos), con su propio scroll si es larga
+            <div className="tarjeta absolute bottom-[calc(100%+52px)] left-[300px] z-20 max-h-[calc(100vh-440px)] w-[400px] overflow-y-auto px-4 py-3.5 xl:left-[320px]">
               <span aria-hidden className="absolute -top-2 left-1/2 h-4 w-16 -translate-x-1/2 -rotate-2 bg-[var(--cinta)]" />
               <Detalle fila={filaElegida} ataquesHechos={ataquesHechos} libres={libres} objetivo={objetivo} enCombate={!!combate} antes={filasAlAtacar} onAbrir={setElegida}
                 dano={filaElegida.tipo === 'golpe' ? ficha.golpes[filaElegida.indice]?.dano ?? null : null}
-                acciones={acciones(filaElegida)} />
+                acciones={acciones(filaElegida)} atajo={atajoDe(filaElegida)} />
             </div>
           )}
         </section>
@@ -374,17 +460,17 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         {cajon && (
           <aside className="absolute inset-y-0 right-0 z-30 flex w-[440px] flex-col border-l border-borde bg-fondo shadow-[-20px_0_40px_-20px_var(--sombra)]">
             <div className="flex items-center gap-2 border-b border-dashed border-borde px-4 py-2">
-              {(['ficha', 'tiradas'] as const).map((c) => (
-                <button key={c} onClick={() => setCajon(c)}
-                  className={`rounded-lg px-3 py-1.5 font-titulo text-[15px] ${cajon === c ? 'font-bold text-acento' : 'text-texto-suave hover:text-texto'}`}>
-                  {c === 'ficha' ? 'Ficha completa' : 'Tiradas'}
+              {CAJONES.map((c) => (
+                <button key={c.clave} onClick={() => setCajon(c.clave)}
+                  className={`rounded-lg px-2.5 py-1.5 font-titulo text-[15px] ${cajon === c.clave ? 'font-bold text-acento' : 'text-texto-suave hover:text-texto'}`}>
+                  {c.nombre}
                 </button>
               ))}
               <button className="ml-auto flex size-9 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={() => setCajon(null)} aria-label="Cerrar">
                 <XIcon size={18} aria-hidden />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">{cajon === 'ficha' ? fichaCompleta : tiradas}</div>
+            <div className="flex-1 overflow-y-auto p-4">{panelDe(cajon)}</div>
           </aside>
         )}
       </div>
@@ -393,19 +479,20 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       <div className="flex min-h-0 flex-1 flex-col lg:hidden">
         <div className={`relative min-h-0 flex-1 ${pestana === 'tablero' ? 'block' : 'hidden'}`}>
           {tablero(0)}
-          {combate && <OrdenEscrito estado={estado} combate={combate} />}
+          {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
+          {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} onCancelar={() => { setEligiendo(null); setPestana('turno'); }} className="bottom-3" />}
         </div>
         {pestana === 'turno' && (
           <TurnoMovil contexto={contexto} condiciones={condiciones} lista={lista} elegida={elegida} marcada={marcada} libres={libres}
             onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)}
             detalle={(f) => (
               <Detalle fila={f} ataquesHechos={ataquesHechos} libres={libres} objetivo={objetivo} enCombate={!!combate} antes={filasAlAtacar} onAbrir={setElegida}
-                dano={f.tipo === 'golpe' ? ficha.golpes[f.indice]?.dano ?? null : null} acciones={acciones(f)} />
+                dano={f.tipo === 'golpe' ? ficha.golpes[f.indice]?.dano ?? null : null} acciones={acciones(f)} atajo={atajoDe(f)} />
             )} />
         )}
         {pestana === 'ficha' && <div className="flex-1 overflow-y-auto p-4">{fichaCompleta}</div>}
         {pestana === 'tiradas' && <div className="flex-1 overflow-y-auto p-4">{tiradas}</div>}
-        <nav className="grid grid-cols-4 border-t border-dashed border-borde bg-fondo/95 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5">
+        <nav className="grid grid-cols-5 border-t border-dashed border-borde bg-fondo/95 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5">
           {([
             ['turno', 'Turno', <SwordIcon key="i" size={23} aria-hidden />],
             ['ficha', 'Ficha', <NotebookIcon key="i" size={23} aria-hidden />],
@@ -418,14 +505,61 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
               {nombre}
             </button>
           ))}
+          <button onClick={() => setMasAbierto(true)} aria-haspopup="dialog"
+            className="flex flex-col items-center gap-0.5 py-1 font-titulo text-[12.5px] text-texto-suave">
+            <DotsThreeOutlineIcon size={23} aria-hidden />
+            Más
+          </button>
         </nav>
       </div>
 
-      <AvisoTirada tiradas={estado.tiradas} verCd={false} pendiente={sala.pendiente} lugar="bottom-[156px] lg:bottom-auto lg:top-[124px]" />
+      {masAbierto && (
+        <Modal titulo="Más cosas" subtitulo="Para consultar sin salir de la mesa." onCerrar={() => setMasAbierto(false)}>
+          <div className="grid grid-cols-2 gap-2.5">
+            {([
+              ['grupo', 'Grupo', 'Cómo están tus aliados', <UsersThreeIcon key="i" size={26} aria-hidden />],
+              ['mochila', 'Mochila', 'Objetos, monedas, pociones', <BackpackIcon key="i" size={26} aria-hidden />],
+              ['notas', 'Notas', 'Lo que no quieres olvidar', <NotePencilIcon key="i" size={26} aria-hidden />],
+              ['reglas', 'Reglas', 'Condiciones y acciones', <BookOpenTextIcon key="i" size={26} aria-hidden />],
+            ] as const).map(([clave, nombre, ayuda, icono]) => (
+              <button key={clave} className="flex flex-col items-start gap-1 rounded-lg border-[1.5px] border-borde bg-superficie p-3 text-left hover:border-acento"
+                onClick={() => { setMasAbierto(false); setPanelMovil(clave); }}>
+                <span className="text-acento">{icono}</span>
+                <b className="font-titulo text-[17px]">{nombre}</b>
+                <span className="text-[12.5px] text-texto-suave">{ayuda}</span>
+              </button>
+            ))}
+            <button className="flex flex-col items-start gap-1 rounded-lg border-[1.5px] border-borde bg-superficie p-3 text-left hover:border-acento"
+              onClick={() => { setMasAbierto(false); setEligiendoAtajo(0); }}>
+              <span className="text-acento"><PencilSimpleIcon size={26} aria-hidden /></span>
+              <b className="font-titulo text-[17px]">Atajos</b>
+              <span className="text-[12.5px] text-texto-suave">Elige qué va primero en tu turno</span>
+            </button>
+          </div>
+        </Modal>
+      )}
+      {panelMovil && (
+        <Modal titulo={CAJONES.find((c) => c.clave === panelMovil)!.nombre} onCerrar={() => setPanelMovil(null)}>
+          {panelDe(panelMovil)}
+        </Modal>
+      )}
+      {ayuda && <AyudaTeclas onCerrar={() => setAyuda(false)} />}
+      {viendoCondiciones && (
+        <ModalCondiciones condiciones={condiciones} onCerrar={() => setViendoCondiciones(false)}
+          onPoner={(clave, valor) => miToken && sala.enviar({ tipo: 'poner-condicion', tokenId: miToken.id, clave, valor: Math.max(0, valor) })} />
+      )}
+      {eligiendoAtajo !== null && (
+        <ElegirAtajo ranura={eligiendoAtajo} lista={lista} ranuras={ranuras}
+          onElegir={(clave) => { asignarAtajo(eligiendoAtajo, clave); setEligiendoAtajo(null); }}
+          onCerrar={() => setEligiendoAtajo(null)} />
+      )}
+
+      <AvisoTirada tiradas={estado.tiradas} verCd={false} pendiente={sala.pendiente}
+        lugar={`bottom-[156px] lg:inset-x-auto lg:right-6 ${plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[362px]'}`} />
 
       {/* Avisos del momento: arriba a la derecha en PC, arriba en el teléfono */}
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
-        className="fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[72px] lg:right-6 lg:w-[340px]" />
+        className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[72px] lg:w-[340px] ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
       {esperaAjena && (
         <div className="fixed inset-x-0 top-[60px] z-30 flex justify-center px-4" role="status">
           <p className="tarjeta px-4 py-2 font-titulo text-[15px]">
@@ -433,10 +567,93 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
           </p>
         </div>
       )}
+      {editando && <EditarPersonaje salaId={salaId} sala={sala} personaje={p} onCerrar={() => setEditando(false)} />}
       {miEspera && (
         <PanelEspera espera={miEspera} aptitudes={todasLasAptitudes(p).filter((a) => miEspera.aptitudes.includes(a.id))}
           onResponder={(aptitudId) => sala.responder(miEspera.id, aptitudId)} />
       )}
+    </div>
+  );
+}
+
+// "Tu turno": los seis atajos. Los vacíos invitan a elegir; cada uno se cambia con el lápiz.
+function ListaAtajos({ seccion, elegida, marcada, libres, onElegir, onAsomar, onCambiar }: {
+  seccion: Seccion;
+  elegida: string | null;
+  marcada: string | null;
+  libres: number | null;
+  onElegir: (f: Fila) => void;
+  onAsomar: (f: Fila | null) => void;
+  onCambiar: (i: number) => void;
+}) {
+  return (
+    <ul className="flex flex-col">
+      {(seccion.ranuras ?? []).map((f, i) => (
+        <li key={i} className="group/atajo relative flex items-center">
+          {f ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <ListaAcciones seccion={{ ...seccion, filas: [f] }} elegida={elegida} marcada={marcada} teclas={[TECLAS[i]!]} libres={libres}
+                  onElegir={onElegir} onAsomar={onAsomar} />
+              </div>
+              <button onClick={() => onCambiar(i)} aria-label={`Cambiar el atajo ${TECLAS[i]}`} title={`Cambiar qué va en ${TECLAS[i]}`}
+                className="absolute top-1/2 -right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-md bg-superficie text-texto-suave opacity-0 shadow-sm transition group-hover/atajo:opacity-100 hover:text-acento focus-visible:opacity-100">
+                <PencilSimpleIcon size={15} aria-hidden />
+              </button>
+            </>
+          ) : (
+            <button onClick={() => onCambiar(i)}
+              className="flex min-h-[34px] w-full items-center gap-2 border-b border-dashed border-borde px-1 text-left font-titulo text-[14.5px] text-texto-suave transition hover:bg-acento/[0.06] hover:text-acento">
+              <span className="flex w-[52px] justify-center"><Tecla>{TECLAS[i]}</Tecla></span>
+              Vacío · elige qué va aquí
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Los paneles de consulta, como pestañas de índice pegadas al borde izquierdo del tablero
+function Botonera({ actual, onAbrir }: { actual: Cajon | null; onAbrir: (c: Cajon) => void }) {
+  const iconos: Record<Cajon, ReactNode> = {
+    ficha: <NotebookIcon size={20} aria-hidden />,
+    grupo: <UsersThreeIcon size={20} aria-hidden />,
+    mochila: <BackpackIcon size={20} aria-hidden />,
+    notas: <NotePencilIcon size={20} aria-hidden />,
+    tiradas: <DiceFiveIcon size={20} aria-hidden />,
+    reglas: <BookOpenTextIcon size={20} aria-hidden />,
+  };
+  return (
+    <nav aria-label="Paneles" className="absolute top-[100px] left-3 z-10 flex flex-col gap-1.5">
+      {CAJONES.map((c) => (
+        <button key={c.clave} onClick={() => onAbrir(c.clave)} aria-pressed={actual === c.clave} title={`${c.nombre}${c.tecla ? ` (${c.tecla})` : ''}`}
+          className={`group flex h-10 items-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition ${actual === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie text-texto hover:border-acento hover:text-acento'}`}>
+          {iconos[c.clave]}
+          <span>{c.nombre}</span>
+          {c.tecla && <span className="ml-0.5 hidden xl:inline"><Tecla sobreTinta={actual === c.clave}>{c.tecla}</Tecla></span>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// "Elige a quién": mientras una acción espera su objetivo, una banda sobre el tablero lo dice y deja cancelar
+export function BandaElegir({ fila, rango, onCancelar, className }: { fila: Pick<Fila, 'nombre'>; rango: { pies: number } | null; onCancelar: () => void; className: string }) {
+  return (
+    <div className={`pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3 ${className}`} role="status">
+      <div className="tarjeta pointer-events-auto flex items-center gap-3 py-2 pr-2 pl-4">
+        <CrosshairIcon size={22} weight="bold" className="shrink-0 text-peligro" aria-hidden />
+        <p className="font-titulo text-[15px] leading-tight">
+          <b>Elige a quién</b> · {fila.nombre}
+          <span className="block text-[13px] text-texto-suave">
+            {rango ? `Llegas a ${rango.pies <= 5 ? 'lo que está a tu lado' : `${rango.pies} ft`}: lo marcado con anillo.` : 'Toca un token.'}
+          </span>
+        </p>
+        <button className="boli h-9 border-[1.5px] border-borde px-3 font-titulo text-[14px] text-texto-suave hover:text-texto" onClick={onCancelar}>
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }
@@ -450,10 +667,25 @@ interface Contexto {
   p: Personaje;
   sala: Sala;
   ficha: ReturnType<typeof calcular>;
+  // Abre el editor del personaje (al tocar su retrato)
+  onEditar: () => void;
+  // Abre la ventana para poner o quitar condiciones
+  onCondiciones: () => void;
 }
 
-function Cabecera({ salaId, sala, tema }: { salaId: string; sala: Sala; tema: Tema }) {
+export function Cabecera({ salaId, sala, tema, onAyuda, extra, textoSalir = 'Para volver vas a necesitar el código de tu personaje.' }: {
+  salaId: string;
+  sala: Sala;
+  tema: Tema;
+  onAyuda: () => void;
+  // Botones propios de quien mira (el GM: sus códigos)
+  extra?: ReactNode;
+  textoSalir?: string;
+}) {
+  const confirmar = useConfirmar();
   return (
+    <>
+    {confirmar.ventana}
     <header className="relative z-20 flex items-center gap-3 border-b border-dashed border-borde bg-fondo px-4 py-2 lg:px-6">
       <a href="/" className="font-titulo text-[22px] font-bold text-acento">Wayforge</a>
       <span className="hidden font-titulo text-sm text-texto-suave sm:inline">mesa {salaId.toUpperCase()}</span>
@@ -465,19 +697,25 @@ function Cabecera({ salaId, sala, tema }: { salaId: string; sala: Sala; tema: Te
           <span className="hidden md:inline">{sala.presentes.map((x) => x.nombre).join(', ')}</span>
           <span className="md:hidden">{sala.presentes.length}</span>
         </span>
+        {extra}
+        <button className="hidden size-10 items-center justify-center rounded-lg border border-borde bg-superficie transition hover:bg-superficie-2 lg:flex"
+          onClick={onAyuda} aria-label="Atajos de teclado" title="Atajos de teclado (?)">
+          <QuestionIcon size={19} aria-hidden />
+        </button>
         <BotonTema tema={tema} />
         <button className="flex h-10 items-center gap-2 rounded-lg border border-borde bg-superficie px-3 text-sm transition hover:bg-superficie-2"
-          onClick={() => confirm('¿Salir de la mesa? Para volver necesitarás el código de tu personaje.') && sala.salir()}>
+          onClick={() => confirmar.pedir({ titulo: '¿Salir de la mesa?', texto: textoSalir, si: 'Salir', peligro: true, hacer: sala.salir })}>
           <SignOutIcon size={18} aria-hidden />
           <span className="hidden sm:inline">Salir</span>
         </button>
       </div>
     </header>
+    </>
   );
 }
 
 // Orden de turnos escrito a mano arriba del tablero: los que ya jugaron, tachados; el actual, con marcatextos
-function OrdenEscrito({ estado, combate }: { estado: EstadoSala; combate: Combate }) {
+export function OrdenEscrito({ estado, combate, onEnfocar }: { estado: EstadoSala; combate: Combate; onEnfocar: (tokenId: string) => void }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-4">
     <ol className="pointer-events-auto flex max-w-full items-baseline gap-x-5 gap-y-1 overflow-x-auto rounded-sm bg-fondo/90 px-4 py-1.5 font-titulo text-[16px] shadow-[0_6px_16px_-10px_var(--sombra)]"
@@ -490,8 +728,11 @@ function OrdenEscrito({ estado, combate }: { estado: EstadoSala; combate: Combat
         const hecho = i < combate.turno;
         const enemigo = !t.personajeId;
         return (
-          <li key={c.tokenId} className={`shrink-0 whitespace-nowrap ${ahora ? 'marcatextos font-bold' : hecho ? 'text-texto-suave line-through decoration-[1.5px]' : enemigo ? 'text-peligro' : ''}`}>
-            {t.nombre}<span className={`ml-1 text-[12.5px] ${ahora ? 'text-sobre-marca' : 'text-texto-suave'}`}>{c.iniciativa}</span>
+          <li key={c.tokenId} className="shrink-0">
+            <button onClick={() => onEnfocar(c.tokenId)} title={`Ver a ${t.nombre} en el tablero`}
+              className={`whitespace-nowrap rounded-sm px-0.5 transition hover:underline hover:decoration-dotted ${ahora ? 'marcatextos font-bold' : hecho ? 'text-texto-suave line-through decoration-[1.5px]' : enemigo ? 'text-peligro' : ''}`}>
+              {t.nombre}<span className={`ml-1 text-[12.5px] ${ahora ? 'text-sobre-marca' : 'text-texto-suave'}`}>{c.iniciativa}</span>
+            </button>
           </li>
         );
       })}
@@ -528,12 +769,12 @@ function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas:
   );
 }
 
-function ColumnaQuien({ contexto: { p, ficha, sala }, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
+function ColumnaQuien({ contexto: { p, ficha, sala, onEditar }, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
   const tirar = (que: QueTirar) => sala.tirar(p.id, que);
   return (
     <div className="flex flex-col gap-3 px-5 pt-4 pb-4">
       <div className="flex items-center gap-3.5">
-        <FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} />
+        <FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} nombre={p.nombre} onEditar={onEditar} />
         <div className="min-w-0">
           <h2 className="truncate font-titulo text-[30px] leading-none font-bold text-acento">{p.nombre}</h2>
           <p className="mt-1 truncate font-titulo text-[14px] text-texto-suave">{[p.ascendencia, p.clase].filter(Boolean).join(' ')} · nivel {p.nivel}</p>
@@ -627,8 +868,16 @@ function ColumnaLado({ contexto, condiciones }: { contexto: Contexto; condicione
       <div className="flex max-h-[150px] flex-col gap-2.5 overflow-y-auto pt-1 pr-1">
         {condiciones.length === 0
           ? <p className="font-titulo text-[14px] text-texto-suave">Sin condiciones. Si te pasa algo (Frightened, Prone…), aparece aquí con su explicación.</p>
-          : condiciones.map((c, i) => <PostitCondicion key={c.clave} condicion={c} giro={i % 2 ? -1.5 : 2} />)}
+          : condiciones.map((c, i) => (
+            <button key={c.clave} className="text-left" onClick={contexto.onCondiciones} title="Cambiar o quitar">
+              <PostitCondicion condicion={c} giro={i % 2 ? -1.5 : 2} />
+            </button>
+          ))}
       </div>
+      <button className="flex items-center gap-1.5 self-start rounded-md px-1.5 py-1 font-titulo text-[13.5px] text-texto-suave transition hover:text-acento"
+        onClick={contexto.onCondiciones}>
+        <StickerIcon size={16} aria-hidden /> {condiciones.length ? 'Cambiar condiciones' : 'Pegar una condición'}
+      </button>
       <div className="mt-auto flex flex-col gap-2">
         {combate && miToken && <BotonReaccion combate={combate} tokenId={miToken.id} sala={sala} />}
         {combate
@@ -658,11 +907,14 @@ function BotonReaccion({ combate, tokenId, sala }: { combate: Combate; tokenId: 
 
 function Descansos({ p, sala }: { p: Personaje; sala: Sala }) {
   const r = recursosDe(p);
-  const descansar = (d: Descanso) => {
-    if (confirm(`${DESCANSOS[d].nombre}: ${DESCANSOS[d].ayuda} ¿Seguro?`)) sala.enviar({ tipo: 'descansar', personajeId: p.id, descanso: d });
-  };
+  const confirmar = useConfirmar();
+  const descansar = (d: Descanso) => confirmar.pedir({
+    titulo: `${DESCANSOS[d].nombre}`, texto: DESCANSOS[d].ayuda, si: d === 'diario' ? 'Descansar' : 'Recuperar foco',
+    hacer: () => sala.enviar({ tipo: 'descansar', personajeId: p.id, descanso: d }),
+  });
   return (
     <div className="flex flex-col gap-1.5">
+      {confirmar.ventana}
       {r.foco.max > 0 && (
         <button className="boli flex h-11 items-center justify-center gap-2 border-2 border-acento font-titulo text-[15px] font-semibold text-acento transition hover:bg-acento/10"
           onClick={() => descansar('refocus')} title={DESCANSOS.refocus.ayuda}>
@@ -689,12 +941,12 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
   onElegir: (f: Fila) => void;
   detalle: (f: Fila) => ReactNode;
 }) {
-  const { p, ficha, combate, miTurno, miToken, sala } = contexto;
+  const { p, ficha, combate, miTurno, miToken, sala, onEditar } = contexto;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="hoja mx-3 mt-2 flex flex-col gap-2.5 px-4 pt-3.5 pb-3">
         <div className="flex items-center gap-3">
-          <FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} tamano="size-[54px]" />
+          <FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} tamano="size-[54px]" nombre={p.nombre} onEditar={onEditar} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate font-titulo text-[25px] leading-none font-bold text-acento">{p.nombre}</h2>
             <p className="mt-1 font-titulo text-[14px] text-texto-suave">
@@ -706,11 +958,14 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
         <div className="flex flex-wrap items-center gap-2">
           <CabeceraTurno contexto={contexto} />
         </div>
-        {condiciones.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {condiciones.map((c, i) => <PostitCondicion key={c.clave} condicion={c} compacto giro={i % 2 ? -2 : 2} />)}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {condiciones.map((c, i) => (
+            <button key={c.clave} onClick={contexto.onCondiciones}><PostitCondicion condicion={c} compacto giro={i % 2 ? -2 : 2} /></button>
+          ))}
+          <button className="flex items-center gap-1 font-titulo text-[13px] text-texto-suave" onClick={contexto.onCondiciones}>
+            <StickerIcon size={15} aria-hidden /> {condiciones.length ? 'cambiar' : 'condición'}
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">

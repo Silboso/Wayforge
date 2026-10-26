@@ -19,12 +19,16 @@ interface Props {
   error?: string | null;
   onGuardar: (personaje: Personaje, codigo: string) => void;
   onCancelar: () => void;
+  // Dentro de una ventana: sin título propio ni márgenes de página (la ventana pone los suyos)
+  enVentana?: boolean;
+  // Avisa cada cambio (para saber si hay algo sin guardar)
+  onCambio?: (p: Personaje) => void;
 }
 
 const PASOS = ['Quién es', 'Atributos', 'Puntos de golpe', 'Defensa', 'Skills', 'Ataques', 'Conjuros y más', 'Código'] as const;
 
 // Creación de ficha paso a paso. Cada paso explica qué es lo que se pide y muestra el resultado calculado.
-export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancelar }: Props) {
+export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancelar, enVentana = false, onCambio }: Props) {
   const [p, setP] = useState<Personaje>(inicial);
   const [paso, setPaso] = useState(0);
   const [codigo, setCodigo] = useState('');
@@ -37,7 +41,11 @@ export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancela
   const ficha = calcular(p);
   const cambiar = (cambios: Partial<Personaje>) => {
     setAviso('');
-    setP((actual) => ({ ...actual, ...cambios }));
+    setP((actual) => {
+      const nuevo = { ...actual, ...cambios };
+      onCambio?.(nuevo);
+      return nuevo;
+    });
   };
 
   function validarPaso(i: number): string {
@@ -80,11 +88,13 @@ export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancela
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="font-titulo text-2xl font-bold">{modo === 'crear' ? 'Nuevo personaje' : `Editar a ${inicial.nombre}`}</h1>
-        <button type="button" className={claseBotonSecundario} onClick={onCancelar}>Cancelar</button>
-      </div>
+    <div className={enVentana ? 'flex flex-col gap-4' : 'mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6'}>
+      {!enVentana && (
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="font-titulo text-2xl font-bold">{modo === 'crear' ? 'Nuevo personaje' : `Editar a ${inicial.nombre}`}</h1>
+          <button type="button" className={claseBotonSecundario} onClick={onCancelar}>Cancelar</button>
+        </div>
+      )}
 
       <ol className="flex flex-wrap gap-1" aria-label="Pasos">
         {pasos.map((nombre, i) => (

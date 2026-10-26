@@ -97,6 +97,21 @@ export interface Personaje {
   aptitudes?: Aptitud[];
   lanzador?: Lanzador | null;
   recursos?: Recursos;
+  // Lo que deja el creador de personajes (opcional: las fichas hechas a mano no lo tienen)
+  // De qué está hecho, con los ids de la base de datos (para subir de nivel después)
+  origen?: { ascendencia: string; herencia: string | null; trasfondo: string; clase: string; subclase: string | null };
+  idiomas?: string[];
+  sentidos?: string;
+  // Lores en Trained (Warfare Lore, Circus Lore…)
+  saberes?: string[];
+  dotes?: { id: string; nombre: string; tipo: string; nivel: number }[];
+  inventario?: { id: string; nombre: string; cantidad: number; bulto: number }[];
+  monedas?: { oro: number; plata: number; cobre: number };
+  // La CD de clase (para los efectos que la usan)
+  claseCD?: { atributo: Atributo; rango: Rango };
+  escudo?: { nombre: string; ca: number; dureza: number; pg: number; pgActual: number };
+  // Los atajos Q W E R T Y que eligió el jugador (claves de sus acciones; null = espacio vacío)
+  atajos?: (string | null)[];
 }
 
 export interface Parte {
@@ -118,6 +133,7 @@ export interface FichaCalculada {
   golpes: { ataque: Valor; penalizaciones: [number, number, number]; dano: string }[];
   // Solo si lanza conjuros
   conjuros: { ataque: Valor; cd: Valor } | null;
+  claseCD: Valor | null;
 }
 
 export function bonoCompetencia(rango: Rango, nivel: number): number {
@@ -198,7 +214,11 @@ export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalc
     })()
     : null;
 
-  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion), salvaciones, habilidades, golpes, conjuros };
+  const claseCD = p.claseCD
+    ? valor([{ etiqueta: 'Base', valor: 10 }, parteAtributo(p, p.claseCD.atributo), parteCompetencia(p.claseCD.rango, p.nivel)])
+    : null;
+
+  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion), salvaciones, habilidades, golpes, conjuros, claseCD };
 }
 
 // Lo que se suma a los dados de daño de un arma
@@ -311,7 +331,31 @@ export function esPersonajeValido(valor: unknown): valor is Personaje {
     && (p.aptitudes === undefined || (Array.isArray(p.aptitudes) && p.aptitudes.length <= 80
       && p.aptitudes.every((a) => esAptitudValida(a, (c) => HABILIDADES.some((h) => h.clave === c), (e) => leerExpresion(e) !== null))))
     && (p.lanzador === undefined || p.lanzador === null || esLanzadorValido(p.lanzador))
-    && (p.recursos === undefined || esRecursosValido(p.recursos));
+    && (p.recursos === undefined || esRecursosValido(p.recursos))
+    && esExtrasValidos(p);
+}
+
+// Lo que agrega el creador: todo opcional, todo acotado
+function esExtrasValidos(p: Record<string, unknown>): boolean {
+  const lista = (v: unknown, max: number, ok: (x: unknown) => boolean) => v === undefined || (Array.isArray(v) && v.length <= max && v.every(ok));
+  const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+  const origen = p.origen;
+  const monedas = p.monedas;
+  const claseCD = p.claseCD;
+  const escudo = p.escudo;
+  return (origen === undefined || (obj(origen) && esTexto(origen.ascendencia, 60) && esTexto(origen.trasfondo, 60) && esTexto(origen.clase, 60)
+      && (origen.herencia === null || esTexto(origen.herencia, 60)) && (origen.subclase === null || esTexto(origen.subclase, 60))))
+    && lista(p.idiomas, 20, (x) => esTexto(x, 40))
+    && lista(p.atajos, 8, (x) => x === null || esTexto(x, 120))
+    && (p.sentidos === undefined || esTexto(p.sentidos, 100))
+    && lista(p.saberes, 20, (x) => esTexto(x, 60))
+    && lista(p.dotes, 60, (x) => obj(x) && esTexto(x.id, 80) && esTexto(x.nombre, 80) && esTexto(x.tipo, 20) && esEntero(x.nivel, 1, 20))
+    && lista(p.inventario, 200, (x) => obj(x) && esTexto(x.id, 80) && esTexto(x.nombre, 80) && esEntero(x.cantidad, 0, 9999)
+      && typeof x.bulto === 'number' && x.bulto >= 0 && x.bulto <= 50)
+    && (monedas === undefined || (obj(monedas) && esEntero(monedas.oro, 0, 1e7) && esEntero(monedas.plata, 0, 1e7) && esEntero(monedas.cobre, 0, 1e7)))
+    && (claseCD === undefined || (obj(claseCD) && typeof claseCD.atributo === 'string' && claseCD.atributo in ATRIBUTOS && esRango(claseCD.rango)))
+    && (escudo === undefined || (obj(escudo) && esTexto(escudo.nombre, 60) && esEntero(escudo.ca, 0, 4) && esEntero(escudo.dureza, 0, 50)
+      && esEntero(escudo.pg, 0, 500) && esEntero(escudo.pgActual, 0, 500)));
 }
 
 function esLanzadorValido(valor: unknown): boolean {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { TAMANOS, type EstadoSala } from '../../compartido/sala';
 import type { Evento } from '../../compartido/eventos';
 import type { Grado } from '../../reglas/pf2e';
+import { Salpicadura, semillaDe, Subrayado } from './dados/Tinta';
 
 interface Efecto {
   id: number;
@@ -10,9 +11,11 @@ interface Efecto {
   // Ataque con grado, o daño (número)
   grado?: Grado;
   dano?: number;
+  // Nota a lápiz junto al número: el tipo de daño, "×2 crítico"
+  nota?: string;
 }
 
-const DURA_MS = 1700;
+const DURA_MS = 2600;
 
 // Lo que se ve en el tablero cuando alguien tira contra alguien: el trazo del golpe, el impacto y el número.
 // Es una capa HTML/SVG encima del lienzo, ubicada con la misma vista (posición y zoom) del tablero.
@@ -48,9 +51,12 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
       }
       if (evento.tipo !== 'tirada' || !evento.tirada.objetivo?.tokenId) continue;
       const t = evento.tirada;
+      const tipo = /\(([^)]+)\)/.exec(t.etiqueta)?.[1];
+      const nota = [t.etiqueta.startsWith('Daño crítico') ? '×2 crítico' : null, tipo].filter(Boolean).join(' · ');
       creados.push({
         id, hasta: t.objetivo!.tokenId!, ...(t.autorTokenId ? { desde: t.autorTokenId } : {}),
         ...(t.objetivo!.grado ? { grado: t.objetivo!.grado } : { dano: t.total }),
+        ...(nota ? { nota } : {}),
       });
     }
     if (creados.length === 0) return;
@@ -115,7 +121,6 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
         const a = e.desde ? centro(e.desde) : null;
         const acierta = e.grado === 'exito' || e.grado === 'critico';
         const critico = e.grado === 'critico';
-        const texto = e.dano !== undefined ? `−${e.dano}` : critico ? '¡Crítico!' : acierta ? '¡Le diste!' : e.grado === 'pifia' ? 'Pifia' : 'Falló';
         const tinta = e.dano !== undefined || critico ? 'var(--peligro)' : acierta ? 'var(--acento)' : 'var(--texto-suave)';
         // El trazo para antes del borde del objetivo, como un tajo de pluma
         const fin = a ? acercar(a, b, b.r * 0.6) : null;
@@ -138,14 +143,38 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
                 })}
               </g>
             )}
-            <text x={b.x} y={b.y - b.r - 14} textAnchor="middle" className="efecto-sube font-titulo font-bold"
-              style={{ fontSize: e.dano !== undefined || critico ? 30 : 22, fill: tinta, stroke: 'var(--fondo)', strokeWidth: 5, paintOrder: 'stroke' }}>
-              {texto}
-            </text>
           </g>
         );
       })}
     </svg>
+    {/* Las notas a tinta sobre el objetivo: el daño sobre una mancha roja, el resultado escrito a mano */}
+    {efectos.map((e) => {
+      const b = centro(e.hasta);
+      if (!b) return null;
+      const acierta = e.grado === 'exito' || e.grado === 'critico';
+      const giro = (semillaDe(String(e.id)) % 11) - 5;
+      return (
+        <div key={e.id} className="nota-tinta pointer-events-none absolute z-[6] flex -translate-x-1/2 -translate-y-full flex-col items-center"
+          style={{ left: b.x, top: b.y - b.r - 4, ['--giro' as string]: `${giro}deg` }} aria-hidden>
+          {e.dano !== undefined ? (
+            <>
+              <span className="relative flex h-[62px] min-w-[74px] items-center justify-center px-3">
+                <Salpicadura semilla={semillaDe(String(e.id))} className="absolute inset-0 h-full w-full" />
+                <b className="relative font-titulo text-[32px] leading-none text-white">−{e.dano}</b>
+              </span>
+              {e.nota && <span className="mt-0.5 rounded-sm bg-fondo/85 px-1.5 font-titulo text-[13px] text-texto-suave italic">{e.nota}</span>}
+            </>
+          ) : (
+            <span className={`flex flex-col items-center rounded-sm bg-fondo/80 px-1.5 font-titulo font-bold ${e.grado === 'critico' ? 'text-[28px] text-peligro' : acierta ? 'text-[24px] text-acento' : e.grado === 'pifia' ? 'text-[22px] text-peligro' : 'text-[21px] text-texto-suave'}`}>
+              <span className={acierta ? '' : 'line-through decoration-2'}>
+                {e.grado === 'critico' ? '¡Crítico!' : acierta ? '¡Le diste!' : e.grado === 'pifia' ? 'Pifia' : 'Falló'}
+              </span>
+              {acierta && <Subrayado className="-mt-1" />}
+            </span>
+          )}
+        </div>
+      );
+    })}
     </>
   );
 }

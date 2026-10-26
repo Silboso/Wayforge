@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Personaje } from '../reglas/pf2e';
+import { leerExpresion, type Personaje } from '../reglas/pf2e';
 import {
   aplicar,
-  type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type QueTirar,
+  type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type Puntero, type QueTirar,
   type ResumenPersonaje, type Sesion,
 } from '../compartido/sala';
 import { eventosDe, type Evento } from '../compartido/eventos';
 
 export type Fase = 'conectando' | 'entrada' | 'dentro';
+
+// Lo que se ve de los demás en el tablero: su puntero (con cuándo se movió por última vez) y sus señales
+export type PunteroAjeno = Puntero & { cuando: number };
+export interface Senal { id: number; idConexion: string; nombre: string; personajeId?: string; x: number; y: number }
+
+// Cada cuánto, como mucho, se manda el puntero propio (unas 14 veces por segundo)
+const PUNTERO_MS = 70;
 
 // Lo que el navegador recuerda de cada sala
 export const almacen = {
@@ -44,8 +51,13 @@ export function useSala(salaId: string) {
   // Lo que la sala no dejó hacer, con su motivo (para mostrarlo en un aviso)
   const [negaciones, setNegaciones] = useState<{ id: number; motivo: string }[]>([]);
   // Una tirada propia en camino: el dado empieza a rodar al apretar, sin esperar a la sala
-  const [pendiente, setPendiente] = useState<{ etiqueta: string; desde: number } | null>(null);
+  const [pendiente, setPendiente] = useState<{ etiqueta: string; desde: number; caras?: number } | null>(null);
+  const [punteros, setPunteros] = useState<Record<string, PunteroAjeno>>({});
+  const [senales, setSenales] = useState<Senal[]>([]);
   const ws = useRef<WebSocket | null>(null);
+  // Mi puntero y mi objetivo: se mandan juntos, con un ritmo máximo, y siempre llega el último
+  const miPuntero = useRef<{ x: number | null; y: number | null; apunta: string | null }>({ x: null, y: null, apunta: null });
+  const envioPuntero = useRef<{ ultimo: number; espera?: ReturnType<typeof setTimeout> }>({ ultimo: 0 });
   // El estado también en una ref: para comparar el antes y el después de cada acción que llega
   const estadoRef = useRef<EstadoSala | null>(null);
   const contador = useRef(0);
@@ -131,9 +143,25 @@ export function useSala(salaId: string) {
             if (nuevos.length) setEventos((prev) => [...prev, ...nuevos.map((evento) => ({ id: ++contador.current, evento }))].slice(-30));
             break;
           }
-          case 'presentes':
+          case 'presentes': {
             setPresentes(mensaje.presentes);
+            // Quien se fue deja de tener puntero
+            const siguen = new Set(mensaje.presentes.map((x) => x.idConexion));
+            setPunteros((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => siguen.has(id))));
             break;
+          }
+          case 'puntero': {
+            const { tipo: _tipo, ...puntero } = mensaje;
+            setPunteros((prev) => ({ ...prev, [puntero.idConexion]: { ...puntero, cuando: Date.now() } }));
+            break;
+          }
+          case 'senal': {
+            const { tipo: _tipo, ...resto } = mensaje;
+            const senal = { ...resto, id: ++contador.current };
+            setSenales((prev) => [...prev, senal].slice(-8));
+            setTimeout(() => setSenales((prev) => prev.filter((s) => s.id !== senal.id)), 2400);
+            break;
+          }
           case 'negado':
             setPendiente(null);
             setNegaciones((prev) => [...prev, { id: ++contador.current, motivo: mensaje.motivo }].slice(-10));
@@ -199,8 +227,10 @@ export function useSala(salaId: string) {
   }, [mandar, salaId, cambiarEstado]);
 
   // Sin personaje: tirada libre del GM (por ejemplo, el ataque de un enemigo)
-  const tirar = useCallback((personajeId: string | undefined, que: QueTirar, etiqueta = 'Tirando…') => {
-    setPendiente({ etiqueta, desde: Date.now() });
+  // `caras`: qué dado empieza a girar mientras llega el resultado (por defecto, el de la expresión o un d20)
+  const tirar = useCallback((personajeId: string | undefined, que: QueTirar, etiqueta = 'Tirando…', caras?: number) => {
+    const deExpresion = que.tipo === 'libre' ? leerExpresion(que.expresion)?.dados[0]?.caras : undefined;
+    setPendiente({ etiqueta, desde: Date.now(), caras: caras ?? deExpresion ?? 20 });
     mandar({ tipo: 'tirar', ...(personajeId ? { personajeId } : {}), que });
   }, [mandar]);
 
@@ -220,13 +250,46 @@ export function useSala(salaId: string) {
     setNegaciones((prev) => [...prev, { id: ++contador.current, motivo }].slice(-10));
   }, []);
 
+  const mandarPuntero = useCallback(() => {
+    const e = envioPuntero.current;
+    if (e.espera) return;
+    const ya = () => {
+      e.ultimo = Date.now();
+      e.espera = undefined;
+      mandar({ tipo: 'puntero', ...miPuntero.current });
+    };
+    const falta = PUNTERO_MS - (Date.now() - e.ultimo);
+    if (falta <= 0) ya();
+    else e.espera = setTimeout(ya, falta);
+  }, [mandar]);
+
+  // Mi puntero sobre el tablero, en casillas (null al salir del tablero)
+  const moverPuntero = useCallback((x: number | null, y: number | null) => {
+    const p = miPuntero.current;
+    if (p.x === x && p.y === y) return;
+    miPuntero.current = { ...p, x, y };
+    mandarPuntero();
+  }, [mandarPuntero]);
+
+  // A quién apunto: los demás ven la marca sobre ese token
+  const apuntar = useCallback((tokenId: string | null) => {
+    if (miPuntero.current.apunta === tokenId) return;
+    miPuntero.current = { ...miPuntero.current, apunta: tokenId };
+    mandarPuntero();
+  }, [mandarPuntero]);
+
+  const senalar = useCallback((x: number, y: number) => {
+    mandar({ tipo: 'senal', x, y });
+  }, [mandar]);
+
   const iniciarCombate = useCallback((tokens: string[]) => {
     mandar({ tipo: 'iniciar-combate', tokens });
   }, [mandar]);
 
   return {
-    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente,
+    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales,
     enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
+    moverPuntero, apuntar, senalar,
     limpiarRechazo: () => setRechazo(null),
   };
 }

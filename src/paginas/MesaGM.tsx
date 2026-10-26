@@ -1,0 +1,448 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  BookOpenTextIcon, CopyIcon, DiceFiveIcon, PawPrintIcon, SwordIcon, UsersThreeIcon, WrenchIcon, XIcon,
+} from '@phosphor-icons/react';
+import { personajeNuevo, leerExpresion, type Personaje } from '../../reglas/pf2e';
+import type { AtaqueCriatura } from '../../reglas/criaturas';
+import { motivoAlcance, motivoParaActuarToken, tokenEnTurno, type EstadoSala } from '../../compartido/sala';
+import type { Evento } from '../../compartido/eventos';
+import { almacen, leer, type Sala } from '../conexion';
+import { leerColoresTablero, type useTema } from '../tema';
+import { Tablero } from '../componentes/Tablero';
+import { AvisoTirada, ListaTiradas, TiradaLibre } from '../componentes/Tiradas';
+import { HerramientasGM } from '../componentes/Panel';
+import { PanelCombateGM } from '../componentes/Combate';
+import { EditorFicha } from '../componentes/EditorFicha';
+import { EditarPersonaje } from '../componentes/EditarPersonaje';
+import { Creador } from '../componentes/creador/Creador';
+import { mensajeRechazo } from '../componentes/Entrada';
+import { PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
+import { AyudaTeclas, ModalCondiciones, PanelReglas } from '../componentes/hud/Paneles';
+import { Tecla } from '../componentes/hud/piezas';
+import { TECLAS } from '../componentes/hud/secciones';
+import { PersonajesGM } from '../componentes/gm/PersonajesGM';
+import { PanelBestiario } from '../componentes/gm/Bestiario';
+import { EditorCriatura } from '../componentes/gm/EditorCriatura';
+import { HojaCriatura, MenuCriatura } from '../componentes/gm/HojaCriatura';
+import { BandaElegir, Cabecera, OrdenEscrito } from './MesaJugador';
+
+type Tema = ReturnType<typeof useTema>;
+type CajonGM = 'mesa' | 'bestiario' | 'personajes' | 'combate' | 'tiradas' | 'reglas';
+
+const CAJONES: { clave: CajonGM; nombre: string; tecla: string; icono: ReactNode }[] = [
+  { clave: 'combate', nombre: 'Combate', tecla: 'C', icono: <SwordIcon size={20} aria-hidden /> },
+  { clave: 'bestiario', nombre: 'Bestiario', tecla: 'B', icono: <PawPrintIcon size={20} aria-hidden /> },
+  { clave: 'personajes', nombre: 'Personajes', tecla: 'P', icono: <UsersThreeIcon size={20} aria-hidden /> },
+  { clave: 'mesa', nombre: 'Mesa', tecla: 'M', icono: <WrenchIcon size={20} aria-hidden /> },
+  { clave: 'tiradas', nombre: 'Tiradas', tecla: 'D', icono: <DiceFiveIcon size={20} aria-hidden /> },
+  { clave: 'reglas', nombre: 'Reglas', tecla: 'H', icono: <BookOpenTextIcon size={20} aria-hidden /> },
+];
+
+const TECLAS_GM: [string, string][] = [
+  ['Q W E R T Y', 'Los ataques de la criatura que manejas'],
+  ['Esc', 'Cierra lo abierto o cancela "elige a quién"'],
+  ['F', 'Termina el turno de la criatura'],
+  ['C', 'Combate (iniciativa, quién pelea)'],
+  ['B', 'Bestiario: poner criaturas'],
+  ['P', 'Personajes de los jugadores'],
+  ['M', 'Mesa: mapa, tokens y códigos'],
+  ['D', 'Tiradas (y tirada libre)'],
+  ['H', 'Reglas rápidas'],
+  ['Tocar una criatura', 'La manejas: su hoja aparece abajo'],
+  ['Tocar a un personaje', 'El menú de ataques de tu criatura contra él'],
+  ['Arrastrar', 'En su turno, la criatura gasta Strides; fuera de él, la mueves libre'],
+];
+
+// La mesa del GM: el tablero entero, sus criaturas con su hoja abajo (como la del jugador) y los paneles al costado.
+// En el turno de una criatura, la mesa se la pasa al GM con sus acciones, su alcance y sus ataques listos.
+export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; estado: EstadoSala; tema: Tema }) {
+  const [actorId, setActorId] = useState<string | null>(null);
+  const [objetivoId, setObjetivoId] = useState<string | null>(null);
+  const [eligiendo, setEligiendo] = useState<AtaqueCriatura | null>(null);
+  const [asomado, setAsomado] = useState<AtaqueCriatura | null>(null);
+  const [plegada, setPlegada] = useState(false);
+  const [cajon, setCajon] = useState<CajonGM | null>(null);
+  const [editandoCriatura, setEditandoCriatura] = useState<string | null>(null);
+  const [condicionesDe, setCondicionesDe] = useState<string | null>(null);
+  const [editandoP, setEditandoP] = useState<Personaje | null>(null);
+  const [creando, setCreando] = useState<Personaje | null>(null);
+  const [aMano, setAMano] = useState(false);
+  const [ayuda, setAyuda] = useState(false);
+  const [codigos, setCodigos] = useState(false);
+  const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
+  const [colores, setColores] = useState(leerColoresTablero);
+  useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
+  const codigoGM = leer(almacen.gmCodigo(salaId));
+
+  const actor = actorId ? estado.tokens[actorId] : undefined;
+  const combate = estado.combate;
+  const enTurno = tokenEnTurno(estado);
+  const suTurno = !!combate && !!actor && enTurno?.id === actor.id;
+  const numero = (suTurno ? Math.min(combate!.ataques, 2) : 0) as 0 | 1 | 2;
+  const libres = suTurno ? combate!.acciones - combate!.usadas : null;
+
+  // Si borran el token que manejaba (o el objetivo), se suelta
+  useEffect(() => {
+    if (actorId && !estado.tokens[actorId]) setActorId(null);
+    if (objetivoId && !estado.tokens[objetivoId]) setObjetivoId(null);
+  }, [estado, actorId, objetivoId]);
+
+  // Le toca a una criatura: el GM la toma, con su hoja abierta (y lo que estaba apuntando se suelta)
+  useEffect(() => {
+    setObjetivoId(null);
+    setEligiendo(null);
+    if (enTurno && !enTurno.personajeId) {
+      setActorId(enTurno.id);
+      setObjetivoId(null);
+      setPlegada(false);
+    }
+  }, [enTurno?.id, combate?.ronda]);
+
+  // El GM creó un personaje: cuando aparece en la mesa, se cierra el creador
+  useEffect(() => {
+    if (creando && estado.personajes[creando.id]) { setCreando(null); setAMano(false); }
+  }, [estado, creando]);
+
+  // Los jugadores ven a quién apunta el GM
+  useEffect(() => { sala.apuntar(objetivoId); }, [objetivoId]);
+
+  // El último ataque de una criatura: el aviso de "le diste" ofrece tirar su daño
+  const ultimoAtaque = useRef<{ tokenId: string; ataque: AtaqueCriatura } | null>(null);
+
+  const tirarDano = (tokenId: string, a: AtaqueCriatura, critico: boolean, objetivo?: string) => {
+    const caras = leerExpresion(a.dano)?.dados[0]?.caras;
+    sala.tirar(undefined, { tipo: 'dano-criatura', tokenId, ataque: a.id, ...(critico ? { critico } : {}), ...(objetivo ? { objetivo } : {}) },
+      critico ? 'Daño crítico' : 'Daño', caras);
+  };
+
+  function atacar(a: AtaqueCriatura, objetivo?: string) {
+    if (!actor) return;
+    const motivo = motivoParaActuarToken(estado, actor, 1);
+    if (motivo) return sala.negarLocal(motivo);
+    const otros = Object.values(estado.tokens).some((t) => t.id !== actor.id);
+    if (!objetivo && otros) {
+      setEligiendo(a);
+      setObjetivoId(null);
+      return;
+    }
+    const destino = objetivo ? estado.tokens[objetivo] : undefined;
+    const lejos = destino ? motivoAlcance(actor, destino, a.distancia ?? 5) : null;
+    if (lejos) return sala.negarLocal(lejos.replace('tienes que estar', `${actor.nombre} tiene que estar`).replace('Acércate', 'Acércalo').replace('tu alcance', 'su alcance'));
+    ultimoAtaque.current = { tokenId: actor.id, ataque: a };
+    sala.tirar(undefined, { tipo: 'criatura', tokenId: actor.id, ataque: a.id, numero, ...(objetivo ? { objetivo } : {}) }, `${actor.nombre}: ${a.nombre}`);
+    setEligiendo(null);
+    setObjetivoId(objetivo ?? null);
+  }
+
+  const cambiarPG = (tokenId: string, delta: number) => {
+    const t = estado.tokens[tokenId];
+    if (!t) return;
+    const p = t.personajeId ? estado.personajes[t.personajeId] : undefined;
+    if (p) {
+      // El daño se come primero los PG temporales
+      if (delta < 0) {
+        const deTemporales = Math.min(p.pgTemporales, -delta);
+        sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { pgTemporales: p.pgTemporales - deTemporales, pgActual: Math.max(0, p.pgActual - (-delta - deTemporales)) } });
+      } else {
+        sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { pgActual: p.pgActual + delta } });
+      }
+      return;
+    }
+    if (t.pg) sala.enviar({ tipo: 'editar-token', id: t.id, cambios: { pg: { ...t.pg, actual: Math.max(0, Math.min(t.pg.max, t.pg.actual + delta)) } } });
+  };
+
+  // Avisos del GM: cómo le fue a su criatura, el daño para aplicar con un toque, y de quién es el turno
+  const generar = (e: Evento): Aviso[] => {
+    const id = () => crypto.randomUUID();
+    if (e.tipo === 'turno') {
+      const t = estado.tokens[e.tokenId];
+      if (!t || t.personajeId) return [];
+      return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
+    }
+    if (e.tipo !== 'tirada') return [];
+    const t = e.tirada;
+    const objetivo = t.objetivo?.tokenId ? estado.tokens[t.objetivo.tokenId] : undefined;
+    const autor = t.autorTokenId ? estado.tokens[t.autorTokenId] : undefined;
+    const deCriatura = autor && !autor.personajeId;
+    // Ataque de una criatura: si acierta, su daño a un toque
+    if (deCriatura && objetivo && t.objetivo?.grado) {
+      const ultimo = ultimoAtaque.current?.tokenId === autor.id ? ultimoAtaque.current.ataque : null;
+      if (t.objetivo.grado === 'exito' || t.objetivo.grado === 'critico') {
+        const critico = t.objetivo.grado === 'critico';
+        return [{
+          id: id(), tono: 'bueno', titulo: `${critico ? '¡Crítico de' : '¡Acierta'} ${autor.nombre} contra ${objetivo.nombre}!`,
+          cuerpo: `${t.total} contra CA ${t.objetivo.cd}.`,
+          botones: ultimo ? [{ etiqueta: `${critico ? 'Daño crítico ×2' : 'Tirar daño'} (${ultimo.dano})`, principal: true, hacer: () => tirarDano(autor.id, ultimo, critico, objetivo.id) }] : [],
+        }];
+      }
+      return [{ id: id(), tono: 'malo', titulo: `${autor.nombre} ${t.objetivo.grado === 'pifia' ? 'pifia' : 'falla'} contra ${objetivo.nombre}`, cuerpo: `${t.total} contra CA ${t.objetivo.cd}.`, dura: 5000 }];
+    }
+    // Daño a alguien: restarlo de un toque (a sus enemigos o a los personajes)
+    if (objetivo && !t.objetivo?.grado && t.etiqueta.startsWith('Daño')) {
+      const p = objetivo.personajeId ? estado.personajes[objetivo.personajeId] : undefined;
+      const pg = p ? { actual: p.pgActual } : objetivo.pg;
+      if (!pg) return [];
+      return [{
+        id: id(), tono: 'peligro', titulo: `${t.quien} le hace ${t.total} de daño a ${objetivo.nombre}`,
+        cuerpo: `${objetivo.nombre} tiene ${pg.actual} PG${p ? ' (también le avisamos al jugador)' : ''}.`,
+        botones: [{ etiqueta: `Restar ${t.total} PG`, principal: true, hacer: () => cambiarPG(objetivo.id, -t.total) }],
+      }];
+    }
+    return [];
+  };
+  const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  useLlegadas(sala.presentes, 'GM', agregarAviso);
+  const negacionVista = useRef(sala.negaciones.at(-1)?.id ?? 0);
+  useEffect(() => {
+    const nuevas = sala.negaciones.filter((n) => n.id > negacionVista.current);
+    if (!nuevas.length) return;
+    negacionVista.current = nuevas.at(-1)!.id;
+    for (const n of nuevas) agregarAviso({ id: crypto.randomUUID(), tono: 'peligro', titulo: 'No se puede', cuerpo: n.motivo, dura: 5000 });
+  }, [sala.negaciones]);
+
+  // Teclado: Q..Y los ataques de la criatura, F termina su turno, letras para los paneles
+  useEffect(() => {
+    function alPulsar(e: KeyboardEvent) {
+      const destino = e.target as HTMLElement;
+      if (e.ctrlKey || e.metaKey || e.altKey || destino.closest('input, textarea, select') || document.querySelector('[aria-modal]')) return;
+      const tecla = e.key.toUpperCase();
+      const i = TECLAS.indexOf(tecla);
+      const panel = CAJONES.find((c) => c.tecla === tecla);
+      if (i >= 0 && actor?.criatura?.ataques[i]) atacar(actor.criatura.ataques[i]!, objetivoId ?? undefined);
+      else if (panel) setCajon(cajon === panel.clave ? null : panel.clave);
+      else if (tecla === 'F' && suTurno && !actor?.personajeId) sala.enviar({ tipo: 'avanzar-turno' });
+      else if (tecla === 'ESCAPE') { setEligiendo(null); setObjetivoId(null); }
+      else if (e.key === '?') setAyuda(true);
+    }
+    addEventListener('keydown', alPulsar);
+    return () => removeEventListener('keydown', alPulsar);
+  });
+
+  // Crear un personaje para un jugador: el creador guiado a pantalla completa (o a mano)
+  if (creando) {
+    return (
+      <div className="h-full overflow-y-auto">
+        {aMano ? (
+          <EditorFicha salaId={salaId} inicial={creando} modo="crear" error={mensajeRechazo(sala.rechazo)}
+            onCancelar={() => { setCreando(null); setAMano(false); sala.limpiarRechazo(); }} onGuardar={(p, codigo) => sala.nuevoPersonaje(p, codigo)} />
+        ) : (
+          <Creador salaId={salaId} id={creando.id} error={mensajeRechazo(sala.rechazo)}
+            onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }} onAMano={() => setAMano(true)} onGuardar={(p, codigo) => sala.nuevoPersonaje(p, codigo)} />
+        )}
+      </div>
+    );
+  }
+
+  // Dónde aparecen las criaturas nuevas: cerca de los tokens que ya hay
+  const tokens = Object.values(estado.tokens);
+  const cerca = tokens.length
+    ? { x: Math.round(tokens.reduce((s, t) => s + t.x, 0) / tokens.length) + 3, y: Math.round(tokens.reduce((s, t) => s + t.y, 0) / tokens.length) }
+    : { x: 3, y: 3 };
+  const filaEligiendo = eligiendo ?? asomado;
+  const rango = actor && filaEligiendo
+    ? { tokenId: actor.id, pies: filaEligiendo.distancia ?? 5, etiqueta: `${actor.nombre}: ${filaEligiendo.nombre} · ${(filaEligiendo.distancia ?? 5) <= 5 ? 'cuerpo a cuerpo' : `${filaEligiendo.distancia} ft`}` }
+    : null;
+  const objetivo = objetivoId ? estado.tokens[objetivoId] : undefined;
+  const menu = actor?.criatura && objetivo && !eligiendo ? {
+    tokenId: objetivo.id,
+    contenido: (
+      <MenuCriatura estado={estado} actor={actor} objetivo={objetivo} numero={numero}
+        onAtacar={(a) => atacar(a, objetivo.id)} onAcercar={(c) => sala.mover(actor.id, c.x, c.y)} onCerrar={() => setObjetivoId(null)} />
+    ),
+  } : null;
+  const margen = actor ? (plegada ? 70 : 300) : 0;
+
+  function seleccionar(id: string | null) {
+    if (eligiendo) {
+      if (id && id !== actor?.id) atacar(eligiendo, id);
+      return;
+    }
+    if (!id) return setObjetivoId(null);
+    const t = estado.tokens[id];
+    if (!t) return;
+    // Tocar a alguien con una criatura en mano: su menú de ataques contra él. Tocar otra criatura: pasar a manejarla.
+    if (actor?.criatura && id !== actor.id && (t.personajeId || t.tipo !== actor.tipo)) return setObjetivoId(id);
+    setActorId(id);
+    setObjetivoId(null);
+    setPlegada(false);
+  }
+
+  const panel = (c: CajonGM) => {
+    switch (c) {
+      case 'combate': return <PanelCombateGM estado={estado} quien={sala.quien} enviar={sala.enviar} onIniciar={sala.iniciarCombate} />;
+      case 'bestiario': return <PanelBestiario estado={estado} enviar={sala.enviar} cerca={cerca} onCreados={(ids) => { if (ids[0]) { setActorId(ids[0]); setEnfoque((x) => ({ tokenId: ids[0]!, n: (x?.n ?? 0) + 1 })); } }} />;
+      case 'personajes': return <PersonajesGM estado={estado} sala={sala} objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null}
+        onCrear={() => setCreando(personajeNuevo(crypto.randomUUID()))} onEditar={setEditandoP} />;
+      case 'mesa': return <HerramientasGM salaId={salaId} codigoGM={codigoGM} estado={estado} seleccionado={actorId} onSeleccionar={setActorId} enviar={sala.enviar}
+        onEditarPersonaje={(id) => { const p = estado.personajes[id]; if (p) setEditandoP(p); }} />;
+      case 'tiradas': return (
+        <div className="flex flex-col gap-4">
+          <TiradaLibre esGM objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null} onTirar={(que) => sala.tirar(undefined, que)} />
+          <ListaTiradas tiradas={estado.tiradas} verCd />
+        </div>
+      );
+      case 'reglas': return <PanelReglas />;
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <Cabecera salaId={salaId} sala={sala} tema={tema} onAyuda={() => setAyuda(true)} textoSalir="Para volver como GM vas a necesitar tu código de GM."
+        extra={(
+          <button className="flex h-10 items-center gap-1.5 rounded-lg border border-borde bg-superficie px-3 font-titulo text-[14px] transition hover:bg-superficie-2" onClick={() => setCodigos(!codigos)}>
+            Códigos
+          </button>
+        )} />
+
+      <div className="relative min-h-0 flex-1">
+        <Tablero
+          estado={estado}
+          colores={colores}
+          quien={sala.quien}
+          margenInferior={margen}
+          movimiento={actor && suTurno && !actor.personajeId && libres !== null ? { tokenId: actor.id, libres } : null}
+          apunta={actor && objetivo ? { desde: actor.id, hasta: objetivo.id } : null}
+          eventos={sala.eventos}
+          menu={menu}
+          rango={rango}
+          enfocar={enfoque}
+          presencia={{ punteros: Object.values(sala.punteros), senales: sala.senales }}
+          onPuntero={sala.moverPuntero}
+          onSenal={sala.senalar}
+          onNegar={sala.negarLocal}
+          seleccionado={actorId}
+          onSeleccionar={seleccionar}
+          onMover={(id, x, y) => sala.mover(id, x, y)}
+        />
+        {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => { setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 })); }} />}
+        {eligiendo && actor && <BandaElegir fila={{ nombre: `${actor.nombre}: ${eligiendo.nombre}` }} rango={rango} onCancelar={() => setEligiendo(null)}
+          className={actor ? (plegada ? 'bottom-[92px]' : 'bottom-[322px]') : 'bottom-4'} />}
+
+        {/* Los paneles del GM, como pestañas de índice a la izquierda */}
+        <nav aria-label="Paneles del GM" className="absolute top-[100px] left-3 z-10 hidden flex-col gap-1.5 lg:flex">
+          {CAJONES.map((c) => (
+            <button key={c.clave} onClick={() => setCajon(cajon === c.clave ? null : c.clave)} aria-pressed={cajon === c.clave} title={`${c.nombre} (${c.tecla})`}
+              className={`flex h-10 items-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition ${cajon === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie hover:border-acento hover:text-acento'}`}>
+              {c.icono}<span>{c.nombre}</span><span className="ml-0.5 hidden xl:inline"><Tecla sobreTinta={cajon === c.clave}>{c.tecla}</Tecla></span>
+            </button>
+          ))}
+        </nav>
+        {/* En el teléfono, los paneles van en una fila abajo */}
+        {!actor && (
+          <nav aria-label="Paneles del GM" className="absolute inset-x-0 bottom-0 z-10 grid grid-cols-6 border-t border-dashed border-borde bg-fondo/95 lg:hidden">
+            {CAJONES.map((c) => (
+              <button key={c.clave} onClick={() => setCajon(c.clave)} className="flex flex-col items-center gap-0.5 py-2 font-titulo text-[11.5px] text-texto-suave">
+                {c.icono}{c.nombre}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {!actor && !cajon && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center px-4 lg:bottom-6">
+            <p className="tarjeta pointer-events-auto max-w-md px-4 py-2.5 text-center font-titulo text-[14.5px] text-texto-suave">
+              Toca una criatura para manejarla. {tokens.some((t) => !t.personajeId) ? '' : 'Pon algunas desde el '}
+              {!tokens.some((t) => !t.personajeId) && <button className="font-bold text-acento underline decoration-dotted" onClick={() => setCajon('bestiario')}>Bestiario</button>}
+              {combate ? '' : ' · Para pelear, abre Combate.'}
+            </p>
+          </div>
+        )}
+
+        {actor && (
+          <HojaCriatura estado={estado} actor={actor} plegada={plegada} onPlegar={() => setPlegada(!plegada)} numero={numero}
+            onAtacar={(a) => atacar(a, objetivoId ?? undefined)} onAsomar={setAsomado}
+            onDano={(a, critico) => tirarDano(actor.id, a, critico, objetivoId ?? undefined)}
+            onChequeo={(clave) => {
+              const p = actor.personajeId ? estado.personajes[actor.personajeId] : undefined;
+              if (p) sala.tirar(p.id, clave === 'percepcion' ? { tipo: 'percepcion' } : { tipo: 'salvacion', clave });
+              else sala.tirar(undefined, { tipo: 'chequeo-criatura', tokenId: actor.id, clave });
+            }}
+            onPG={(delta) => cambiarPG(actor.id, delta)}
+            onCondiciones={() => setCondicionesDe(actor.id)}
+            onEditar={() => {
+              const p = actor.personajeId ? estado.personajes[actor.personajeId] : undefined;
+              if (p) setEditandoP(p);
+              else setEditandoCriatura(actor.id);
+            }}
+            onTerminar={() => sala.enviar({ tipo: 'avanzar-turno' })}
+            onCerrar={() => { setActorId(null); setObjetivoId(null); setEligiendo(null); }} />
+        )}
+
+        {cajon && (
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-full flex-col border-l border-borde bg-fondo shadow-[-20px_0_40px_-20px_var(--sombra)] sm:w-[440px]">
+            <div className="flex items-center gap-1 overflow-x-auto border-b border-dashed border-borde px-3 py-2">
+              {CAJONES.map((c) => (
+                <button key={c.clave} onClick={() => setCajon(c.clave)}
+                  className={`shrink-0 rounded-lg px-2.5 py-1.5 font-titulo text-[14.5px] ${cajon === c.clave ? 'font-bold text-acento' : 'text-texto-suave hover:text-texto'}`}>
+                  {c.nombre}
+                </button>
+              ))}
+              <button className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={() => setCajon(null)} aria-label="Cerrar">
+                <XIcon size={18} aria-hidden />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">{panel(cajon)}</div>
+          </aside>
+        )}
+      </div>
+
+      <AvisoTirada tiradas={estado.tiradas} verCd pendiente={sala.pendiente}
+        lugar={`top-[120px] lg:top-auto lg:inset-x-auto lg:right-6 ${actor ? (plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[340px]') : 'lg:bottom-6'}`} />
+      <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
+        className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[72px] lg:w-[340px] ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
+
+      {/* Un jugador está decidiendo si reacciona: el GM lo ve y puede seguir sin esperar */}
+      {estado.esperas.map((e) => (
+        <div key={e.id} className="fixed inset-x-0 top-[60px] z-40 flex justify-center px-4" role="status">
+          <div className="tarjeta flex items-center gap-3 px-4 py-2.5">
+            <p className="font-titulo text-[15px]">{e.atacante} ataca a {estado.tokens[e.objetivoTokenId]?.nombre}: esperando si reacciona…</p>
+            <button className="boli h-9 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10" onClick={() => sala.responder(e.id, null)}>
+              Seguir sin reacción
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {codigos && (
+        <div className="fixed top-[64px] right-4 z-40 w-[300px]">
+          <Codigos salaId={salaId} codigoGM={codigoGM} onCerrar={() => setCodigos(false)} />
+        </div>
+      )}
+      {editandoCriatura && estado.tokens[editandoCriatura] && (
+        <EditorCriatura salaId={salaId} token={estado.tokens[editandoCriatura]!} enviar={sala.enviar} onCerrar={() => setEditandoCriatura(null)} />
+      )}
+      {condicionesDe && estado.tokens[condicionesDe] && (
+        <ModalCondiciones condiciones={estado.tokens[condicionesDe]!.condiciones ?? []} onCerrar={() => setCondicionesDe(null)}
+          onPoner={(clave, valor) => sala.enviar({ tipo: 'poner-condicion', tokenId: condicionesDe, clave, valor: Math.max(0, valor) })} />
+      )}
+      {editandoP && estado.personajes[editandoP.id] && (
+        <EditarPersonaje salaId={salaId} sala={sala} personaje={estado.personajes[editandoP.id]!} onCerrar={() => setEditandoP(null)} />
+      )}
+      {ayuda && <AyudaTeclas filas={TECLAS_GM} onCerrar={() => setAyuda(false)} />}
+    </div>
+  );
+}
+
+// Los códigos para compartir, en una nota que se despliega desde la cabecera
+function Codigos({ salaId, codigoGM, onCerrar }: { salaId: string; codigoGM: string | null; onCerrar: () => void }) {
+  const [copiado, setCopiado] = useState(false);
+  return (
+    <div className="tarjeta aviso-entra px-4 py-3">
+      <div className="flex items-start justify-between">
+        <p className="font-titulo text-[13px] text-texto-suave">Código de la mesa</p>
+        <button className="-mt-1 -mr-2 flex size-8 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={onCerrar} aria-label="Cerrar"><XIcon size={16} /></button>
+      </div>
+      <p className="font-mono text-[26px] font-bold tracking-widest">{salaId.toUpperCase()}</p>
+      <button className="boli mt-1 flex h-9 items-center gap-1.5 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10"
+        onClick={async () => { await navigator.clipboard.writeText(`${location.origin}/sala/${salaId}`); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }}>
+        <CopyIcon size={16} aria-hidden /> {copiado ? 'Link copiado' : 'Copiar link para los jugadores'}
+      </button>
+      {codigoGM && (
+        <>
+          <p className="mt-3 font-titulo text-[13px] text-texto-suave">Tu código de GM (no lo compartas)</p>
+          <p className="font-mono text-[22px] font-bold tracking-widest">{codigoGM}</p>
+        </>
+      )}
+    </div>
+  );
+}

@@ -14,6 +14,8 @@ interface Props {
   seleccionado: string | null;
   onSeleccionar: (id: string | null) => void;
   enviar: (accion: Accion) => void;
+  // Abre el editor de la ficha de un personaje (desde su token)
+  onEditarPersonaje?: (personajeId: string) => void;
 }
 
 const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
@@ -23,12 +25,13 @@ const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
 ];
 
 // Herramientas del GM: tokens, mapa y códigos de la mesa
-export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar }: Props) {
+export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje }: Props) {
   const token = seleccionado ? estado.tokens[seleccionado] : undefined;
   return (
     <div className="flex flex-col gap-4">
       {token ? (
-        <EditorToken key={token.id} salaId={salaId} token={token} enviar={enviar} onCerrar={() => onSeleccionar(null)} />
+        <EditorToken key={token.id} salaId={salaId} token={token} enviar={enviar} onCerrar={() => onSeleccionar(null)}
+          onEditarPersonaje={token.personajeId && onEditarPersonaje ? () => onEditarPersonaje(token.personajeId!) : undefined} />
       ) : (
         <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={onSeleccionar} />
       )}
@@ -130,11 +133,12 @@ function NuevoToken({ salaId, estado, enviar, onCreado }: {
   );
 }
 
-function EditorToken({ salaId, token, enviar, onCerrar }: {
+function EditorToken({ salaId, token, enviar, onCerrar, onEditarPersonaje }: {
   salaId: string;
   token: Token;
   enviar: (accion: Accion) => void;
   onCerrar: () => void;
+  onEditarPersonaje?: () => void;
 }) {
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState('');
@@ -165,7 +169,10 @@ function EditorToken({ salaId, token, enviar, onCerrar }: {
       }
     >
       {dePersonaje ? (
-        <p className="text-sm text-texto-suave">Es el token de un personaje: su nombre y su imagen salen de la ficha.</p>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-texto-suave">Es el token de un personaje: su nombre y su imagen salen de la ficha.</p>
+          {onEditarPersonaje && <button className={claseBotonSecundario} onClick={onEditarPersonaje}>Editar ficha y retrato</button>}
+        </div>
       ) : (
         <>
           <Campo etiqueta="Nombre">

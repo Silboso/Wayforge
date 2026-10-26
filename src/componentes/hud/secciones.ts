@@ -10,13 +10,18 @@ export type Fila =
   | { clave: string; tipo: 'golpe'; golpe: Golpe; indice: number; nombre: string; detalle: string; valor: string; cuenta: Valor }
   | { clave: string; tipo: 'aptitud'; aptitud: Aptitud; disp: Disponibilidad; nombre: string; detalle: string; valor: string | null; cuenta: Valor | null };
 
+// Los atajos de teclado, como las habilidades de un juego: seis espacios que el jugador llena como quiera
+export const TECLAS = ['Q', 'W', 'E', 'R', 'T', 'Y'];
+
 export interface Seccion {
-  id: 'turno' | Grupo;
+  id: 'turno' | 'acciones' | Grupo;
   titulo: string;
   ayuda: string;
   // "1 de 2 de foco", "rango 1: 1 de 2"
   resumen: string | null;
   filas: Fila[];
+  // Solo "Tu turno": los seis espacios de atajo, en orden (vacío = null)
+  ranuras?: (Fila | null)[];
 }
 
 // Lo que se tira con una aptitud, ya calculado (para mostrar el número y su cuenta)
@@ -77,12 +82,13 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
   const comunes = ACCIONES_COMUNES.map((id) => todas.find((a) => a.id === id)).filter((a): a is Aptitud => !!a);
   const resto = todas.filter((a) => !ACCIONES_COMUNES.includes(a.id));
 
+  const basicas = [...golpes, ...comunes.map((a) => filaAptitud(p, a, ficha))];
   const lista: Seccion[] = [{
-    id: 'turno',
-    titulo: 'Tu turno',
-    ayuda: 'Tus armas y lo que más se usa en combate.',
+    id: 'acciones',
+    titulo: 'Acciones',
+    ayuda: 'Tus armas y las acciones de siempre: atacar, moverte, levantar el escudo…',
     resumen: null,
-    filas: [...golpes, ...comunes.map((a) => filaAptitud(p, a, ficha))],
+    filas: basicas,
   }];
 
   const orden: Grupo[] = ['siempre', 'foco', 'espacios', 'frecuencia', 'consumibles', 'reacciones', 'fuera'];
@@ -103,7 +109,39 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
       filas: delGrupo.map((a) => filaAptitud(p, a, ficha)),
     });
   }
-  return lista;
+  // Los atajos: los que eligió el jugador, o lo primero de sus acciones si nunca los cambió
+  const porClave = new Map(lista.flatMap((s) => s.filas).map((f) => [f.clave, f]));
+  const claves = p.atajos ?? basicas.slice(0, TECLAS.length).map((f) => f.clave);
+  const ranuras = TECLAS.map((_, i) => (claves[i] ? porClave.get(claves[i]!) ?? null : null));
+  return [{
+    id: 'turno',
+    titulo: 'Tu turno',
+    ayuda: 'Tus atajos: Q W E R T Y. Pon aquí lo que más usas.',
+    resumen: null,
+    filas: ranuras.filter((f): f is Fila => !!f),
+    ranuras,
+  }, ...lista];
+}
+
+// Los atajos con una fila puesta en el espacio `i` (si ya estaba en otro, cambian de lugar)
+export function ponerAtajo(ranuras: (Fila | null)[], i: number, clave: string | null): (string | null)[] {
+  const claves = ranuras.map((f) => f?.clave ?? null);
+  const antes = clave ? claves.indexOf(clave) : -1;
+  if (antes >= 0) claves[antes] = claves[i] ?? null;
+  claves[i] = clave;
+  return claves;
+}
+
+// Si una fila se usa contra alguien, y hasta dónde llega (pies; null si no tiene límite en la ficha)
+export function alcanceDe(p: Personaje, fila: Fila): { pies: number | null } | null {
+  if (fila.tipo === 'golpe') return { pies: fila.golpe.distancia ?? 5 };
+  const a = fila.aptitud;
+  const t = a.tirada;
+  if (!t || a.costo === 'larga') return null;
+  if (t.tipo === 'golpe') return { pies: p.golpes[0]?.distancia ?? 5 };
+  if (t.tipo === 'ataque-conjuro') return { pies: a.distancia ?? null };
+  if (t.tipo === 'skill' && a.distancia) return { pies: a.distancia };
+  return null;
 }
 
 function rangoDe(a: Aptitud): number {

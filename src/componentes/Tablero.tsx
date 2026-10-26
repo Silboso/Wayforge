@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Circle, Group, Image as ImagenKonva, Label, Layer, Line, Rect, Shape, Stage, Tag, Text } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
-import { CornersInIcon } from '@phosphor-icons/react';
+import { CornersInIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import { calcular } from '../../reglas/pf2e';
-import { alcanzables, caminoA, clave, desdeClave, type Casilla, type Paso } from '../../reglas/movimiento';
+import { alcanzables, caminoA, clave, desdeClave, distanciaEntre, type Casilla, type Paso } from '../../reglas/movimiento';
 import {
   COLORES_TOKEN, ladoDe, opcionesMovimiento, puedeMoverToken, TAMANOS, tokenEnTurno, velocidadDe,
   type EstadoSala, type Sesion, type Token,
@@ -13,6 +13,8 @@ import { resumenCondiciones } from './Condiciones';
 import type { ColoresTablero } from '../tema';
 import type { Evento } from '../../compartido/eventos';
 import { EfectosTablero } from './Efectos';
+import { PresenciaTablero } from './Presencia';
+import type { PunteroAjeno, Senal } from '../conexion';
 
 interface Props {
   estado: EstadoSala;
@@ -34,7 +36,18 @@ interface Props {
   onMover: (id: string, x: number, y: number) => void;
   // Avisa en la propia pantalla por qué no se pudo (soltar un token donde no llega)
   onNegar?: (motivo: string) => void;
+  // Hasta dónde llega una acción desde un token: se sombrea y se marcan los tokens que quedan dentro
+  rango?: { tokenId: string; pies: number; etiqueta: string } | null;
+  // Los demás en la mesa (punteros, objetivos, señales) y cómo mandar los propios
+  presencia?: { punteros: PunteroAjeno[]; senales: Senal[] };
+  onPuntero?: (x: number | null, y: number | null) => void;
+  onSenal?: (x: number, y: number) => void;
+  // Centrar la vista en un token (cada pedido nuevo trae otro `n`)
+  enfocar?: { tokenId: string; n: number } | null;
 }
+
+// Mantener presionado este tiempo (sin mover) lanza una señal
+const SENAL_MS = 450;
 
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 4;
@@ -42,15 +55,19 @@ const PASO_MS = 120;
 
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
-  seleccionado, onSeleccionar, onMover, onNegar,
+  seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onSenal, enfocar = null,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [medida, setMedida] = useState({ ancho: 0, alto: 0 });
   const [vista, setVista] = useState({ x: 0, y: 0, escala: 1 });
   const [imagenMapa] = useImage(estado.mapa.imagen || '', 'anonymous');
   const ajustado = useRef<string | null>(null);
-  // La casilla bajo el puntero (o bajo el token que se arrastra): de ahí sale la ruta que se dibuja
+  // La casilla bajo el token que se arrastra: de ahí sale la ruta que se dibuja
   const [apuntada, setApuntada] = useState<Casilla | null>(null);
+  // Mientras se lleva el token propio, se ven las casillas a las que llega
+  const [arrastrando, setArrastrando] = useState(false);
+  // La primera vez, el token propio dice "arrástrame"; después ya se sabe
+  const [yaArrastro, setYaArrastro] = useState(false);
 
   const { mapa } = estado;
   const celda = mapa.tamanoCelda;
@@ -119,6 +136,48 @@ export function Tablero({
     centrar();
   }, [medida, ancho, alto, mapa.imagen, imagenMapa]);
 
+  // Lleva la vista hasta un token, deslizándose (o de golpe si se pidió menos movimiento)
+  const vistaRef = useRef(vista);
+  vistaRef.current = vista;
+  const animacion = useRef(0);
+  function irA(tokenId: string, soloSiNoSeVe = false) {
+    const t = estado.tokens[tokenId];
+    if (!t || !medida.ancho) return;
+    const visible = Math.max(120, medida.alto - margenInferior);
+    const lado = TAMANOS[t.tamano] * celda;
+    const cx = origen.x + t.x * celda + lado / 2;
+    const cy = origen.y + t.y * celda + lado / 2;
+    const v0 = vistaRef.current;
+    if (soloSiNoSeVe) {
+      const sx = cx * v0.escala + v0.x;
+      const sy = cy * v0.escala + v0.y;
+      if (sx > 60 && sx < medida.ancho - 60 && sy > 60 && sy < visible - 60) return;
+    }
+    const destino = { escala: v0.escala, x: medida.ancho / 2 - cx * v0.escala, y: visible / 2 - cy * v0.escala };
+    cancelAnimationFrame(animacion.current);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return setVista(destino);
+    const inicio = performance.now();
+    const paso = (ahora: number) => {
+      const k = Math.min(1, (ahora - inicio) / 420);
+      const e = 1 - Math.pow(1 - k, 3);
+      setVista({ escala: v0.escala, x: v0.x + (destino.x - v0.x) * e, y: v0.y + (destino.y - v0.y) * e });
+      if (k < 1) animacion.current = requestAnimationFrame(paso);
+    };
+    animacion.current = requestAnimationFrame(paso);
+  }
+  useEffect(() => {
+    if (enfocar) irA(enfocar.tokenId);
+  }, [enfocar?.n]);
+  // La cámara sigue el turno: si le toca a alguien que no se ve, va hacia él
+  const turnoVisto = useRef(eventos.at(-1)?.id ?? 0);
+  useEffect(() => {
+    const nuevos = eventos.filter((e) => e.id > turnoVisto.current);
+    if (!nuevos.length) return;
+    turnoVisto.current = nuevos.at(-1)!.id;
+    const turno = nuevos.reverse().find((e) => e.evento.tipo === 'turno');
+    if (turno && turno.evento.tipo === 'turno') irA(turno.evento.tokenId, true);
+  }, [eventos]);
+
   function alHacerZoom(evento: Konva.KonvaEventObject<WheelEvent>) {
     evento.evt.preventDefault();
     const stage = evento.target.getStage();
@@ -140,14 +199,50 @@ export function Tablero({
     return { x: Math.floor(mx / celda - (lado - 1) / 2), y: Math.floor(my / celda - (lado - 1) / 2) };
   }
 
-  function alMoverPuntero(e: Konva.KonvaEventObject<MouseEvent>) {
-    if (!zona) return;
+  // Punto de la pantalla → posición en casillas (con decimales), para punteros y señales
+  const enCasillas = (px: number, py: number) => ({
+    x: ((px - vista.x) / vista.escala - origen.x) / celda,
+    y: ((py - vista.y) / vista.escala - origen.y) / celda,
+  });
+
+  // Mantener presionado: señal. Si se suelta antes, se mueve o se arrastra, no pasa nada.
+  const presion = useRef<{ x: number; y: number; espera: ReturnType<typeof setTimeout> } | null>(null);
+  const senalHecha = useRef(false);
+  function alPresionar(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    soltarPresion();
+    if (!onSenal || ('button' in e.evt && e.evt.button !== 0)) return;
     const p = e.target.getStage()?.getPointerPosition();
     if (!p) return;
-    const c = casillaEn(p.x, p.y);
-    // Sobre otro token no hay ruta que mostrar: ahí se abre su menú
-    if (hayOtroToken(c)) return apuntada && setApuntada(null);
-    if (!apuntada || apuntada.x !== c.x || apuntada.y !== c.y) setApuntada(c);
+    presion.current = {
+      x: p.x, y: p.y,
+      espera: setTimeout(() => {
+        presion.current = null;
+        senalHecha.current = true;
+        const c = enCasillas(p.x, p.y);
+        onSenal(c.x, c.y);
+        navigator.vibrate?.(20);
+      }, SENAL_MS),
+    };
+  }
+  function soltarPresion() {
+    if (presion.current) clearTimeout(presion.current.espera);
+    presion.current = null;
+  }
+  // Tras una señal, el clic que viene al soltar no cuenta
+  const consumirSenal = () => {
+    if (!senalHecha.current) return false;
+    senalHecha.current = false;
+    return true;
+  };
+
+  function alMoverPuntero(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    const p = e.target.getStage()?.getPointerPosition();
+    if (!p) return;
+    if (presion.current && Math.hypot(p.x - presion.current.x, p.y - presion.current.y) > 6) soltarPresion();
+    if (onPuntero && e.evt.type === 'mousemove') {
+      const m = enCasillas(p.x, p.y);
+      onPuntero(Math.round(m.x * 100) / 100, Math.round(m.y * 100) / 100);
+    }
   }
 
   const hayOtroToken = (c: Casilla) => Object.values(estado.tokens).some((t) => {
@@ -156,17 +251,26 @@ export function Tablero({
     return c.x >= t.x && c.x < t.x + n && c.y >= t.y && c.y < t.y + n;
   });
 
-  // Tocar una casilla vacía en su turno: Stride hasta ahí
+  // Tocar el papel vacío: suelta la selección (moverse es solo arrastrando el token)
   function alTocarFondo(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    if (consumirSenal()) return;
+    // Alt + clic: señal al instante
+    if ('altKey' in e.evt && e.evt.altKey && onSenal) {
+      const p = e.target.getStage()?.getPointerPosition();
+      if (p) { const c = enCasillas(p.x, p.y); onSenal(c.x, c.y); }
+      return;
+    }
     if (e.target !== e.target.getStage() && e.target.name() !== 'fondo') return;
     onSeleccionar(null);
-    if (!tokenMovil || !zona) return;
-    const p = e.target.getStage()?.getPointerPosition();
-    if (!p) return;
-    const c = casillaEn(p.x, p.y);
-    if (c.x === tokenMovil.x && c.y === tokenMovil.y) return;
-    if (zona.has(clave(c))) onMover(tokenMovil.id, c.x, c.y);
-    else onNegar?.(motivoLejos(c));
+  }
+
+  // Zoom con los botones: sobre el centro de lo que se ve
+  function zoomEn(factor: number) {
+    const visible = Math.max(120, medida.alto - margenInferior);
+    const c = { x: medida.ancho / 2, y: visible / 2 };
+    const escala = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, vista.escala * factor));
+    const mundo = { x: (c.x - vista.x) / vista.escala, y: (c.y - vista.y) / vista.escala };
+    setVista({ escala, x: c.x - mundo.x * escala, y: c.y - mundo.y * escala });
   }
 
   const motivoLejos = (c: Casilla) => {
@@ -185,10 +289,12 @@ export function Tablero({
     };
   };
   const tokenMenu = menu ? estado.tokens[menu.tokenId] : undefined;
+  const rangoToken = rango ? estado.tokens[rango.tokenId] : undefined;
 
   return (
     // Absoluto: así el canvas no empuja el tamaño de su contenedor y el tablero se puede encoger
-    <div ref={contenedor} className="absolute inset-0 overflow-hidden bg-fondo" onMouseLeave={() => setApuntada(null)}>
+    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango ? 'cursor-crosshair' : ''}`}
+      onMouseLeave={() => { onPuntero?.(null, null); soltarPresion(); }}>
       {medida.ancho > 0 && (
         <Stage
           width={medida.ancho}
@@ -201,6 +307,12 @@ export function Tablero({
           dragDistance={5}
           onWheel={alHacerZoom}
           onMouseMove={alMoverPuntero}
+          onTouchMove={alMoverPuntero}
+          onMouseDown={alPresionar}
+          onTouchStart={alPresionar}
+          onMouseUp={soltarPresion}
+          onTouchEnd={soltarPresion}
+          onDragStart={soltarPresion}
           onDragEnd={(e) => {
             if (e.target === e.target.getStage()) setVista((v) => ({ ...v, x: e.target.x(), y: e.target.y() }));
           }}
@@ -226,22 +338,38 @@ export function Tablero({
                   const y0 = imagenMapa ? 0 : -vista.y / vista.escala;
                   const x1 = imagenMapa ? ancho : x0 + medida.ancho / vista.escala;
                   const y1 = imagenMapa ? alto : y0 + medida.alto / vista.escala;
-                  ctx.beginPath();
-                  for (let x = origen.x + Math.ceil((x0 - origen.x) / celda) * celda; x <= x1; x += celda) {
-                    ctx.moveTo(x, y0);
-                    ctx.lineTo(x, y1);
+                  // Como el papel milimetrado: cada 5 casillas (25 ft) una línea más marcada
+                  const primeraX = Math.ceil((x0 - origen.x) / celda);
+                  const primeraY = Math.ceil((y0 - origen.y) / celda);
+                  for (const mayor of [false, true]) {
+                    ctx.beginPath();
+                    for (let i = primeraX, x = origen.x + i * celda; x <= x1; i++, x += celda) {
+                      if ((i % 5 === 0) !== mayor) continue;
+                      ctx.moveTo(x, y0);
+                      ctx.lineTo(x, y1);
+                    }
+                    for (let i = primeraY, y = origen.y + i * celda; y <= y1; i++, y += celda) {
+                      if ((i % 5 === 0) !== mayor) continue;
+                      ctx.moveTo(x0, y);
+                      ctx.lineTo(x1, y);
+                    }
+                    ctx.setAttr('lineWidth', (mayor ? 1.6 : 1) / vista.escala);
+                    ctx.setAttr('strokeStyle', forma.stroke());
+                    ctx.stroke();
+                    // La línea mayor se repasa: queda del doble de tinta
+                    if (mayor) ctx.stroke();
                   }
-                  for (let y = origen.y + Math.ceil((y0 - origen.y) / celda) * celda; y <= y1; y += celda) {
-                    ctx.moveTo(x0, y);
-                    ctx.lineTo(x1, y);
-                  }
-                  ctx.strokeShape(forma);
                 }}
               />
             )}
-            {zona && tokenMovil && (
+            {zona && tokenMovil && arrastrando && (
               <ZonaYRuta zona={zona} token={tokenMovil} apuntada={apuntada} velocidad={velocidad} celda={celda}
-                origen={origen} escala={vista.escala} colores={colores} libres={movimiento?.libres ?? 0} />
+                origen={origen} escala={vista.escala} colores={colores} libres={movimiento?.libres ?? 0}
+                ocupada={!!apuntada && hayOtroToken(apuntada)} />
+            )}
+            {rangoToken && rango && (
+              <Alcance token={rangoToken} pies={rango.pies} etiqueta={rango.etiqueta} estado={estado} celda={celda} origen={origen}
+                escala={vista.escala} colores={colores} />
             )}
             {apunta && <LineaObjetivo estado={estado} apunta={apunta} celda={celda} origen={origen} escala={vista.escala} colores={colores} />}
           </Layer>
@@ -259,7 +387,14 @@ export function Tablero({
                 pg={pgVisible(estado, token, quien)}
                 enTurno={token.id === enTurno}
                 seleccionado={token.id === seleccionado}
-                onSeleccionar={() => onSeleccionar(token.id)}
+                pista={!!zona && token.id === tokenMovil?.id && !arrastrando && !yaArrastro}
+                onSeleccionar={() => !consumirSenal() && onSeleccionar(token.id)}
+                onEmpezar={() => {
+                  soltarPresion();
+                  if (token.id !== tokenMovil?.id) return;
+                  setArrastrando(true);
+                  setYaArrastro(true);
+                }}
                 onArrastrar={(px, py) => {
                   if (token.id !== tokenMovil?.id || !zona) return;
                   const c = casillaEn(px, py);
@@ -267,6 +402,7 @@ export function Tablero({
                 }}
                 onSoltar={(px, py) => {
                   setApuntada(null);
+                  setArrastrando(false);
                   const c = token.id === tokenMovil?.id ? casillaEn(px, py) : (() => {
                     const lado = TAMANOS[token.tamano];
                     return {
@@ -285,6 +421,9 @@ export function Tablero({
         </Stage>
       )}
       <EfectosTablero eventos={eventos} estado={estado} vista={vista} celda={celda} />
+      {presencia && (
+        <PresenciaTablero estado={estado} vista={vista} celda={celda} origen={origen} punteros={presencia.punteros} senales={presencia.senales} />
+      )}
       {tokenMenu && menu && (() => {
         const p = enPantalla(tokenMenu);
         const izquierda = Math.round(Math.min(Math.max(8, p.x - 150), medida.ancho - 308));
@@ -303,19 +442,109 @@ export function Tablero({
           </div>
         );
       })()}
-      <button
-        onClick={centrar}
-        className="absolute top-3 left-3 z-10 flex h-10 items-center gap-2 rounded-lg border border-borde bg-superficie px-3 font-titulo text-sm shadow-sm transition hover:bg-superficie-2"
-      >
-        <CornersInIcon size={18} aria-hidden />
-        Centrar
-      </button>
+      <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-1.5">
+        <div className="flex h-10 overflow-hidden rounded-lg border border-borde bg-superficie font-titulo text-sm shadow-[0_4px_10px_-6px_var(--sombra)]">
+          <button onClick={() => zoomEn(1 / 1.25)} className="flex w-10 items-center justify-center transition hover:bg-superficie-2" aria-label="Alejar" title="Alejar">
+            <MinusIcon size={17} aria-hidden />
+          </button>
+          <button onClick={() => zoomEn(1.25)} className="flex w-10 items-center justify-center border-x border-borde transition hover:bg-superficie-2" aria-label="Acercar" title="Acercar">
+            <PlusIcon size={17} aria-hidden />
+          </button>
+          <button onClick={centrar} className="flex items-center gap-1.5 px-3 transition hover:bg-superficie-2" title="Encuadrar a todos los tokens">
+            <CornersInIcon size={17} aria-hidden /> Centrar
+          </button>
+        </div>
+        {/* La escala, dibujada como una regla a lápiz */}
+        <div className="flex items-center gap-1.5 rounded-sm bg-fondo/80 px-1.5 py-0.5 font-titulo text-[12px] text-texto-suave" aria-label="Una casilla son 5 pies">
+          <svg width={Math.round(Math.min(60, Math.max(14, celda * vista.escala)))} height="8" aria-hidden className="overflow-visible text-texto-suave">
+            <path d={`M1 1 V7 H${Math.round(Math.min(60, Math.max(14, celda * vista.escala))) - 1} V1`} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          1 casilla = 5 ft
+        </div>
+      </div>
     </div>
   );
 }
 
+// Hasta dónde llega una acción: las casillas dentro del alcance, con su borde, y un anillo en cada token alcanzable
+function Alcance({ token, pies, etiqueta, estado, celda, origen, escala, colores }: {
+  token: Token;
+  pies: number;
+  etiqueta: string;
+  estado: EstadoSala;
+  celda: number;
+  origen: { x: number; y: number };
+  escala: number;
+  colores: ColoresTablero;
+}) {
+  const lado = ladoDe(token);
+  const casillas = useMemo(() => {
+    const radio = Math.ceil(pies / 5) + 1;
+    const dentro = new Set<string>();
+    for (let x = token.x - radio; x < token.x + lado + radio; x++) {
+      for (let y = token.y - radio; y < token.y + lado + radio; y++) {
+        const propia = x >= token.x && x < token.x + lado && y >= token.y && y < token.y + lado;
+        if (!propia && distanciaEntre(token, lado, { x, y }, 1) <= pies) dentro.add(clave({ x, y }));
+      }
+    }
+    return dentro;
+  }, [token.x, token.y, lado, pies]);
+  const alcanzados = Object.values(estado.tokens).filter((t) => t.id !== token.id && distanciaEntre(token, lado, t, ladoDe(t)) <= pies);
+  const letra = Math.max(celda * 0.2, 13 / escala);
+  const arriba = Math.min(token.y, ...[...casillas].map((k) => desdeClave(k).y));
+  return (
+    <>
+      <Shape
+        listening={false}
+        sceneFunc={(ctx) => {
+          ctx.fillStyle = colores.acento;
+          ctx.globalAlpha = 0.09;
+          for (const k of casillas) {
+            const c = desdeClave(k);
+            ctx.fillRect(origen.x + c.x * celda, origen.y + c.y * celda, celda, celda);
+          }
+          // El borde: solo los lados que dan afuera del alcance
+          ctx.globalAlpha = 0.85;
+          ctx.strokeStyle = colores.acento;
+          ctx.lineWidth = 2 / escala;
+          ctx.setLineDash([7 / escala, 5 / escala]);
+          ctx.beginPath();
+          const fuera = (x: number, y: number) => {
+            const propia = x >= token.x && x < token.x + lado && y >= token.y && y < token.y + lado;
+            return !propia && !casillas.has(clave({ x, y }));
+          };
+          for (const k of casillas) {
+            const c = desdeClave(k);
+            const x0 = origen.x + c.x * celda;
+            const y0 = origen.y + c.y * celda;
+            if (fuera(c.x, c.y - 1)) { ctx.moveTo(x0, y0); ctx.lineTo(x0 + celda, y0); }
+            if (fuera(c.x, c.y + 1)) { ctx.moveTo(x0, y0 + celda); ctx.lineTo(x0 + celda, y0 + celda); }
+            if (fuera(c.x - 1, c.y)) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + celda); }
+            if (fuera(c.x + 1, c.y)) { ctx.moveTo(x0 + celda, y0); ctx.lineTo(x0 + celda, y0 + celda); }
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }}
+      />
+      {alcanzados.map((t) => {
+        const r = (TAMANOS[t.tamano] * celda) / 2;
+        return (
+          <Circle key={t.id} x={origen.x + t.x * celda + r} y={origen.y + t.y * celda + r} radius={r + 3} listening={false}
+            stroke={t.personajeId ? colores.acento : colores.peligro} strokeWidth={3 / escala} dash={[4 / escala, 4 / escala]} />
+        );
+      })}
+      <Label x={origen.x + (token.x + lado / 2) * celda} y={origen.y + arriba * celda - 4 / escala} listening={false}>
+        <Tag fill={colores.superficie} stroke={colores.acento} strokeWidth={1.5 / escala} cornerRadius={4 / escala}
+          pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
+        <Text text={etiqueta} fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={colores.acento} padding={letra * 0.35} />
+      </Label>
+    </>
+  );
+}
+
 // Las casillas a las que llega en su turno (1 Stride más intenso, 2 Strides más suave) y la ruta hasta la apuntada
-function ZonaYRuta({ zona, token, apuntada, velocidad, celda, origen, escala, colores, libres }: {
+function ZonaYRuta({ zona, token, apuntada, velocidad, celda, origen, escala, colores, libres, ocupada }: {
   zona: Map<string, Paso>;
   token: Token;
   apuntada: Casilla | null;
@@ -325,6 +554,7 @@ function ZonaYRuta({ zona, token, apuntada, velocidad, celda, origen, escala, co
   escala: number;
   colores: ColoresTablero;
   libres: number;
+  ocupada: boolean;
 }) {
   const lado = ladoDe(token);
   const oscuro = luminancia(colores.tablero) < 0.3;
@@ -372,7 +602,7 @@ function ZonaYRuta({ zona, token, apuntada, velocidad, celda, origen, escala, co
       {fuera && fin && (
         <Label x={fin.x} y={fin.y - letra} listening={false}>
           <Tag fill={colores.superficie} stroke={colores.peligro} strokeWidth={1.5 / escala} cornerRadius={4 / escala} pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
-          <Text text={libres > 0 ? 'Muy lejos' : 'Sin acciones'} fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={colores.peligro} padding={letra * 0.35} />
+          <Text text={ocupada ? 'Ocupada' : libres > 0 ? 'Muy lejos' : 'Sin acciones'} fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={colores.peligro} padding={letra * 0.35} />
         </Label>
       )}
     </>
@@ -412,12 +642,15 @@ interface PropsFicha {
   pg: { actual: number; max: number } | null;
   enTurno: boolean;
   seleccionado: boolean;
+  // Mostrar "arrástrame" sobre el token propio la primera vez
+  pista: boolean;
   onSeleccionar: () => void;
+  onEmpezar: () => void;
   onArrastrar: (px: number, py: number) => void;
   onSoltar: (px: number, py: number) => void;
 }
 
-function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, enTurno, seleccionado, onSeleccionar, onArrastrar, onSoltar }: PropsFicha) {
+function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, enTurno, seleccionado, pista, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
   const [imagen] = useImage(token.imagen || '', 'anonymous');
   const nodo = useRef<Konva.Group>(null);
   const lado = TAMANOS[token.tamano] * celda;
@@ -425,13 +658,15 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
   const porDefecto = !token.color || token.color === COLORES_TOKEN[token.tipo];
   const tintaDelTema = token.tipo === 'personaje' ? colores.acento : token.tipo === 'enemigo' ? colores.peligro : colores.textoSuave;
   const tinta = porDefecto ? tintaDelTema : token.color;
-  const grosor = Math.max(2, celda * 0.035);
+  const grosor = Math.max(2.2, celda * 0.04);
   // Cada token tiembla distinto, pero siempre igual: la semilla sale de su id
   const semilla = [...token.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
   // Textos y barra con un tamaño mínimo en pantalla, para que se lean aunque el mapa esté lejos
-  const letraNombre = Math.max(celda * 0.2, 13 / escala);
+  const letraNombre = Math.max(celda * 0.19, 12.5 / escala);
   const letraCondicion = Math.max(celda * 0.15, 12 / escala);
-  const altoBarra = Math.max(celda * 0.08, 5 / escala);
+  const altoBarra = Math.max(celda * 0.09, 6 / escala);
+  // Levantada mientras se arrastra: como una pieza que se toma con los dedos
+  const [levantada, setLevantada] = useState(false);
 
   // Dónde se dibuja: normalmente su casilla; mientras recorre un camino, el paso en que va
   const enCasilla = (c: Casilla) => ({ x: origen.x + c.x * celda, y: origen.y + c.y * celda });
@@ -465,6 +700,14 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
     return () => { tween?.destroy(); g.position(destino); };
   }, [token.x, token.y, recorrido?.id, celda, origen.x, origen.y]);
 
+  const cursor = (e: Konva.KonvaEventObject<MouseEvent | DragEvent>, valor: string) => {
+    const c = e.target.getStage()?.container();
+    if (c) c.style.cursor = valor;
+  };
+  const fraccion = pg ? Math.max(0, Math.min(1, pg.actual / pg.max)) : 0;
+  const tintaPG = fraccion > 0.5 ? colores.exito : fraccion > 0.2 ? '#d69a2d' : colores.peligro;
+  const anchoBarra = Math.max(lado * 0.84, 34 / escala);
+
   return (
     <Group
       ref={nodo}
@@ -473,63 +716,91 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
       draggable={movible}
       onMouseDown={onSeleccionar}
       onTap={onSeleccionar}
-      onDragStart={(e) => e.target.moveToTop()}
+      onMouseEnter={(e) => cursor(e, movible ? 'grab' : 'pointer')}
+      onMouseLeave={(e) => cursor(e, '')}
+      onDragStart={(e) => { e.target.moveToTop(); setLevantada(true); cursor(e, 'grabbing'); onEmpezar(); }}
       onDragMove={(e) => { const p = e.target.getStage()?.getPointerPosition(); if (p) onArrastrar(p.x, p.y); }}
       onDragEnd={(e) => {
         const p = e.target.getStage()?.getPointerPosition();
+        setLevantada(false);
+        cursor(e, movible ? 'grab' : 'pointer');
         // Vuelve a su casilla: si la sala acepta el movimiento, lo recorre desde ahí
         e.target.position(enCasilla(token));
         if (p) onSoltar(p.x, p.y);
       }}
     >
-      {/* Su turno: un manchón de marcatextos debajo */}
-      {enTurno && <Circle x={radio} y={radio} radius={radio + 9} fill={colores.marca} opacity={0.55} listening={false} />}
+      {/* Su turno: un manchón de marcatextos debajo, con borde irregular */}
+      {enTurno && (
+        <Shape listening={false} fill={colores.marca} opacity={0.6}
+          sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio + 11, semilla + 3, 0.16); ctx.fillShape(forma); }} />
+      )}
       {seleccionado && (
         <Shape listening={false} stroke={colores.acento} strokeWidth={grosor * 0.8} dash={[6, 5]}
-          sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio + 6, semilla + 7); ctx.strokeShape(forma); }} />
+          sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio + 7, semilla + 7); ctx.strokeShape(forma); }} />
       )}
-      <Shape
-        fill={colores.superficie}
-        stroke={tinta}
-        strokeWidth={grosor}
-        lineCap="round"
-        sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio - grosor, semilla); ctx.fillStrokeShape(forma); }}
-      />
-      {imagen ? (
-        <Group clipFunc={(ctx) => { ctx.arc(radio, radio, radio - grosor * 2, 0, Math.PI * 2); }}>
-          <ImagenKonva image={imagen} {...cubrir(imagen, lado)} />
-        </Group>
-      ) : (
-        <Text
-          width={lado}
-          height={lado}
-          align="center"
-          verticalAlign="middle"
-          text={token.nombre.slice(0, 1).toUpperCase()}
-          fontSize={lado * 0.42}
-          fontFamily="Shantell Sans, cursive"
-          fontStyle="bold"
-          fill={tinta}
-        />
-      )}
-      <Text
-        y={lado + 4}
-        x={-celda}
-        width={lado + celda * 2}
-        align="center"
-        text={token.nombre}
-        fontSize={letraNombre}
-        fontFamily="Shantell Sans, cursive"
-        fill={colores.texto}
-        listening={false}
-      />
+      <Group x={radio} y={radio} offsetX={radio} offsetY={radio} scaleX={levantada ? 1.08 : 1} scaleY={levantada ? 1.08 : 1}>
+        {/* La pieza de cartón: papel con sombra sobre la mesa (más sombra si está levantada) */}
+        <Circle x={radio} y={radio} radius={radio - grosor * 0.5} fill={colores.superficie}
+          shadowColor={colores.sombra} shadowBlur={levantada ? 18 : 7} shadowOffsetX={levantada ? 4 : 1} shadowOffsetY={levantada ? 12 : 3}
+          shadowOpacity={levantada ? 0.55 : 0.4} />
+        {!imagen && <Circle x={radio} y={radio} radius={radio - grosor} fill={tinta} opacity={0.1} listening={false} />}
+        {imagen ? (
+          <Group clipFunc={(ctx) => { ctx.arc(radio, radio, radio - grosor * 1.6, 0, Math.PI * 2); }}>
+            <ImagenKonva image={imagen} {...cubrir(imagen, lado)} />
+          </Group>
+        ) : (
+          <Text width={lado} height={lado} align="center" verticalAlign="middle" text={token.nombre.slice(0, 1).toUpperCase()}
+            fontSize={lado * 0.44} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={tinta} listening={false} />
+        )}
+        {/* El borde a tinta, en dos pasadas apenas corridas */}
+        <Shape listening={false} stroke={tinta} strokeWidth={grosor} lineCap="round" lineJoin="round"
+          sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio - grosor, semilla); ctx.strokeShape(forma); }} />
+        <Shape listening={false} stroke={tinta} strokeWidth={grosor * 0.55} opacity={0.5} lineCap="round"
+          sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio + 0.8, radio - 0.6, radio - grosor * 1.9, semilla + 11); ctx.strokeShape(forma); }} />
+        {/* Los enemigos llevan cuatro muescas, para distinguirlos sin depender del color */}
+        {token.tipo === 'enemigo' && (
+          <Shape listening={false} stroke={tinta} strokeWidth={grosor * 0.9} lineCap="round"
+            sceneFunc={(ctx, forma) => {
+              ctx.beginPath();
+              for (let k = 0; k < 4; k++) {
+                const a = Math.PI / 4 + (k * Math.PI) / 2;
+                ctx.moveTo(radio + Math.cos(a) * (radio - grosor * 0.2), radio + Math.sin(a) * (radio - grosor * 0.2));
+                ctx.lineTo(radio + Math.cos(a) * (radio + grosor * 1.6), radio + Math.sin(a) * (radio + grosor * 1.6));
+              }
+              ctx.strokeShape(forma);
+            }} />
+        )}
+      </Group>
+      {/* PG: barra rayada a lápiz justo debajo */}
       {pg && (
-        <Group y={lado + 6 + letraNombre * 1.2} x={lado * 0.1} listening={false}>
-          <Rect width={lado * 0.8} height={altoBarra} fill={colores.superficie} stroke={colores.texto} strokeWidth={1 / escala} />
-          <Rect width={lado * 0.8 * Math.max(0, Math.min(1, pg.actual / pg.max))} height={altoBarra}
-            fill={pg.actual / pg.max > 0.5 ? '#3f8f57' : pg.actual / pg.max > 0.2 ? '#d69a2d' : colores.peligro} />
-        </Group>
+        <Shape x={radio - anchoBarra / 2} y={lado + 3} listening={false}
+          sceneFunc={(ctx) => {
+            const w = anchoBarra;
+            const h = altoBarra;
+            ctx.fillStyle = colores.superficie;
+            ctx.fillRect(0, 0, w, h);
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, w * fraccion, h);
+            ctx.clip();
+            ctx.strokeStyle = tintaPG;
+            ctx.lineWidth = Math.max(1.2, h * 0.28);
+            ctx.beginPath();
+            for (let x = -h; x < w + h; x += h * 0.55) { ctx.moveTo(x, h); ctx.lineTo(x + h, 0); }
+            ctx.stroke();
+            ctx.restore();
+            ctx.strokeStyle = colores.texto;
+            ctx.lineWidth = 1.2 / escala;
+            ctx.strokeRect(0, 0, w, h);
+          }} />
       )}
+      {/* El nombre en una etiqueta de papel */}
+      <Label x={radio} y={lado + (pg ? altoBarra + 6 : 4)} listening={false}>
+        <Tag fill={colores.superficie} opacity={0.94} cornerRadius={3 / escala} pointerDirection="up" pointerWidth={8 / escala} pointerHeight={4 / escala}
+          shadowColor={colores.sombra} shadowBlur={4 / escala} shadowOffsetY={1.5 / escala} shadowOpacity={0.25} />
+        <Text text={token.nombre} fontSize={letraNombre} fontFamily="Shantell Sans, cursive" fontStyle={enTurno ? 'bold' : 'normal'}
+          fill={token.tipo === 'enemigo' ? colores.peligro : colores.texto} padding={letraNombre * 0.28} />
+      </Label>
       {/* Condiciones: un post-it pegado arriba a la derecha */}
       {token.condiciones && token.condiciones.length > 0 && (
         <Label x={lado * 0.55} y={-letraCondicion * 1.9} rotation={4} listening={false}>
@@ -541,6 +812,14 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
             padding={letraCondicion * 0.3}
             fill="#2b2a22"
           />
+        </Label>
+      )}
+      {/* La primera vez en tu turno: cómo se mueve */}
+      {pista && (
+        <Label x={radio} y={-grosor * 3} listening={false}>
+          <Tag fill={colores.acento} cornerRadius={4 / escala} pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
+          <Text text="Arrástrame para moverte" fontSize={Math.max(celda * 0.17, 12.5 / escala)} fontFamily="Shantell Sans, cursive" fontStyle="bold"
+            fill={colores.sobreAcento} padding={Math.max(celda * 0.17, 12.5 / escala) * 0.4} />
         </Label>
       )}
     </Group>
@@ -565,7 +844,7 @@ function pgVisible(estado: EstadoSala, token: Token, quien: Sesion): { actual: n
 }
 
 // Un círculo como hecho a mano con bolígrafo: radio con un leve temblor y el trazo pasándose un poco al cerrar
-function trazoAMano(ctx: Konva.Context, cx: number, cy: number, r: number, semilla: number) {
+function trazoAMano(ctx: Konva.Context, cx: number, cy: number, r: number, semilla: number, temblor = 0.06) {
   const puntos = 22;
   const azar = (i: number) => {
     const x = Math.sin(semilla * 12.9898 + i * 78.233) * 43758.5453;
@@ -575,7 +854,7 @@ function trazoAMano(ctx: Konva.Context, cx: number, cy: number, r: number, semil
   ctx.beginPath();
   for (let i = 0; i <= puntos + 1; i++) {
     const angulo = inicio + (i / puntos) * Math.PI * 2;
-    const radio = r * (1 + (azar(i) - 0.5) * 0.06);
+    const radio = r * (1 + (azar(i) - 0.5) * temblor);
     const x = cx + Math.cos(angulo) * radio;
     const y = cy + Math.sin(angulo) * radio;
     if (i === 0) ctx.moveTo(x, y);

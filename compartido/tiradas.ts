@@ -1,7 +1,8 @@
 import { bonoDeDano, calcular, HABILIDADES, leerDados, leerExpresion, SALVACIONES, signo, type Personaje } from '../reglas/pf2e';
 import { todasLasAptitudes } from '../reglas/aptitudes';
-import type { Condicion } from '../reglas/condiciones';
-import type { QueTirar } from './sala';
+import { penalizaciones, type Condicion, type Contexto } from '../reglas/condiciones';
+import { penalizacionesAtaque } from '../reglas/criaturas';
+import type { QueTirar, Token } from './sala';
 
 export interface QueSeTira {
   etiqueta: string;
@@ -81,6 +82,48 @@ export function queSeTira(p: Personaje, que: QueTirar, condiciones: Condicion[] 
       return null;
     }
     case 'libre':
+    case 'criatura':
+    case 'dano-criatura':
+    case 'chequeo-criatura':
+      return null;
+  }
+}
+
+// Lo que tira una criatura del GM. Sus números ya vienen sumados; se agregan la penalización por ataque
+// múltiple y lo que quiten sus condiciones (Frightened, Sickened…), igual que a un personaje.
+export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'percepcion' | 'criatura'>, que: QueTirar): QueSeTira | null {
+  const cr = token.criatura;
+  if (!cr) return null;
+  const condiciones = token.condiciones ?? [];
+  const resta = (contexto: Contexto) => penalizaciones(condiciones, contexto).reduce((s, x) => s + x.valor, 0);
+  const d20 = (etiqueta: string, modificador: number, esAtaque = false): QueSeTira =>
+    ({ etiqueta, dados: [{ cantidad: 1, caras: 20 }], modificador, multiplicador: 1, esAtaque });
+  switch (que.tipo) {
+    case 'criatura': {
+      const a = cr.ataques.find((x) => x.id === que.ataque);
+      if (!a || ![0, 1, 2].includes(que.numero)) return null;
+      const cual = ['', ' (2.º ataque)', ' (3.º ataque)'][que.numero];
+      const atributo = a.distancia && a.distancia > 10 ? 'dex' : 'str';
+      return d20(`${a.nombre}${cual}`, penalizacionesAtaque(a)[que.numero] + resta({ tipo: 'ataque', atributo }), true);
+    }
+    case 'dano-criatura': {
+      const a = cr.ataques.find((x) => x.id === que.ataque);
+      const leida = a && leerExpresion(a.dano);
+      if (!a || !leida) return null;
+      return {
+        etiqueta: `${que.critico ? 'Daño crítico' : 'Daño'} de ${a.nombre}${a.tipoDano ? ` (${a.tipoDano})` : ''}`,
+        dados: leida.dados,
+        modificador: leida.modificador + resta({ tipo: 'dano', conFuerza: !(a.distancia && a.distancia > 10) }),
+        multiplicador: que.critico ? 2 : 1,
+        esAtaque: false,
+      };
+    }
+    case 'chequeo-criatura': {
+      if (que.clave === 'percepcion') return d20('Perception', (token.percepcion ?? 0) + resta({ tipo: 'chequeo', atributo: 'wis' }));
+      const s = SALVACIONES.find((x) => x.clave === que.clave);
+      return s ? d20(s.nombre, cr.salvaciones[s.clave] + resta({ tipo: 'chequeo', atributo: s.atributo, salvacion: s.clave })) : null;
+    }
+    default:
       return null;
   }
 }

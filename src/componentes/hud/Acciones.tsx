@@ -1,7 +1,7 @@
 import { CrosshairIcon, XIcon } from '@phosphor-icons/react';
 import { GRUPOS, grupoDe } from '../../../reglas/aptitudes';
 import { signo, type Valor } from '../../../reglas/pf2e';
-import type { Fila, Seccion } from './secciones';
+import { TECLAS, type Fila, type Seccion } from './secciones';
 import { CostoAccion, RayaAMano, Rombo, Tecla } from './piezas';
 
 // Cuántas acciones le faltan para poder usar una fila en su turno (0 si le alcanza o si no es su turno)
@@ -12,7 +12,7 @@ export function faltan(fila: Fila, libres: number | null): number {
 }
 
 // La lista de una sección, como renglones de cuaderno. La fila que probablemente toca va con marcatextos.
-export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null, onElegir }: {
+export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null, onElegir, onAsomar }: {
   seccion: Seccion;
   elegida: string | null;
   marcada: string | null;
@@ -20,9 +20,11 @@ export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null
   // Acciones que le quedan en su turno; null fuera de su turno
   libres?: number | null;
   onElegir: (fila: Fila) => void;
+  // Al pasar el cursor por una fila (para mostrar su alcance en el tablero)
+  onAsomar?: (fila: Fila | null) => void;
 }) {
   return (
-    <ul className="flex flex-col">
+    <ul className="flex flex-col" onMouseLeave={() => onAsomar?.(null)}>
       {seccion.filas.map((fila, i) => {
         const sinAcciones = faltan(fila, libres) > 0;
         const agotada = (fila.tipo === 'aptitud' && !fila.disp.puede) || sinAcciones;
@@ -33,6 +35,8 @@ export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null
               className={`group grid min-h-[44px] w-full items-center gap-2 border-b border-dashed border-borde px-1 py-1 text-left transition-colors hover:bg-acento/[0.06] pointer-fine:min-h-[34px] pointer-fine:py-0.5 ${teclas ? 'grid-cols-[52px_minmax(0,1fr)_auto_auto]' : 'grid-cols-[48px_minmax(0,1fr)_auto]'} ${abierta ? 'bg-acento/[0.08]' : ''}`}
               aria-expanded={abierta}
               onClick={() => onElegir(fila)}
+              onMouseEnter={() => onAsomar?.(fila)}
+              onFocus={() => onAsomar?.(fila)}
             >
               <span className="flex justify-center">
                 {fila.tipo === 'golpe' ? <Rombo className="size-3.5" tachado={sinAcciones} lleno={!sinAcciones} /> : <CostoAccion costo={fila.aptitud.costo} tachado={sinAcciones} />}
@@ -82,8 +86,10 @@ export interface AccionesDetalle {
 }
 
 // Lo que se ve al tocar una acción: qué hace, cuánto cuesta, cómo se recupera, la cuenta y los botones
-export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, enCombate, acciones, antes = [], onAbrir }: {
+export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, enCombate, acciones, antes = [], onAbrir, atajo }: {
   fila: Fila;
+  // En qué tecla está (o null) y cómo ponerla en otra
+  atajo?: { actual: number | null; onAsignar: (i: number) => void };
   // Lo que se puede hacer en lugar de un Strike normal (Power Attack, Sudden Charge…)
   antes?: Fila[];
   onAbrir?: (clave: string) => void;
@@ -101,7 +107,7 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
   // No se ofrece lo que no alcanza a pagar en su turno
   const falta = faltan(fila, libres);
   const textoFalta = libres === 0 ? 'Sin acciones este turno' : `Te ${falta === 1 ? 'falta 1 acción' : `faltan ${falta} acciones`}`;
-  const apuntable = fila.tipo === 'golpe' || fila.aptitud.tirada?.tipo === 'ataque-conjuro';
+  const apuntable = fila.tipo === 'golpe' || fila.aptitud.tirada?.tipo === 'ataque-conjuro' || fila.aptitud.tirada?.tipo === 'golpe' || (fila.aptitud.tirada?.tipo === 'skill' && !!fila.aptitud.distancia);
 
   return (
     <div className="flex flex-col gap-3">
@@ -140,7 +146,7 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
       {apuntable && (
         <p className={`flex items-center gap-2 text-[13.5px] ${objetivo ? '' : 'text-texto-suave'}`}>
           <CrosshairIcon size={17} aria-hidden className="shrink-0" />
-          {objetivo ? <span>Contra <strong>{objetivo.nombre}</strong>: la mesa te dice si le das.</span> : 'Toca un enemigo en el tablero para apuntarle.'}
+          {objetivo ? <span>Contra <strong>{objetivo.nombre}</strong>: la mesa te dice si le das.</span> : 'Sin objetivo: al usarla, eliges a quién en el tablero (verás hasta dónde llegas).'}
         </p>
       )}
 
@@ -200,6 +206,17 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
         </button>
       )}
       {fila.tipo === 'golpe' && dano && <p className="-mt-1 text-center text-[12.5px] text-texto-suave">Daño: {dano}</p>}
+      {atajo && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-dashed border-borde pt-2.5 text-[13px] text-texto-suave">
+          <span className="mr-1 font-titulo">{atajo.actual === null ? 'Ponla en un atajo:' : 'Atajo:'}</span>
+          {TECLAS.map((t, i) => (
+            <button key={t} aria-pressed={atajo.actual === i} title={`Usar la tecla ${t} para esto`} onClick={() => atajo.onAsignar(i)}
+              className={`flex h-8 min-w-8 items-center justify-center rounded-[5px] border-[1.5px] font-titulo text-[13px] font-semibold transition ${atajo.actual === i ? 'border-acento bg-acento text-sobre-acento' : 'border-texto-suave/40 hover:border-acento hover:text-acento'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { personajeNuevo, type Personaje } from '../../reglas/pf2e';
 import type { ResumenPersonaje } from '../../compartido/sala';
 import type { Sala } from '../conexion';
 import { EditorFicha, EntradaCodigo } from './EditorFicha';
+import { Creador } from './creador/Creador';
 import { claseBotonPrincipal } from './ui';
 
 const MENSAJES: Record<string, string> = {
@@ -21,6 +22,8 @@ export function mensajeRechazo(motivo: string | null): string | null {
 export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
   const [elegido, setElegido] = useState<string | null>(null);
   const [creando, setCreando] = useState<Personaje | null>(null);
+  // Con el creador guiado, o copiando una ficha que ya existe (a mano)
+  const [aMano, setAMano] = useState(false);
   const [codigo, setCodigo] = useState('');
   const error = mensajeRechazo(sala.rechazo);
 
@@ -30,6 +33,14 @@ export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
     sala.limpiarRechazo();
   }, [elegido]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (creando && !aMano) {
+    return (
+      <Creador salaId={salaId} id={creando.id} error={error}
+        onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }}
+        onAMano={() => setAMano(true)}
+        onGuardar={(p, codigoNuevo) => sala.nuevoPersonaje(p, codigoNuevo)} />
+    );
+  }
   if (creando) {
     return (
       <EditorFicha
@@ -37,7 +48,7 @@ export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
         inicial={creando}
         modo="crear"
         error={error}
-        onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }}
+        onCancelar={() => { setCreando(null); setAMano(false); sala.limpiarRechazo(); }}
         onGuardar={(p, codigoNuevo) => sala.nuevoPersonaje(p, codigoNuevo)}
       />
     );
