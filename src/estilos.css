@@ -1,35 +1,54 @@
 @import 'tailwindcss';
 
-/* Temas. Cada uno es solo un juego de variables: agregar otro tema es agregar un bloque. */
+/* Cuaderno de mazmorras. Cada tema es solo un juego de variables: agregar otro tema es agregar un bloque.
+   Cuaderno (claro): papel blanco frío con cuadrícula azul, lápiz, bolígrafo azul, rojo y marcatextos.
+   Noche (oscuro): el mismo cuaderno con tapa negra y tinta de gel, para jugar con poca luz. */
 :root,
-:root[data-tema='taberna'] {
+:root[data-tema='cuaderno'] {
   color-scheme: light;
-  --fondo: #f3e9d2;
-  --superficie: #fbf5e6;
-  --superficie-2: #eadbb8;
-  --borde: #c9ae7c;
-  --texto: #3b2a1a;
-  --texto-suave: #6e5536;
-  --acento: #8e3b2e;
-  --sobre-acento: #fff8ec;
-  --peligro: #a8382f;
-  --tablero: #e8dcc0;
-  --cuadricula: rgba(59, 42, 26, 0.35);
+  --fondo: #f8f9f5;
+  --superficie: #fbfcfd;
+  --superficie-2: #eef1f6;
+  --borde: #c9d3e1;
+  --texto: #33373e;
+  --texto-suave: #646a74;
+  --acento: #2450b0;
+  --acento-suave: #5f7fc6;
+  --sobre-acento: #ffffff;
+  --peligro: #c8392b;
+  --exito: #2e7d4a;
+  --marca: #f7e14a;
+  --sobre-marca: #33373e;
+  /* Post-it de condición: rosa, para no confundirse con el marcatextos de "lo que toca" */
+  --postit: #f8c9d6;
+  --postit-rosa: #f8c6d4;
+  --cinta: rgba(246, 163, 189, 0.6);
+  --tablero: #f8f9f5;
+  --cuadricula: rgba(122, 156, 200, 0.32);
+  --sombra: rgba(40, 50, 70, 0.45);
 }
 
-:root[data-tema='obsidiana'] {
+:root[data-tema='noche'] {
   color-scheme: dark;
-  --fondo: #14121a;
-  --superficie: #1d1a25;
-  --superficie-2: #2a2433;
-  --borde: #3a3245;
-  --texto: #e9e2cf;
-  --texto-suave: #a79fb3;
-  --acento: #d9b26a;
-  --sobre-acento: #1a1408;
-  --peligro: #e0675d;
-  --tablero: #241e2c;
-  --cuadricula: rgba(217, 178, 106, 0.32);
+  --fondo: #14171d;
+  --superficie: #1c2028;
+  --superficie-2: #252a34;
+  --borde: #343b48;
+  --texto: #dfe3ea;
+  --texto-suave: #9aa3b2;
+  --acento: #8fb0ff;
+  --acento-suave: #6c8bd6;
+  --sobre-acento: #10131a;
+  --peligro: #ff7f70;
+  --exito: #6fd296;
+  --marca: #e8d64a;
+  --sobre-marca: #14171d;
+  --postit: #d9a2b2;
+  --postit-rosa: #d99aad;
+  --cinta: rgba(217, 154, 173, 0.45);
+  --tablero: #14171d;
+  --cuadricula: rgba(143, 176, 255, 0.13);
+  --sombra: rgba(0, 0, 0, 0.6);
 }
 
 @theme inline {
@@ -40,11 +59,17 @@
   --color-texto: var(--texto);
   --color-texto-suave: var(--texto-suave);
   --color-acento: var(--acento);
+  --color-acento-suave: var(--acento-suave);
   --color-sobre-acento: var(--sobre-acento);
   --color-peligro: var(--peligro);
+  --color-exito: var(--exito);
+  --color-marca: var(--marca);
+  --color-sobre-marca: var(--sobre-marca);
+  --color-postit: var(--postit);
+  --color-postit-rosa: var(--postit-rosa);
   --color-tablero: var(--tablero);
-  --font-titulo: 'Alegreya', Georgia, serif;
-  --font-sans: 'Alegreya Sans', system-ui, sans-serif;
+  --font-titulo: 'Shantell Sans', 'Comic Neue', cursive;
+  --font-sans: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
 }
 
 html,
@@ -55,13 +80,258 @@ body,
 
 body {
   margin: 0;
-  background: var(--fondo);
+  background-color: var(--fondo);
+  /* La cuadrícula del cuaderno, de 24px, bajo toda la app */
+  background-image:
+    linear-gradient(var(--cuadricula) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cuadricula) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--texto);
   font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   -webkit-tap-highlight-color: transparent;
+  accent-color: var(--acento);
+}
+
+::selection {
+  background: var(--marca);
+  color: var(--sobre-marca);
 }
 
 :focus-visible {
   outline: 2px solid var(--acento);
   outline-offset: 2px;
+  border-radius: 6px;
+}
+
+input,
+select,
+textarea {
+  caret-color: var(--acento);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--borde) transparent;
+}
+
+@layer components {
+  /* Subrayado de marcatextos: solo para "lo que toca ahora" */
+  .marcatextos {
+    background: linear-gradient(174deg, transparent 20%, var(--marca) 20% 86%, transparent 86%);
+    color: var(--sobre-marca);
+    padding-inline: 0.25em;
+    margin-inline: -0.25em;
+    box-decoration-break: clone;
+  }
+
+  /* Hoja arrancada: papel apoyado sobre el cuaderno, con borde superior de perforación */
+  .hoja {
+    position: relative;
+    background-color: var(--superficie);
+    background-image: linear-gradient(color-mix(in srgb, var(--cuadricula) 70%, transparent) 1px, transparent 1px);
+    background-size: 100% 30px;
+    background-position: 0 14px;
+    box-shadow: 0 22px 40px -18px var(--sombra), 0 1px 2px color-mix(in srgb, var(--sombra) 30%, transparent);
+  }
+  .hoja::before {
+    content: '';
+    position: absolute;
+    inset: -7px 0 auto 0;
+    height: 8px;
+    background: radial-gradient(circle at 6px -2px, transparent 5px, var(--superficie) 5.5px) 0 0 / 12px 8px repeat-x;
+  }
+
+  /* El papel del post-it va inclinado por detrás; el texto queda derecho para que se lea nítido */
+  .postit {
+    position: relative;
+    isolation: isolate;
+    color: #2b2a22;
+  }
+  .postit::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--postit);
+    transform: rotate(var(--giro, 0deg));
+    box-shadow: 0 8px 16px -8px var(--sombra);
+  }
+
+  .tarjeta {
+    background: var(--superficie);
+    box-shadow: 0 16px 32px -16px var(--sombra), 0 1px 2px color-mix(in srgb, var(--sombra) 30%, transparent);
+  }
+
+  /* Botón de bolígrafo: bordes un poco irregulares, como dibujado */
+  .boli {
+    border-radius: 10px 13px 9px 12px;
+  }
+}
+
+/* Un aviso entra deslizándose apenas; su línea de tiempo se vacía mientras dura */
+@keyframes aviso-entra {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+@keyframes aviso-tiempo {
+  to {
+    transform: scaleX(0);
+  }
+}
+.aviso-entra {
+  animation: aviso-entra 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.aviso-tiempo {
+  animation: aviso-tiempo linear forwards;
+}
+
+/* Efectos del tablero: el trazo se dibuja, el impacto estalla y el texto sube y se borra */
+@keyframes efecto-trazo {
+  from {
+    stroke-dashoffset: 100;
+  }
+  70% {
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+@keyframes efecto-impacto {
+  0%,
+  18% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  32% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+@keyframes efecto-sube {
+  0%,
+  20% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-34px);
+  }
+}
+.efecto-trazo {
+  stroke-dasharray: 100;
+  animation: efecto-trazo 1.1s cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+}
+.efecto-impacto {
+  transform-box: view-box;
+  animation: efecto-impacto 1.2s ease-out forwards;
+}
+.efecto-sube {
+  transform-box: fill-box;
+  animation: efecto-sube 1.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* El dado rueda un instante antes de mostrar el resultado */
+@keyframes dado-rueda {
+  from {
+    transform: rotate(0deg) scale(0.9);
+  }
+  to {
+    transform: rotate(540deg) scale(1);
+  }
+}
+@keyframes resultado-pop {
+  from {
+    transform: scale(1.35);
+  }
+}
+.dado-rueda {
+  animation: dado-rueda 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.resultado-pop {
+  display: inline-block;
+  animation: resultado-pop 320ms cubic-bezier(0.2, 0.8, 0.2, 1.4);
+}
+
+/* Un rombo de acción que se acaba de gastar: se aprieta y queda tachado */
+@keyframes rombo-gastado {
+  0% {
+    transform: scale(1.5) rotate(-12deg);
+  }
+  60% {
+    transform: scale(0.9);
+  }
+}
+.rombo-gastado {
+  display: inline-flex;
+  animation: rombo-gastado 380ms cubic-bezier(0.2, 0.8, 0.2, 1.3);
+}
+.rombo-libre {
+  display: inline-flex;
+}
+
+/* La huella punteada de un movimiento: aparece y se va borrando */
+@keyframes efecto-rastro {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.efecto-rastro {
+  animation: efecto-rastro 2.2s ease-out forwards;
+}
+
+/* El sello de "turno de…" que cae sobre el tablero */
+@keyframes sello-turno {
+  0% {
+    opacity: 0;
+    transform: scale(1.6) rotate(-8deg);
+  }
+  14% {
+    opacity: 1;
+    transform: scale(0.96) rotate(-4deg);
+  }
+  20% {
+    transform: scale(1) rotate(-4deg);
+  }
+  80% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1) rotate(-4deg);
+  }
+}
+.sello-turno {
+  animation: sello-turno 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

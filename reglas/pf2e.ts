@@ -2,6 +2,7 @@
 // Cada número calculado trae su desglose (`partes`), para que la interfaz pueda explicar de dónde sale.
 
 import { penalizaciones, type Condicion, type Contexto } from './condiciones';
+import { esAptitudValida, esRecursosValido, type Aptitud, type Lanzador, type Recursos } from './aptitudes';
 
 export type Atributo = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 
@@ -68,6 +69,8 @@ export interface Golpe {
   sumarFuerza: boolean;
   // Las armas agile tienen menos penalización por ataque múltiple (−4/−8 en vez de −5/−10)
   agil: boolean;
+  // A distancia: hasta dónde llega, en pies. Sin valor es cuerpo a cuerpo (5 ft, al lado)
+  distancia?: number;
 }
 
 export interface Personaje {
@@ -90,6 +93,10 @@ export interface Personaje {
   habilidades: Record<ClaveHabilidad, Rango>;
   golpes: Golpe[];
   notas: string;
+  // Conjuros, dotes y objetos propios (las acciones básicas vienen precargadas). Opcional en fichas viejas.
+  aptitudes?: Aptitud[];
+  lanzador?: Lanzador | null;
+  recursos?: Recursos;
 }
 
 export interface Parte {
@@ -109,6 +116,8 @@ export interface FichaCalculada {
   salvaciones: Record<ClaveSalvacion, Valor>;
   habilidades: Record<ClaveHabilidad, Valor>;
   golpes: { ataque: Valor; penalizaciones: [number, number, number]; dano: string }[];
+  // Solo si lanza conjuros
+  conjuros: { ataque: Valor; cd: Valor } | null;
 }
 
 export function bonoCompetencia(rango: Rango, nivel: number): number {
@@ -176,7 +185,20 @@ export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalc
     };
   });
 
-  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion), salvaciones, habilidades, golpes };
+  const l = p.lanzador;
+  const conjuros = l
+    ? (() => {
+      const ataque = valor([
+        parteAtributo(p, l.atributo),
+        parteCompetencia(l.rango, p.nivel),
+        ...con({ tipo: 'ataque', atributo: l.atributo }),
+      ]);
+      // La CD es 10 + lo mismo que el ataque
+      return { ataque, cd: valor([{ etiqueta: 'Base', valor: 10 }, ...ataque.partes]) };
+    })()
+    : null;
+
+  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion), salvaciones, habilidades, golpes, conjuros };
 }
 
 // Lo que se suma a los dados de daño de un arma
@@ -285,7 +307,18 @@ export function esPersonajeValido(valor: unknown): valor is Personaje {
     && esTexto(armadura.nombre, 60) && esRango(armadura.rango) && esEntero(armadura.bonoObjeto, 0, 10)
     && (armadura.topeDex === null || esEntero(armadura.topeDex, 0, 10))
     && Array.isArray(p.golpes) && p.golpes.length <= 20 && p.golpes.every(esGolpeValido)
-    && esTexto(p.notas, 5000);
+    && esTexto(p.notas, 5000)
+    && (p.aptitudes === undefined || (Array.isArray(p.aptitudes) && p.aptitudes.length <= 80
+      && p.aptitudes.every((a) => esAptitudValida(a, (c) => HABILIDADES.some((h) => h.clave === c), (e) => leerExpresion(e) !== null))))
+    && (p.lanzador === undefined || p.lanzador === null || esLanzadorValido(p.lanzador))
+    && (p.recursos === undefined || esRecursosValido(p.recursos));
+}
+
+function esLanzadorValido(valor: unknown): boolean {
+  if (typeof valor !== 'object' || valor === null) return false;
+  const l = valor as Record<string, unknown>;
+  return ['arcane', 'divine', 'occult', 'primal'].includes(l.tradicion as string)
+    && typeof l.atributo === 'string' && l.atributo in ATRIBUTOS && esRango(l.rango);
 }
 
 function esGolpeValido(valor: unknown): boolean {
@@ -296,7 +329,8 @@ function esGolpeValido(valor: unknown): boolean {
     && esRango(g.rango) && esEntero(g.bonoObjeto, 0, 4)
     && typeof g.dados === 'string' && leerDados(g.dados) !== null
     && esTexto(g.tipoDano, 30)
-    && typeof g.sumarFuerza === 'boolean' && typeof g.agil === 'boolean';
+    && typeof g.sumarFuerza === 'boolean' && typeof g.agil === 'boolean'
+    && (g.distancia === undefined || esEntero(g.distancia, 5, 1000));
 }
 
 function esTexto(t: unknown, max: number): boolean {

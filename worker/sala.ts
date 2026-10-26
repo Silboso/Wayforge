@@ -1,10 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
 import { calcular, gradoDeExito, leerExpresion } from '../reglas/pf2e';
 import {
-  aplicar, caDeToken, casillaLibre, esAccionValida, estadoInicial, puede, resumen, tokenEnTurno,
-  type Accion, type Combatiente, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
+  aplicar, caDeToken, casillaLibre, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, planMovimiento, puede,
+  puedeMoverToken, reaccionesPara, resumen, tokenDePersonaje, tokenEnTurno,
+  type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
 } from '../compartido/sala';
 import { queSeTira, type QueSeTira } from '../compartido/tiradas';
+import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
 
 // Lo que la sala recuerda de cada conexión (sobrevive a la hibernación)
 interface Conexion {
@@ -104,9 +106,15 @@ export class Sala extends DurableObject<Env> {
       case 'accion':
         return this.accion(ws, conexion.quien, m.accion);
       case 'tirar':
-        return this.tirar(conexion.quien, m);
+        return this.tirar(conexion.quien, m, undefined, ws);
+      case 'mover':
+        return this.mover(ws, conexion.quien, m);
+      case 'usar':
+        return this.usar(ws, conexion.quien, m);
       case 'iniciar-combate':
         return this.iniciarCombate(conexion.quien, m);
+      case 'responder':
+        return this.responder(conexion.quien, m.esperaId, m.aptitudId);
     }
   }
 
@@ -207,8 +215,9 @@ export class Sala extends DurableObject<Env> {
     if (accion.tipo === 'editar-personaje' && accion.cambios.nombre) this.repartirPresentes();
   }
 
-  // La sala tira los dados: así nadie puede inventar un 20
-  private async tirar(quien: Sesion, m: Record<string, unknown>) {
+  // La sala tira los dados: así nadie puede inventar un 20.
+  // Si el ataque va contra un personaje que tiene una reacción para "cuando te atacan", primero le pregunta.
+  private async tirar(quien: Sesion, m: Record<string, unknown>, reaccion?: { bonoCA: number; nombre: string }, ws?: WebSocket, validado = false) {
     if (quien.rol === 'visitante') return;
     const que = m.que as QueTirar | null;
     if (typeof que !== 'object' || que === null || typeof que.tipo !== 'string') return;
@@ -217,7 +226,19 @@ export class Sala extends DurableObject<Env> {
     const personajeId = quien.rol === 'jugador' ? quien.personajeId : typeof m.personajeId === 'string' ? m.personajeId : undefined;
     const personaje = personajeId ? this.estado.personajes[personajeId] : undefined;
     if (personajeId && !personaje) return;
-    const tokenPropio = personaje && Object.values(this.estado.tokens).find((t) => t.personajeId === personaje.id);
+    const tokenPropio = personaje && tokenDePersonaje(this.estado, personaje.id);
+
+    // Un Strike del jugador sigue las reglas: en su turno, con una acción, y llegando al objetivo
+    if (!validado && quien.rol === 'jugador' && personaje && que.tipo === 'ataque') {
+      const motivo = motivoParaActuar(this.estado, personaje.id, 1);
+      if (motivo) return ws && this.negar(ws, motivo);
+      const golpe = personaje.golpes.find((g) => g.id === que.golpe);
+      const objetivo = typeof que.objetivo === 'string' ? this.estado.tokens[que.objetivo] : undefined;
+      if (golpe && objetivo && tokenPropio) {
+        const lejos = motivoAlcance(tokenPropio, objetivo, golpe.distancia ?? 5);
+        if (lejos) return ws && this.negar(ws, lejos);
+      }
+    }
 
     let plan: QueSeTira | null;
     let nombre = personaje?.nombre ?? 'GM';
@@ -228,38 +249,164 @@ export class Sala extends DurableObject<Env> {
       const etiqueta = typeof que.etiqueta === 'string' ? que.etiqueta.trim().slice(0, 40) : '';
       // El GM pone el nombre del enemigo como etiqueta: "Goblin · 1d20+7"
       if (!personaje && etiqueta) nombre = etiqueta;
-      plan = { etiqueta: personaje && etiqueta ? `${etiqueta} (${expresion})` : expresion, ...leida, multiplicador: 1, esAtaque: false };
+      // Un crítico de daño se duplica, también en las tiradas libres (el daño de un conjuro)
+      const critico = que.critico === true;
+      plan = {
+        etiqueta: `${personaje && etiqueta ? `${critico ? 'Crítico: ' : ''}${etiqueta} (${expresion})` : expresion}`,
+        ...leida, multiplicador: critico ? 2 : 1, esAtaque: false,
+      };
     } else {
       plan = personaje ? queSeTira(personaje, que, tokenPropio?.condiciones ?? []) : null;
     }
     if (!plan) return;
 
+    const esD20 = plan.dados.length === 1 && plan.dados[0]?.cantidad === 1 && plan.dados[0]?.caras === 20;
+    const objetivoId = 'objetivo' in que && typeof que.objetivo === 'string' ? que.objetivo : undefined;
+    const objetivoToken = objetivoId ? this.estado.tokens[objetivoId] : undefined;
+    // Quien tira sin personaje (el GM por un enemigo) se busca por el nombre que escribió, para dibujar el golpe
+    const autor = tokenPropio ?? Object.values(this.estado.tokens).find((t) => !t.personajeId && t.nombre.toLowerCase() === nombre.toLowerCase());
+
+    // Un ataque contra un personaje con reacción para "cuando te atacan": la mesa espera su respuesta
+    if (!reaccion && esD20 && objetivoToken?.personajeId && (plan.esAtaque || que.tipo === 'libre')) {
+      const sirven = reaccionesPara(this.estado, objetivoToken.personajeId, 'te-apuntan');
+      if (sirven.length) {
+        const espera: Espera = {
+          id: crypto.randomUUID(), atacante: nombre, etiqueta: plan.etiqueta, objetivoTokenId: objetivoToken.id,
+          personajeId: objetivoToken.personajeId, aptitudes: sirven.map((a) => a.id), vence: Date.now() + ESPERA_MS,
+        };
+        await this.ctx.storage.put(`solicitud:${espera.id}`, { quien, m });
+        await this.guardarYRepartir({ tipo: 'abrir-espera', espera });
+        await this.ctx.storage.setAlarm(espera.vence);
+        return;
+      }
+    }
+
     const dados = plan.dados.flatMap((d) => Array.from({ length: d.cantidad }, () => dado(d.caras)));
     const total = (dados.reduce((s, d) => s + d, 0) + plan.modificador) * plan.multiplicador;
-    const esD20 = dados.length === 1 && plan.dados[0]?.caras === 20;
 
     // Contra la CA de un objetivo: la sala dice el grado de éxito
-    const objetivoId = (que.tipo === 'ataque' || que.tipo === 'libre') && typeof que.objetivo === 'string' ? que.objetivo : undefined;
-    const objetivoToken = objetivoId ? this.estado.tokens[objetivoId] : undefined;
     const ca = objetivoToken && esD20 ? caDeToken(this.estado, objetivoToken) : null;
-
+    const cd = ca ? ca.total + (reaccion?.bonoCA ?? 0) : 0;
     const tirada: Tirada = {
       id: crypto.randomUUID(),
       quien: nombre,
-      etiqueta: plan.etiqueta,
+      etiqueta: reaccion?.nombre ? `${plan.etiqueta} · ${objetivoToken?.nombre} usó ${reaccion.nombre} (+${reaccion.bonoCA} CA)` : plan.etiqueta,
       dados,
       caras: plan.dados.length === 1 ? plan.dados[0]!.caras : 0,
       modificador: plan.modificador,
       total,
       cuando: Date.now(),
-      ...(objetivoToken && ca ? { objetivo: { nombre: objetivoToken.nombre, cd: ca.total, grado: gradoDeExito(total, dados[0]!, ca.total) } } : {}),
+      ...(personaje ? { personajeId: personaje.id } : {}),
+      ...(autor ? { autorTokenId: autor.id } : {}),
+      ...(objetivoToken
+        ? { objetivo: { nombre: objetivoToken.nombre, tokenId: objetivoToken.id, ...(ca ? { cd, grado: gradoDeExito(total, dados[0]!, cd) } : {}) } }
+        : {}),
     };
     await this.guardarYRepartir({ tipo: 'registrar-tirada', tirada });
 
-    // Un ataque en su turno gasta una acción y sube la penalización del siguiente
+    // Un ataque en su turno sube la penalización del siguiente (y un Strike gasta su acción)
     if (plan.esAtaque && tokenPropio && tokenEnTurno(this.estado)?.id === tokenPropio.id) {
-      await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: tokenPropio.id });
+      await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: tokenPropio.id, gastaAccion: que.tipo === 'ataque' });
     }
+  }
+
+  private negar(ws: WebSocket, motivo: string) {
+    enviar(ws, { tipo: 'negado', motivo });
+  }
+
+  // Mover un token: la sala calcula el camino (sin atravesar enemigos) y, en combate, gasta los Strides
+  private async mover(ws: WebSocket, quien: Sesion, m: Record<string, unknown>) {
+    const t = typeof m.tokenId === 'string' ? this.estado.tokens[m.tokenId] : undefined;
+    const x = m.x;
+    const y = m.y;
+    if (!t || !Number.isInteger(x) || !Number.isInteger(y)) return;
+    const destino = { x: x as number, y: y as number };
+    if (quien.rol === 'visitante' || !puedeMoverToken(quien, t)) return this.negar(ws, 'Ese token no es tuyo.');
+    const c = this.estado.combate;
+    const enCombate = !!c && c.orden.some((o) => o.tokenId === t.id);
+    let libres: number | null = null;
+    if (quien.rol === 'jugador' && enCombate && t.personajeId) {
+      const motivo = motivoParaActuar(this.estado, t.personajeId, 1);
+      if (motivo) return this.negar(ws, motivo);
+      libres = c!.acciones - c!.usadas;
+    }
+    const plan = planMovimiento(this.estado, t, destino, libres);
+    if ('motivo' in plan) {
+      // El GM manda: si no hay camino libre, pone el token donde dice
+      if (quien.rol === 'gm') return this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: [{ x: t.x, y: t.y }, destino], acciones: 0 });
+      return this.negar(ws, plan.motivo);
+    }
+    if (plan.camino.length < 2) return;
+    await this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: plan.camino, acciones: plan.acciones });
+  }
+
+  // Usar una aptitud de una vez: revisa turno, acciones, usos, requisitos y alcance; gasta y tira
+  private async usar(ws: WebSocket, quien: Sesion, m: Record<string, unknown>) {
+    if (quien.rol !== 'jugador') return;
+    const p = this.estado.personajes[quien.personajeId];
+    const token = p && tokenDePersonaje(this.estado, p.id);
+    const a = p && typeof m.aptitudId === 'string' ? todasLasAptitudes(p).find((x) => x.id === m.aptitudId) : undefined;
+    if (!p || !token || !a) return;
+
+    const motivo = motivoParaActuar(this.estado, p.id, a.costo);
+    if (motivo) return this.negar(ws, motivo);
+    const disp = disponibilidad(p, a);
+    if (!disp.puede) return this.negar(ws, `${a.verbo || a.nombre}: ${disp.texto}.`);
+    if (a.requiere && !(token.condiciones ?? []).some((c) => c.clave === a.requiere)) {
+      return this.negar(ws, a.requiere === 'shield-raised' ? 'Primero tienes que levantar el escudo.' : `Necesitas ${a.requiere}.`);
+    }
+    const objetivo = typeof m.objetivo === 'string' ? this.estado.tokens[m.objetivo] : undefined;
+    if (objetivo && a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') {
+      const distancia = a.tirada.tipo === 'golpe' ? (p.golpes[0]?.distancia ?? 5) : a.distancia;
+      const lejos = distancia !== undefined ? motivoAlcance(token, objetivo, distancia) : null;
+      if (lejos) return this.negar(ws, lejos);
+    }
+
+    const c = this.estado.combate;
+    const miTurno = !!c && tokenEnTurno(this.estado)?.id === token.id;
+    if (a.recuperacion.tipo !== 'siempre') await this.guardarYRepartir({ tipo: 'usar-aptitud', personajeId: p.id, aptitudId: a.id });
+    if (a.costo === 'reaccion' && c) await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: token.id, usada: true });
+    if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
+    if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });
+    if (a.tirada) {
+      const numero = (a.tirada.tipo === 'golpe' && miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
+      await this.tirar(quien, { que: { tipo: 'aptitud', id: a.id, numero, ...(objetivo ? { objetivo: objetivo.id } : {}) } }, undefined, ws, true);
+    }
+  }
+
+  // Quien estaba siendo atacado responde: usa una reacción o la deja pasar. Después se tira el ataque.
+  private async responder(quien: Sesion, esperaId: unknown, aptitudId: unknown) {
+    const espera = this.estado.esperas.find((e) => e.id === esperaId);
+    if (!espera) return;
+    if (quien.rol !== 'gm' && !(quien.rol === 'jugador' && quien.personajeId === espera.personajeId)) return;
+    const solicitud = await this.ctx.storage.get<{ quien: Sesion; m: Record<string, unknown> }>(`solicitud:${espera.id}`);
+    await this.ctx.storage.delete(`solicitud:${espera.id}`);
+    await this.guardarYRepartir({ tipo: 'cerrar-espera', id: espera.id });
+
+    let reaccion: { bonoCA: number; nombre: string } | undefined;
+    const p = this.estado.personajes[espera.personajeId];
+    const elegida = p && typeof aptitudId === 'string' && espera.aptitudes.includes(aptitudId)
+      ? reaccionesPara(this.estado, p.id, 'te-apuntan').find((a) => a.id === aptitudId)
+      : undefined;
+    if (p && elegida) {
+      await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: espera.objetivoTokenId, usada: true });
+      if (elegida.recuperacion.tipo !== 'siempre') {
+        await this.guardarYRepartir({ tipo: 'usar-aptitud', personajeId: p.id, aptitudId: elegida.id });
+      }
+      reaccion = { bonoCA: elegida.efecto?.bonoCA ?? 0, nombre: elegida.nombre };
+    }
+    // Si nadie la eligió (o no tiene bono), el ataque sigue igual; marcar la respuesta evita volver a esperar
+    if (solicitud) await this.tirar(solicitud.quien, solicitud.m, reaccion ?? { bonoCA: 0, nombre: '' });
+  }
+
+  // Vence la espera de una reacción: el ataque sigue sin ella
+  async alarm() {
+    const ahora = Date.now();
+    for (const e of this.estado.esperas.filter((x) => x.vence <= ahora)) {
+      await this.responder({ rol: 'gm' }, e.id, null);
+    }
+    const proxima = this.estado.esperas.reduce((min, e) => Math.min(min, e.vence), Infinity);
+    if (Number.isFinite(proxima)) await this.ctx.storage.setAlarm(proxima);
   }
 
   // El GM empieza el combate: la sala tira la iniciativa (Perception) de cada uno

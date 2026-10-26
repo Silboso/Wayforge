@@ -1,4 +1,5 @@
-import { bonoDeDano, calcular, HABILIDADES, leerDados, SALVACIONES, signo, type Personaje } from '../reglas/pf2e';
+import { bonoDeDano, calcular, HABILIDADES, leerDados, leerExpresion, SALVACIONES, signo, type Personaje } from '../reglas/pf2e';
+import { todasLasAptitudes } from '../reglas/aptitudes';
 import type { Condicion } from '../reglas/condiciones';
 import type { QueTirar } from './sala';
 
@@ -48,6 +49,36 @@ export function queSeTira(p: Personaje, que: QueTirar, condiciones: Condicion[] 
         multiplicador: que.critico ? 2 : 1,
         esAtaque: false,
       };
+    }
+    case 'aptitud': {
+      const a = todasLasAptitudes(p).find((x) => x.id === que.id);
+      const t = a?.tirada;
+      if (!a || !t) return null;
+      const etiqueta = a.verbo || a.nombre;
+      switch (t.tipo) {
+        case 'skill': {
+          const h = HABILIDADES.find((x) => x.clave === t.clave);
+          return h ? d20(`${etiqueta} (${h.nombre})`, ficha.habilidades[h.clave].total) : null;
+        }
+        case 'percepcion':
+          return d20(`${etiqueta} (Perception)`, ficha.percepcion.total);
+        case 'ataque-conjuro':
+          // Cuenta para la penalización por ataque múltiple, pero sus acciones las gasta el conjuro
+          return ficha.conjuros ? d20(`${etiqueta} (ataque de conjuro)`, ficha.conjuros.ataque.total, true) : null;
+        case 'expresion': {
+          const leida = leerExpresion(t.expresion);
+          return leida ? { etiqueta: `${etiqueta} (${t.expresion})`, ...leida, multiplicador: 1, esAtaque: false } : null;
+        }
+        case 'golpe': {
+          // Con su primera arma, con la penalización que toque (fuera de su turno, la del 1.er ataque)
+          const golpe = p.golpes[0];
+          const calculado = ficha.golpes[0];
+          if (!golpe || !calculado) return null;
+          const n = que.numero ?? 0;
+          return d20(`${etiqueta} (${golpe.nombre})`, calculado.penalizaciones[n], true);
+        }
+      }
+      return null;
     }
     case 'libre':
       return null;

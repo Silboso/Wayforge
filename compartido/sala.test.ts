@@ -140,9 +140,9 @@ describe('combate', () => {
 
   it('contar un ataque gasta una acción solo en el turno de ese token', () => {
     let estado = enCombate();
-    estado = aplicar(estado, { tipo: 'contar-ataque', tokenId: 'kyra' });
+    estado = aplicar(estado, { tipo: 'contar-ataque', tokenId: 'kyra', gastaAccion: true });
     expect(estado.combate).toMatchObject({ ataques: 0, usadas: 0 });
-    estado = aplicar(estado, { tipo: 'contar-ataque', tokenId: 'g1' });
+    estado = aplicar(estado, { tipo: 'contar-ataque', tokenId: 'g1', gastaAccion: true });
     expect(estado.combate).toMatchObject({ ataques: 1, usadas: 1 });
   });
 

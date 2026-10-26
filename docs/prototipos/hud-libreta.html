@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayforge · Libreta de cálculo (preliminar)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Atkinson+Hyperlegible+Next:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+:root {
+  --papel: #e6eedf;
+  --papel-claro: #f1f5ec;
+  --reticula: rgba(118, 160, 108, .28);
+  --reticula-fuerte: rgba(118, 160, 108, .5);
+  --grafito: #26302a;
+  --grafito-suave: #56635a;
+  --tinta: #14202b;
+  --lapiz-rojo: #c4392d;
+  --resaltador: #e9f25c;
+  --regla: rgba(20, 32, 43, .85);
+  --mano: 'Architects Daughter', cursive;
+  --texto: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+::selection { background: var(--resaltador); color: var(--tinta); }
+body { margin: 0; background: #cfd8c8; color: var(--grafito); font-family: var(--texto); }
+.lamina { padding: 40px 32px 64px; display: grid; gap: 28px; justify-items: center; }
+.rotulo { font-family: var(--mano); font-size: 18px; color: var(--grafito-suave); letter-spacing: .04em; text-transform: uppercase; width: min(1440px, 100%); }
+
+/* Papel de ingeniería: cuadrícula menor cada 20px, mayor cada 100px */
+.papel {
+  background-color: var(--papel);
+  background-image:
+    linear-gradient(var(--reticula-fuerte) 1px, transparent 1px),
+    linear-gradient(90deg, var(--reticula-fuerte) 1px, transparent 1px),
+    linear-gradient(var(--reticula) 1px, transparent 1px),
+    linear-gradient(90deg, var(--reticula) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+}
+
+/* ESCRITORIO */
+.pantalla { width: 1440px; height: 900px; position: relative; overflow: hidden; border-radius: 6px;
+  box-shadow: 0 30px 60px -20px rgba(20, 32, 43, .45), 0 2px 6px rgba(20, 32, 43, .2); }
+
+.membrete { position: absolute; inset: 0 0 auto 0; height: 46px; display: flex; align-items: stretch;
+  border-bottom: 1.5px solid var(--regla); background: var(--papel-claro); font-size: 13px; z-index: 3; }
+.membrete > div { padding: 6px 16px; border-right: 1px solid rgba(20, 32, 43, .35); display: flex; flex-direction: column; justify-content: center; }
+.membrete small { font-family: var(--mano); font-size: 10.5px; letter-spacing: .12em; color: var(--grafito-suave); text-transform: uppercase; }
+.membrete b { font-weight: 700; color: var(--tinta); }
+.membrete .marca { font-family: var(--mano); font-size: 22px; color: var(--tinta); flex-direction: row; align-items: center; gap: 8px; }
+.membrete .der { margin-left: auto; border-right: 0; border-left: 1px solid rgba(20, 32, 43, .35); flex-direction: row; align-items: center; gap: 12px; color: var(--grafito-suave); }
+.membrete .der i { font-size: 18px; }
+
+/* Orden de iniciativa como línea con estaciones */
+.linea-turnos { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: center; gap: 0; background: var(--papel-claro); padding: 10px 22px 8px;
+  border: 1px solid rgba(20, 32, 43, .35); }
+.estacion { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 110px; position: relative; }
+.estacion::before { content: ''; position: absolute; top: 9px; left: -50%; right: 50%; height: 1.5px; background: var(--grafito-suave); }
+.estacion:first-child::before { display: none; }
+.estacion .punto { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--tinta); background: var(--papel-claro); position: relative; z-index: 1; }
+.estacion.enemigo .punto { border-color: var(--lapiz-rojo); }
+.estacion.hecho .punto { background: repeating-linear-gradient(45deg, var(--grafito-suave) 0 1.5px, transparent 1.5px 4px); }
+.estacion.ahora .punto { width: 26px; height: 26px; margin-top: -3px; background: var(--tinta); box-shadow: 0 0 0 4px var(--resaltador); }
+.estacion span { font-family: var(--mano); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--grafito); }
+.estacion.ahora span { color: var(--tinta); font-weight: 700; background: var(--resaltador); padding: 0 4px; }
+.estacion em { font-style: normal; font-size: 11px; color: var(--grafito-suave); font-variant-numeric: tabular-nums; }
+.ronda { font-family: var(--mano); font-size: 13px; color: var(--grafito-suave); margin-right: 14px; text-transform: uppercase; letter-spacing: .1em; }
+
+/* Tablero dibujado a escala sobre la misma cuadrícula */
+.tablero { position: absolute; inset: 46px 0 0 0; }
+.tablero svg { position: absolute; inset: 0; }
+.ficha-tk { position: absolute; width: 40px; height: 40px; transform: translate(-50%, -50%); display: grid; place-items: center;
+  border-radius: 50%; font-family: var(--mano); font-size: 17px; color: var(--papel-claro); }
+.ficha-tk.pj { background: var(--tinta); }
+.ficha-tk.en { background: var(--lapiz-rojo); }
+.ficha-tk.objetivo { outline: 1.5px solid var(--lapiz-rojo); outline-offset: 5px; }
+.ficha-tk.turno::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; border: 1.5px dashed var(--tinta); }
+.ficha-tk label { position: absolute; top: 46px; white-space: nowrap; font-size: 12px; color: var(--grafito); font-family: var(--mano); text-transform: uppercase; letter-spacing: .05em; }
+.etiqueta-cond { position: absolute; top: -26px; white-space: nowrap; font-family: var(--mano); font-size: 12px; color: var(--lapiz-rojo); }
+
+/* Notas al margen: las tiradas */
+.margen { position: absolute; right: 24px; top: 150px; width: 260px; z-index: 3; display: grid; gap: 14px; }
+.nota { font-size: 13.5px; line-height: 1.35; color: var(--grafito); padding-left: 14px; border-left: 1px solid rgba(20, 32, 43, .35); }
+.nota b { font-family: var(--mano); font-size: 26px; color: var(--tinta); font-weight: 400; float: right; line-height: 1; margin-left: 10px; font-variant-numeric: tabular-nums; }
+.nota .quien { font-family: var(--mano); text-transform: uppercase; letter-spacing: .05em; font-size: 12px; color: var(--grafito-suave); display: block; }
+.nota .grado { font-family: var(--mano); color: var(--lapiz-rojo); font-size: 14px; }
+.nota .grado.ok { color: #2f6b3a; }
+
+/* HOJA DEL JUGADOR */
+.hoja { position: absolute; left: 24px; right: 24px; bottom: 20px; z-index: 4; background: var(--papel-claro);
+  border: 1.5px solid var(--regla); display: grid; grid-template-columns: 270px 1fr 300px; min-height: 236px;
+  box-shadow: 0 18px 40px -18px rgba(20, 32, 43, .5); }
+.hoja::before, .hoja::after { content: ''; position: absolute; top: -12px; width: 74px; height: 22px; background: rgba(233, 228, 196, .82);
+  border: 1px solid rgba(20, 32, 43, .08); transform: rotate(-3deg); }
+.hoja::before { left: -22px; top: -6px; transform: rotate(-38deg); } .hoja::after { right: -22px; top: -6px; transform: rotate(38deg); }
+.celda { padding: 16px 20px; border-right: 1px solid rgba(20, 32, 43, .35); position: relative; }
+.celda:last-child { border-right: 0; }
+.pestana { position: absolute; top: -1.5px; left: 20px; transform: translateY(-100%); font-family: var(--mano); font-size: 11.5px;
+  letter-spacing: .14em; text-transform: uppercase; background: var(--tinta); color: var(--papel-claro); padding: 3px 9px 2px; }
+
+.titulo { display: grid; grid-template-columns: 76px 1fr; gap: 14px; align-items: center; }
+.retrato { width: 76px; height: 76px; border-radius: 50%; border: 1.5px solid var(--tinta); display: grid; place-items: center; position: relative;
+  background: radial-gradient(circle at 50% 38%, #6d8d6a 0 18px, transparent 19px), radial-gradient(ellipse at 50% 120%, #6d8d6a 0 36px, transparent 37px), #cfdcc6; overflow: hidden; }
+.nivel { position: absolute; bottom: -3px; right: -3px; width: 26px; height: 26px; border-radius: 50%; background: var(--tinta); color: var(--papel-claro); display: grid; place-items: center; font-family: var(--mano); font-size: 14px; }
+.titulo h2 { margin: 0; font-family: var(--mano); font-size: 30px; font-weight: 400; color: var(--tinta); line-height: 1; }
+.titulo p { margin: 4px 0 0; font-size: 13px; color: var(--grafito-suave); }
+.pg { margin-top: 16px; }
+.pg-num { display: flex; align-items: baseline; gap: 6px; }
+.pg-num b { font-family: var(--mano); font-size: 40px; font-weight: 400; color: var(--tinta); line-height: 1; }
+.pg-num span { font-size: 15px; color: var(--grafito-suave); }
+.pg-num .temp { margin-left: auto; font-size: 12px; font-family: var(--mano); text-transform: uppercase; letter-spacing: .06em; }
+/* PG como escala gráfica: tramos cada 5 */
+.escala { margin-top: 8px; height: 14px; border: 1.5px solid var(--tinta); position: relative;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(100% / 8.8 - 1px), rgba(20,32,43,.5) calc(100% / 8.8 - 1px) calc(100% / 8.8)); }
+.escala i { position: absolute; inset: 0 auto 0 0; width: 84%; background: repeating-linear-gradient(45deg, var(--tinta) 0 2px, rgba(20,32,43,.55) 2px 5px); }
+.escala-pie { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--grafito-suave); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.defensas { display: flex; gap: 14px; margin-top: 14px; font-size: 12.5px; color: var(--grafito-suave); }
+.defensas b { display: block; font-family: var(--mano); font-size: 22px; font-weight: 400; color: var(--tinta); }
+
+/* Acciones como renglones de cálculo */
+.turno-cab { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.turno-cab h3 { margin: 0; font-family: var(--mano); font-weight: 400; font-size: 22px; color: var(--tinta); }
+.turno-cab h3 mark { background: linear-gradient(transparent 30%, var(--resaltador) 30% 88%, transparent 88%); color: inherit; padding: 0 3px; }
+.pips { display: flex; gap: 6px; margin-left: auto; align-items: center; }
+.pips svg { width: 22px; height: 22px; }
+.pips .txt { font-size: 12.5px; color: var(--grafito-suave); margin-left: 6px; }
+.renglones { list-style: none; margin: 0; padding: 0; border-top: 1px solid rgba(20, 32, 43, .35); }
+.renglon { display: grid; grid-template-columns: 40px 1fr auto 64px 34px; align-items: center; gap: 10px; height: 40px; border-bottom: 1px solid rgba(20, 32, 43, .2); font-size: 14.5px; padding-right: 6px; }
+.renglon .costo { display: flex; gap: 3px; justify-content: center; }
+.renglon .costo svg { width: 12px; height: 12px; }
+.renglon .nombre b { font-weight: 700; color: var(--tinta); }
+.renglon .nombre span { color: var(--grafito-suave); font-size: 13px; margin-left: 6px; }
+.renglon .contra { font-size: 12.5px; color: var(--lapiz-rojo); font-family: var(--mano); }
+.renglon .valor { font-family: var(--mano); font-size: 22px; color: var(--tinta); text-align: right; font-variant-numeric: tabular-nums; }
+.tecla { justify-self: end; font-family: var(--mano); font-size: 12px; width: 24px; height: 22px; display: grid; place-items: center; border: 1px solid rgba(20,32,43,.45); color: var(--grafito-suave); }
+.renglon.toca { background: linear-gradient(90deg, rgba(233, 242, 92, .85), rgba(233, 242, 92, .55)); }
+.renglon.toca .tecla { background: var(--tinta); color: var(--papel-claro); border-color: var(--tinta); }
+.mas { margin-top: 8px; font-size: 13px; color: var(--grafito-suave); display: flex; gap: 6px; align-items: center; }
+
+/* Cálculo abierto: así se ve "de dónde sale" */
+.calculo { font-variant-numeric: tabular-nums; }
+.calculo h4 { margin: 0 0 8px; font-family: var(--mano); font-weight: 400; font-size: 16px; text-transform: uppercase; letter-spacing: .08em; color: var(--grafito-suave); }
+.calculo table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.calculo td { padding: 3px 0; }
+.calculo td:last-child { text-align: right; font-family: var(--mano); font-size: 18px; color: var(--tinta); width: 44px; }
+.calculo tr.menos td { color: var(--lapiz-rojo); }
+.calculo tr.menos td:last-child { color: var(--lapiz-rojo); }
+.calculo tr.total td { border-top: 1.5px solid var(--tinta); padding-top: 6px; font-weight: 700; color: var(--tinta); }
+.calculo tr.total td:last-child { font-size: 28px; }
+.fin { margin-top: 14px; width: 100%; height: 44px; border: 1.5px solid var(--tinta); background: var(--tinta); color: var(--papel-claro);
+  font-family: var(--mano); font-size: 17px; letter-spacing: .08em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.fin kbd { font-family: var(--mano); font-size: 12px; border: 1px solid rgba(241,245,236,.6); padding: 0 5px; }
+.reaccion { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--grafito-suave); margin-top: 10px; }
+.reaccion i { font-size: 18px; color: var(--tinta); }
+
+/* TELÉFONO: la hoja como mando, sin tablero (el tablero está en la pantalla compartida) */
+.fila-movil { width: min(1440px, 100%); display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+.telefono { width: 390px; height: 844px; border-radius: 46px; padding: 12px; background: #1b211d; box-shadow: 0 30px 60px -20px rgba(20, 32, 43, .5); }
+.telefono .pantallita { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+.m-cab { padding: 50px 20px 12px; background: var(--papel-claro); border-bottom: 1.5px solid var(--regla); }
+.m-turno { display: flex; align-items: center; justify-content: space-between; font-family: var(--mano); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--grafito-suave); margin-bottom: 10px; }
+.m-turno b { color: var(--tinta); background: var(--resaltador); padding: 0 6px; font-weight: 400; }
+.m-cuerpo { flex: 1; overflow: hidden; padding: 16px 18px 0; }
+.m-cuerpo .renglon { grid-template-columns: 34px 1fr auto 52px; height: 52px; font-size: 15px; }
+.m-cuerpo .renglon .valor { font-size: 24px; }
+.expandido { background: var(--papel-claro); border: 1.5px solid var(--tinta); margin: 4px -6px 6px; padding: 12px 14px 14px; box-shadow: 0 14px 30px -16px rgba(20,32,43,.5); }
+.expandido p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; color: var(--grafito); }
+.botones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+.botones button { height: 46px; border: 1.5px solid var(--tinta); background: var(--papel-claro); font-family: var(--mano); font-size: 18px; color: var(--tinta); }
+.botones button.toca { background: var(--tinta); color: var(--papel-claro); }
+.botones button small { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; margin-top: -2px; }
+.m-fin { padding: 10px 18px; background: var(--papel-claro); border-top: 1px solid rgba(20, 32, 43, .35); }
+.m-pie { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--papel-claro); padding: 6px 6px 24px; }
+.m-pie a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: var(--mano); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--grafito-suave); text-decoration: none; }
+.m-pie a i { font-size: 22px; }
+.m-pie a.activo { color: var(--tinta); }
+.m-pie a.activo i { background: var(--resaltador); border-radius: 4px; padding: 2px 8px; }
+.explica { flex: 1; min-width: 300px; font-size: 15px; line-height: 1.6; color: var(--grafito); }
+.explica h3 { font-family: var(--mano); font-weight: 400; font-size: 24px; color: var(--tinta); margin: 0 0 8px; }
+.explica ul { padding-left: 18px; margin: 0; }
+.explica li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="rombo" viewBox="0 0 22 22"><path d="M11 2 L20 11 L11 20 L2 11 Z" fill="#14202b"/></symbol>
+    <symbol id="rombo-vacio" viewBox="0 0 22 22"><path d="M11 3 L19 11 L11 19 L3 11 Z" fill="none" stroke="#14202b" stroke-width="1.5"/><path d="M7 15 L15 7" stroke="#14202b" stroke-width="1"/></symbol>
+    <pattern id="muro" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#26302a" stroke-width="1.6"/></pattern>
+    <marker id="flecha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9" fill="none" stroke="#c4392d" stroke-width="1.4"/></marker>
+  </defs>
+</svg>
+
+<div class="lamina">
+  <div class="rotulo">Libreta de cálculo · Escritorio (todos en PC) · Turno de Kyra, ya hizo un ataque</div>
+
+  <div class="pantalla papel">
+    <div class="membrete">
+      <div class="marca"><i class="ph ph-compass-tool"></i> Wayforge</div>
+      <div><small>Mesa</small><b>VDZMW7</b></div>
+      <div><small>Encuentro</small><b>Cripta del puente</b></div>
+      <div><small>Hoja</small><b>Kyra · nivel 3</b></div>
+      <div class="der"><i class="ph ph-users-three"></i> GM, Kyra, Tomás <i class="ph ph-moon"></i> <i class="ph ph-sign-out"></i></div>
+    </div>
+
+    <div class="linea-turnos">
+      <span class="ronda">Ronda 2</span>
+      <div class="estacion enemigo hecho"><div class="punto"></div><span>Goblin</span><em>20</em></div>
+      <div class="estacion ahora"><div class="punto"></div><span>Kyra</span><em>13</em></div>
+      <div class="estacion"><div class="punto"></div><span>Tomás</span><em>9</em></div>
+      <div class="estacion enemigo"><div class="punto"></div><span>Arquero</span><em>7</em></div>
+    </div>
+
+    <div class="tablero">
+      <svg viewBox="0 0 1440 854" preserveAspectRatio="none">
+        <!-- Muros de la cripta con achurado de plano -->
+        <path d="M200 200 H900 V260 H880 V220 H220 V560 H520 V600 H200 Z" fill="url(#muro)" stroke="#26302a" stroke-width="1.6"/>
+        <path d="M640 560 H880 V420 H900 V600 H640 Z" fill="url(#muro)" stroke="#26302a" stroke-width="1.6"/>
+        <rect x="560" y="320" width="40" height="40" fill="none" stroke="#26302a" stroke-width="1.4"/>
+        <line x1="560" y1="320" x2="600" y2="360" stroke="#26302a" stroke-width="1"/><line x1="600" y1="320" x2="560" y2="360" stroke="#26302a" stroke-width="1"/>
+        <!-- Cota: hasta dónde llega Kyra con un Stride -->
+        <circle cx="420" cy="400" r="125" fill="rgba(233,242,92,.18)" stroke="#14202b" stroke-width="1" stroke-dasharray="5 5"/>
+        <line x1="420" y1="400" x2="545" y2="400" stroke="#c4392d" stroke-width="1.2" marker-end="url(#flecha)"/>
+        <text x="470" y="392" font-family="Architects Daughter" font-size="15" fill="#c4392d">25 ft</text>
+        <!-- Distancia al objetivo -->
+        <line x1="440" y1="385" x2="580" y2="300" stroke="#c4392d" stroke-width="1" stroke-dasharray="3 4"/>
+      </svg>
+      <div class="ficha-tk pj turno" style="left:420px;top:400px">K<span class="etiqueta-cond">Frightened 1</span><label>Kyra</label></div>
+      <div class="ficha-tk en objetivo" style="left:600px;top:290px">G<span class="etiqueta-cond">Off-guard</span><label>Goblin</label></div>
+      <div class="ficha-tk pj" style="left:300px;top:300px">T<label>Tomás</label></div>
+      <div class="ficha-tk en" style="left:800px;top:340px">A<label>Arquero</label></div>
+    </div>
+
+    <aside class="margen">
+      <div class="nota"><span class="quien">Kyra · Longsword vs Goblin</span><b>23</b>13 + 10 = 23 <span class="grado ok">— éxito <i class="ph ph-check"></i></span></div>
+      <div class="nota"><span class="quien">Kyra · daño</span><b>9</b>5 + 4 slashing</div>
+      <div class="nota"><span class="quien">Goblin · 1d20+7 vs Kyra</span><b>18</b>11 + 7 = 18 <span class="grado">— fallo</span></div>
+    </aside>
+
+    <section class="hoja" aria-label="Hoja de Kyra">
+      <div class="celda">
+        <span class="pestana">Personaje</span>
+        <div class="titulo">
+          <div class="retrato"><span class="nivel">3</span></div>
+          <div><h2>Kyra</h2><p>Human Fighter</p></div>
+        </div>
+        <div class="pg">
+          <div class="pg-num"><b>37</b><span>/ 44 PG</span><span class="temp">+0 temp</span></div>
+          <div class="escala"><i></i></div>
+          <div class="escala-pie"><span>0</span><span>10</span><span>20</span><span>30</span><span>44</span></div>
+        </div>
+        <div class="defensas">
+          <div>CA<b>19</b></div><div>Fort<b>+8</b></div><div>Ref<b>+8</b></div><div>Will<b>+5</b></div><div>Perc<b>+7</b></div>
+        </div>
+      </div>
+
+      <div class="celda">
+        <span class="pestana">Tu turno</span>
+        <div class="turno-cab">
+          <h3>Te quedan <mark>2 acciones</mark></h3>
+          <div class="pips" aria-label="Acciones: 1 gastada, 2 libres">
+            <svg><use href="#rombo-vacio"/></svg><svg><use href="#rombo"/></svg><svg><use href="#rombo"/></svg>
+            <span class="txt">+ reacción lista</span>
+          </div>
+        </div>
+        <ul class="renglones">
+          <li class="renglon toca"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Atacar otra vez</b><span>Longsword · 2.º ataque</span></span><span class="contra">→ Goblin</span><span class="valor">+6</span><span class="tecla">Q</span></li>
+          <li class="renglon"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Moverte</b><span>Stride, hasta 25 ft</span></span><span></span><span class="valor">25</span><span class="tecla">W</span></li>
+          <li class="renglon"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Levantar escudo</b><span>Raise a Shield, +2 CA</span></span><span></span><span class="valor">+2</span><span class="tecla">E</span></li>
+          <li class="renglon"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Asustarlo</b><span>Demoralize · Intimidation</span></span><span class="contra">→ Goblin</span><span class="valor">+4</span><span class="tecla">R</span></li>
+        </ul>
+        <div class="mas"><i class="ph ph-list-magnifying-glass"></i> Más acciones: Step, Take Cover, Seek, Recall Knowledge, Grapple…</div>
+      </div>
+
+      <div class="celda calculo">
+        <span class="pestana">De dónde sale</span>
+        <h4>2.º ataque con Longsword</h4>
+        <table>
+          <tr><td>Str</td><td>+4</td></tr>
+          <tr><td>Expert (+4) + nivel 3</td><td>+7</td></tr>
+          <tr><td>Runa de potencia</td><td>+1</td></tr>
+          <tr class="menos"><td>Frightened 1</td><td>−1</td></tr>
+          <tr class="menos"><td>2.º ataque del turno</td><td>−5</td></tr>
+          <tr class="total"><td>Tiras 1d20</td><td>+6</td></tr>
+        </table>
+        <div class="fin"><i class="ph ph-hourglass-simple-low"></i> Terminar turno <kbd>F</kbd></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="rotulo">Libreta de cálculo · Teléfono (mesa compartida: el tablero está en la tele)</div>
+  <div class="fila-movil">
+    <div class="telefono">
+      <div class="pantallita papel">
+        <div class="m-cab">
+          <div class="m-turno"><span>Ronda 2 · <b>tu turno</b></span><span>Mesa VDZMW7</span></div>
+          <div class="titulo" style="grid-template-columns:56px 1fr">
+            <div class="retrato" style="width:56px;height:56px"><span class="nivel" style="width:22px;height:22px;font-size:12px">3</span></div>
+            <div>
+              <h2 style="font-size:26px">Kyra</h2>
+              <div class="pg-num" style="margin-top:4px"><b style="font-size:24px">37</b><span>/ 44 PG · CA 19</span></div>
+            </div>
+          </div>
+          <div class="escala" style="margin-top:10px;height:10px"><i></i></div>
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+            <svg width="20" height="20"><use href="#rombo-vacio"/></svg><svg width="20" height="20"><use href="#rombo"/></svg><svg width="20" height="20"><use href="#rombo"/></svg>
+            <span style="font-size:13px;color:var(--grafito-suave)">2 acciones · reacción lista</span>
+            <span style="margin-left:auto;font-family:var(--mano);font-size:13px;color:var(--lapiz-rojo)">Frightened 1</span>
+          </div>
+        </div>
+        <div class="m-cuerpo">
+          <ul class="renglones">
+            <li class="renglon toca"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Atacar otra vez</b></span><span class="contra">→ Goblin</span><span class="valor">+6</span></li>
+          </ul>
+          <div class="expandido">
+            <p>Tu 2.º ataque del turno cuesta más: −5. El Goblin está Off-guard, así que su CA baja 2.</p>
+            <div class="calculo">
+              <table>
+                <tr><td>Str + Expert + runa</td><td>+12</td></tr>
+                <tr class="menos"><td>Frightened 1</td><td>−1</td></tr>
+                <tr class="menos"><td>2.º ataque</td><td>−5</td></tr>
+                <tr class="total"><td>Tiras 1d20</td><td>+6</td></tr>
+              </table>
+            </div>
+            <div class="botones">
+              <button class="toca">Atacar<small>+6</small></button>
+              <button>Daño<small>1d8+4</small></button>
+              <button>Crítico<small>×2</small></button>
+            </div>
+          </div>
+          <ul class="renglones" style="border-top:0">
+            <li class="renglon"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Moverte</b></span><span></span><span class="valor">25</span></li>
+            <li class="renglon"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Levantar escudo</b></span><span></span><span class="valor">+2</span></li>
+            <li class="renglon"><span class="costo"><svg><use href="#rombo"/></svg></span><span class="nombre"><b>Asustarlo</b></span><span class="contra">→ Goblin</span><span class="valor">+4</span></li>
+          </ul>
+        </div>
+        <div class="m-fin"><div class="fin" style="margin-top:0"><i class="ph ph-hourglass-simple-low"></i> Terminar turno</div></div>
+        <nav class="m-pie">
+          <a class="activo"><i class="ph ph-sword"></i>Turno</a>
+          <a><i class="ph ph-notebook"></i>Ficha</a>
+          <a><i class="ph ph-map-trifold"></i>Tablero</a>
+          <a><i class="ph ph-dice-five"></i>Tiradas</a>
+        </nav>
+      </div>
+    </div>
+    <div class="explica">
+      <h3>Cómo se siente</h3>
+      <ul>
+        <li><b>La cuadrícula del tablero es la del propio papel.</b> El mapa se dibuja como un plano con muros achurados, y tu movimiento aparece como una cota: "25 ft".</li>
+        <li><b>Tus acciones son renglones de cálculo:</b> costo ◆ a la izquierda y número a la derecha. Lo que probablemente toca hacer lleva resaltador.</li>
+        <li><b>"De dónde sale" es una cuenta escrita:</b> suma, restas en lápiz rojo y una raya con el total, como haces a mano.</li>
+        <li><b>El orden de turnos es una línea con estaciones.</b> La tuya está rellena y resaltada; los que ya jugaron quedan achurados.</li>
+        <li><b>Las tiradas son notas al margen</b>, con el resultado en grande.</li>
+        <li><b>En el teléfono, la hoja es tu mando:</b> al tocar una acción se abre su cuenta y sus botones.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

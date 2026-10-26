@@ -15,6 +15,9 @@ import { Tablero } from '../componentes/Tablero';
 import { AvisoTirada, ListaTiradas, TiradaLibre } from '../componentes/Tiradas';
 import { OrdenIniciativa, PanelCombateGM, PanelTurno } from '../componentes/Combate';
 import { claseBotonSecundario } from '../componentes/ui';
+import { MesaJugador } from './MesaJugador';
+import { PilaAvisos, useAvisos, type Aviso } from '../componentes/hud/Avisos';
+import type { Evento } from '../../compartido/eventos';
 
 type Tema = ReturnType<typeof useTema>;
 
@@ -55,6 +58,9 @@ function MesaConectada({ salaId, tema }: { salaId: string; tema: Tema }) {
     );
   }
   if (sala.fase === 'conectando' || !sala.estado) return <Centro>Entrando a la mesa…</Centro>;
+  const quien = sala.quien;
+  const personaje = quien.rol === 'jugador' ? sala.estado.personajes[quien.personajeId] : undefined;
+  if (personaje) return <MesaJugador salaId={salaId} sala={sala} estado={sala.estado} personaje={personaje} tema={tema} />;
   return <Mesa salaId={salaId} sala={sala} estado={sala.estado} tema={tema} />;
 }
 
@@ -87,6 +93,24 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
   const [colores, setColores] = useState(leerColoresTablero);
   const codigoGM = quien.rol === 'gm' ? leer(almacen.gmCodigo(salaId)) : null;
   const panel = pestana === 'tablero' ? (quien.rol === 'gm' ? 'herramientas' : 'ficha') : pestana;
+
+  // Avisos del GM: el daño que los jugadores le hacen a sus enemigos, para restarlo de un toque
+  const generar = (e: Evento): Aviso[] => {
+    if (e.tipo !== 'tirada') return [];
+    const t = e.tirada;
+    const objetivo = t.objetivo?.tokenId ? estado.tokens[t.objetivo.tokenId] : undefined;
+    if (!objetivo || objetivo.personajeId || t.objetivo?.grado || !objetivo.pg) return [];
+    const pg = objetivo.pg;
+    return [{
+      id: crypto.randomUUID(), tono: 'peligro', titulo: `${t.quien} le hace ${t.total} de daño a ${objetivo.nombre}`,
+      cuerpo: `${objetivo.nombre} tiene ${pg.actual} de ${pg.max} PG.`,
+      botones: [{
+        etiqueta: `Restar ${t.total} PG`, principal: true,
+        hacer: () => sala.enviar({ tipo: 'editar-token', id: objetivo.id, cambios: { pg: { ...pg, actual: Math.max(0, pg.actual - t.total) } } }),
+      }],
+    }];
+  };
+  const { avisos, cerrar: cerrarAviso } = useAvisos(sala.eventos, generar);
 
   useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
 
@@ -171,9 +195,11 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
             estado={estado}
             colores={colores}
             quien={quien}
+            eventos={sala.eventos}
             seleccionado={seleccionado}
             onSeleccionar={seleccionar}
-            onMover={(id, x, y) => sala.enviar({ tipo: 'mover-token', id, x, y })}
+            onMover={(id, x, y) => sala.mover(id, x, y)}
+            onNegar={sala.negarLocal}
           />
           {!sala.conectado && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 rounded-lg bg-peligro px-3 py-1 text-sm text-white">Reconectando…</div>
@@ -247,6 +273,22 @@ function Mesa({ salaId, sala, estado, tema }: { salaId: string; sala: Sala; esta
       </nav>
 
       <AvisoTirada tiradas={estado.tiradas} verCd={quien.rol === 'gm'} />
+      <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
+        className="fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[64px] lg:right-[400px] lg:w-[340px]" />
+      {/* Un jugador está decidiendo si reacciona: el GM lo ve y puede seguir sin esperar */}
+      {estado.esperas.map((e) => (
+        <div key={e.id} className="fixed inset-x-0 bottom-24 z-30 flex justify-center px-4" role="status">
+          <div className="tarjeta flex items-center gap-3 px-4 py-2.5">
+            <p className="font-titulo text-[15px]">
+              {e.atacante} ataca a {estado.tokens[e.objetivoTokenId]?.nombre}: esperando si reacciona…
+            </p>
+            <button className="boli h-9 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10"
+              onClick={() => sala.responder(e.id, null)}>
+              Seguir sin reacción
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

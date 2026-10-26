@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
 import {
-  ATRIBUTOS, calcular, HABILIDADES, SALVACIONES, signo,
+  ATRIBUTOS, calcular, HABILIDADES, leerExpresion, SALVACIONES, signo,
   type Atributo, type Golpe, type Personaje, type Rango,
 } from '../../reglas/pf2e';
 import { subirImagen } from '../imagenes';
+import { EditorAptitudes } from './EditorAptitudes';
 import {
   Campo, claseBotonIcono, claseBotonPrincipal, claseBotonSecundario, claseEntrada, Contador, Desglose,
   ElegirImagen, SelectorRango,
@@ -20,7 +21,7 @@ interface Props {
   onCancelar: () => void;
 }
 
-const PASOS = ['Quién es', 'Atributos', 'Puntos de golpe', 'Defensa', 'Skills', 'Ataques', 'Código'] as const;
+const PASOS = ['Quién es', 'Atributos', 'Puntos de golpe', 'Defensa', 'Skills', 'Ataques', 'Conjuros y más', 'Código'] as const;
 
 // Creación de ficha paso a paso. Cada paso explica qué es lo que se pide y muestra el resultado calculado.
 export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancelar }: Props) {
@@ -41,6 +42,12 @@ export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancela
 
   function validarPaso(i: number): string {
     if (i === 0 && !p.nombre.trim()) return 'Ponle un nombre a tu personaje';
+    if (pasos[i] === 'Conjuros y más') {
+      const sinNombre = (p.aptitudes ?? []).find((a) => !a.nombre.trim());
+      if (sinNombre) return 'A una aptitud le falta el nombre (como en el libro)';
+      const malos = (p.aptitudes ?? []).find((a) => (a.tirada?.tipo === 'expresion' && !leerExpresion(a.tirada.expresion)) || (a.dano && !leerExpresion(a.dano)));
+      if (malos) return `Revisa los dados de ${malos.nombre}: escribe algo como 2d4+4`;
+    }
     if (pasos[i] === 'Código') {
       if (!/^\d{4}$/.test(codigo)) return 'El código son 4 números';
       if (codigo !== confirmacion) return 'Los dos códigos no coinciden';
@@ -52,6 +59,9 @@ export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancela
     const problema = validarPaso(paso);
     if (problema) return setAviso(problema);
     if (!ultimo) return setPaso(paso + 1);
+    // Antes de guardar se revisan todos los pasos: se puede haber saltado alguno con las pestañas
+    const pendiente = pasos.map((_, i) => validarPaso(i)).find(Boolean);
+    if (pendiente) return setAviso(pendiente);
     // Al crear, los PG actuales empiezan llenos
     const final = { ...p, nombre: p.nombre.trim(), pgActual: modo === 'crear' ? ficha.pgMax.total : Math.min(p.pgActual, ficha.pgMax.total) };
     onGuardar(final, codigo);
@@ -230,6 +240,8 @@ export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancela
           <EditorGolpes p={p} onCambio={(golpes) => cambiar({ golpes })} />
         )}
 
+        {pasos[paso] === 'Conjuros y más' && <EditorAptitudes p={p} onCambio={cambiar} />}
+
         {pasos[paso] === 'Código' && (
           <>
             <Explicacion>
@@ -256,7 +268,7 @@ export function EditorFicha({ salaId, inicial, modo, error, onGuardar, onCancela
         </button>
         <div className="flex gap-2">
           {modo === 'editar' && !ultimo && (
-            <button type="button" className={claseBotonSecundario} onClick={() => { const problema = validarPaso(0); if (problema) return setAviso(problema); onGuardar({ ...p, nombre: p.nombre.trim(), pgActual: Math.min(p.pgActual, ficha.pgMax.total) }, ''); }}>
+            <button type="button" className={claseBotonSecundario} onClick={() => { const problema = pasos.map((_, i) => validarPaso(i)).find(Boolean); if (problema) return setAviso(problema); onGuardar({ ...p, nombre: p.nombre.trim(), pgActual: Math.min(p.pgActual, ficha.pgMax.total) }, ''); }}>
               Guardar ya
             </button>
           )}

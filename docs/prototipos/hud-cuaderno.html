@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayforge · Cuaderno de mazmorras (preliminar)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,400;0,600;0,700;1,400&family=Atkinson+Hyperlegible+Next:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+:root {
+  --hoja: #f8f9f5;
+  --cuadro: rgba(122, 156, 200, .32);
+  --cuadro-fuerte: rgba(122, 156, 200, .55);
+  --lapiz: #33373e;
+  --lapiz-suave: #6b717b;
+  --boli: #2450b0;
+  --boli-suave: #5f7fc6;
+  --marca: #f7e14a;
+  --marca-rosa: #f6a3bd;
+  --postit: #fbe98a;
+  --rojo: #d2412f;
+  --mano: 'Shantell Sans', cursive;
+  --texto: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+::selection { background: var(--marca); color: var(--lapiz); }
+body { margin: 0; background: #d9dde3; color: var(--lapiz); font-family: var(--texto); }
+.lamina { padding: 40px 32px 64px; display: grid; gap: 28px; justify-items: center; }
+.rotulo { font-family: var(--mano); font-size: 18px; color: var(--lapiz-suave); width: min(1440px, 100%); }
+
+.cuadriculado {
+  background-color: var(--hoja);
+  background-image:
+    linear-gradient(var(--cuadro) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cuadro) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.pantalla { width: 1440px; height: 900px; position: relative; overflow: hidden; border-radius: 6px;
+  box-shadow: 0 30px 60px -20px rgba(40, 50, 70, .45), 0 2px 6px rgba(40, 50, 70, .18); }
+/* Agujeros de espiral a la izquierda */
+.espiral { position: absolute; left: 10px; top: 0; bottom: 0; width: 14px; z-index: 5;
+  background: radial-gradient(circle at 7px 18px, #c9ced6 0 5px, transparent 5.5px) 0 0 / 14px 36px repeat-y; }
+
+.barra { position: absolute; inset: 0 0 auto 0; height: 56px; display: flex; align-items: center; gap: 22px; padding: 0 28px 0 44px; z-index: 4; }
+.barra .marca { font-family: var(--mano); font-weight: 700; font-size: 26px; color: var(--boli); transform: rotate(-1.5deg); }
+.barra .mesa { font-family: var(--mano); font-size: 15px; color: var(--lapiz-suave); }
+.barra .der { margin-left: auto; display: flex; align-items: center; gap: 16px; color: var(--lapiz-suave); font-size: 14px; }
+.barra .der i { font-size: 20px; }
+
+/* Iniciativa: lista escrita a mano en la parte de arriba */
+.orden { position: absolute; top: 14px; left: 50%; transform: translateX(-50%) rotate(-.6deg); z-index: 4; display: flex; gap: 22px; align-items: center;
+  font-family: var(--mano); font-size: 17px; }
+.orden .r { color: var(--lapiz-suave); font-size: 14px; }
+.orden span { position: relative; color: var(--lapiz); }
+.orden span em { font-style: normal; font-size: 13px; color: var(--lapiz-suave); margin-left: 3px; }
+.orden span.hecho { color: var(--lapiz-suave); text-decoration: line-through; text-decoration-color: rgba(51, 55, 62, .6); text-decoration-thickness: 1.5px; }
+.orden span.ahora { font-weight: 700; color: var(--boli); padding: 0 6px; background: linear-gradient(176deg, transparent 18%, var(--marca) 18% 82%, transparent 82%); }
+.orden span.enemigo { color: var(--rojo); }
+
+.tablero { position: absolute; inset: 56px 0 0 0; }
+.tablero svg { position: absolute; inset: 0; }
+.tk { position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%); display: grid; place-items: center; font-family: var(--mano); font-weight: 700; font-size: 20px; }
+.tk svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.tk b { position: relative; }
+.tk.pj { color: var(--boli); }
+.tk.en { color: var(--rojo); }
+.tk label { position: absolute; top: 50px; white-space: nowrap; font-family: var(--mano); font-size: 14px; color: var(--lapiz); font-weight: 400; }
+.postit-mini { position: absolute; top: -34px; left: 26px; white-space: nowrap; font-family: var(--mano); font-size: 12px; font-weight: 400; color: var(--lapiz);
+  background: var(--postit); padding: 2px 8px; transform: rotate(4deg); box-shadow: 0 3px 6px -2px rgba(40,50,70,.35); }
+
+.tiradas { position: absolute; right: 30px; top: 110px; width: 270px; z-index: 4; font-family: var(--mano); }
+.tiradas h4 { margin: 0 0 8px; font-size: 16px; font-weight: 600; color: var(--lapiz-suave); }
+.tirada { padding: 8px 0; border-bottom: 1.5px dashed rgba(122,156,200,.7); font-size: 15px; color: var(--lapiz); display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.tirada b { grid-row: span 2; font-size: 32px; font-weight: 700; color: var(--boli); line-height: 1; }
+.tirada small { font-size: 13px; color: var(--lapiz-suave); }
+.tirada .bien { color: #2e7d4a; font-weight: 600; }
+.tirada .mal { color: var(--rojo); font-weight: 600; }
+
+/* La página del jugador, arrancada y apoyada sobre el tablero */
+.pagina { position: absolute; left: 60px; right: 330px; bottom: 22px; z-index: 6; min-height: 250px;
+  display: grid; grid-template-columns: 290px 1fr 250px; gap: 0;
+  background-color: #fffef9;
+  background-image: linear-gradient(rgba(122,156,200,.22) 1px, transparent 1px);
+  background-size: 100% 30px; background-position: 0 14px;
+  box-shadow: 0 22px 40px -18px rgba(40, 50, 70, .5), 0 1px 0 rgba(40,50,70,.08);
+  transform: rotate(-.4deg);
+  --borde-arrancado: radial-gradient(circle at 6px -2px, transparent 5px, #fffef9 5.5px);
+}
+.pagina::before { content: ''; position: absolute; left: 0; right: 0; top: -8px; height: 9px; background: var(--borde-arrancado) 0 0 / 12px 9px repeat-x; }
+.pagina::after { content: ''; position: absolute; left: 92px; top: 0; bottom: 0; width: 1.5px; background: rgba(210, 65, 47, .45); }
+.col { padding: 18px 22px; position: relative; }
+
+.quien { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: center; position: relative; z-index: 1; }
+.foto { width: 72px; height: 72px; border-radius: 4px; background: #c9d6e8; border: 4px solid #fff; box-shadow: 0 4px 10px -3px rgba(40,50,70,.4); transform: rotate(-3deg); position: relative; overflow: hidden; }
+.foto::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 40%, #7d93b6 0 15px, transparent 16px), radial-gradient(ellipse at 50% 115%, #7d93b6 0 28px, transparent 29px); }
+.cinta { position: absolute; top: -10px; left: 14px; width: 46px; height: 16px; background: rgba(246, 163, 189, .6); transform: rotate(-8deg); z-index: 2; }
+.quien h2 { margin: 0; font-family: var(--mano); font-size: 32px; font-weight: 700; color: var(--boli); line-height: 1; }
+.quien p { margin: 3px 0 0; font-family: var(--mano); font-size: 14px; color: var(--lapiz-suave); white-space: nowrap; }
+.pg { margin-top: 18px; font-family: var(--mano); }
+.pg .num { font-size: 40px; font-weight: 700; color: var(--lapiz); line-height: 1; }
+.pg .num span { font-size: 18px; font-weight: 400; color: var(--lapiz-suave); }
+.barra-pg { margin-top: 8px; height: 18px; position: relative; }
+.barra-pg svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.stats { display: flex; gap: 16px; margin-top: 16px; font-family: var(--mano); font-size: 13px; color: var(--lapiz-suave); }
+.stats b { display: block; font-size: 22px; color: var(--lapiz); font-weight: 600; }
+.stats .ca b { color: var(--boli); }
+
+.col.acciones h3 { margin: 0 0 6px; font-family: var(--mano); font-size: 22px; font-weight: 600; color: var(--lapiz); display: flex; align-items: center; gap: 10px; }
+.rombos { display: inline-flex; gap: 4px; }
+.rombos svg { width: 20px; height: 20px; }
+.lista { list-style: none; margin: 0; padding: 0; }
+.accion { display: grid; grid-template-columns: 28px 1fr auto 30px; gap: 10px; align-items: center; height: 30px; font-size: 15px; }
+.accion .caja { width: 18px; height: 18px; }
+.accion b { font-family: var(--mano); font-weight: 600; font-size: 17px; }
+.accion span.det { color: var(--lapiz-suave); font-size: 13px; margin-left: 6px; }
+.accion .val { font-family: var(--mano); font-size: 20px; font-weight: 700; color: var(--boli); }
+.accion kbd { font-family: var(--mano); font-size: 12px; color: var(--lapiz-suave); border: 1.3px solid rgba(51,55,62,.4); border-radius: 4px; width: 22px; height: 20px; display: grid; place-items: center; }
+.accion.toca b { background: linear-gradient(174deg, transparent 22%, var(--marca) 22% 86%, transparent 86%); padding: 0 4px; margin-left: -4px; }
+.mas { font-family: var(--mano); font-size: 14px; color: var(--boli-suave); margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; }
+
+.col.lado { display: flex; flex-direction: column; gap: 12px; }
+.postit { background: var(--postit); padding: 12px 14px; font-family: var(--mano); transform: rotate(2deg); box-shadow: 0 8px 16px -8px rgba(40,50,70,.45); }
+.postit b { font-size: 18px; font-weight: 700; display: block; }
+.postit p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.35; }
+.boton-fin { margin-top: auto; height: 50px; border: 2px solid var(--boli); border-radius: 10px 14px 10px 12px; background: var(--boli); color: #fff; font-family: var(--mano); font-size: 18px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 10px; transform: rotate(-1deg); box-shadow: 0 6px 12px -6px rgba(36,80,176,.6); }
+.boton-fin kbd { font-family: var(--mano); font-size: 12px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; padding: 0 5px; }
+
+/* TELÉFONO */
+.fila-movil { width: min(1440px, 100%); display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+.telefono { width: 390px; height: 844px; border-radius: 46px; padding: 12px; background: #23262c; box-shadow: 0 30px 60px -20px rgba(40, 50, 70, .5); }
+.pantallita { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+.m-cab { padding: 54px 22px 14px; }
+.m-cab .turno { font-family: var(--mano); font-size: 15px; color: var(--lapiz-suave); display: flex; justify-content: space-between; margin-bottom: 12px; }
+.m-cab .turno b { color: var(--boli); background: linear-gradient(174deg, transparent 22%, var(--marca) 22% 86%, transparent 86%); padding: 0 4px; }
+.m-cuerpo { flex: 1; padding: 4px 22px; overflow: hidden; }
+.tarjeta-accion { background: #fffef9; padding: 14px 16px 16px; margin: 10px -4px 14px; box-shadow: 0 16px 30px -16px rgba(40,50,70,.5); transform: rotate(-.6deg); position: relative; }
+.tarjeta-accion::before { content: ''; position: absolute; top: -9px; left: 50%; width: 60px; height: 18px; margin-left: -30px; background: rgba(247, 225, 74, .7); transform: rotate(3deg); }
+.tarjeta-accion h4 { margin: 0; font-family: var(--mano); font-size: 22px; font-weight: 700; color: var(--lapiz); }
+.tarjeta-accion p { margin: 6px 0 10px; font-size: 14px; line-height: 1.45; }
+.cuenta { font-family: var(--mano); font-size: 15px; line-height: 1.6; color: var(--lapiz); }
+.cuenta .menos { color: var(--rojo); }
+.cuenta .total { border-top: 2px solid var(--lapiz); margin-top: 4px; padding-top: 2px; font-weight: 700; font-size: 18px; color: var(--boli); display: flex; justify-content: space-between; }
+.m-botones { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+.m-botones button { height: 48px; border: 2px solid var(--boli); border-radius: 10px 12px 9px 11px; background: #fff; color: var(--boli); font-family: var(--mano); font-size: 17px; font-weight: 600; }
+.m-botones button.toca { background: var(--boli); color: #fff; }
+.m-fin { padding: 10px 22px 8px; background: rgba(248,249,245,.96); }
+.m-pie { display: grid; grid-template-columns: repeat(4, 1fr); padding: 10px 8px 28px; background: rgba(248,249,245,.95); border-top: 1.5px dashed rgba(122,156,200,.7); }
+.m-pie a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: var(--mano); font-size: 13px; color: var(--lapiz-suave); }
+.m-pie a i { font-size: 24px; }
+.m-pie a.activo { color: var(--boli); font-weight: 700; }
+.explica { flex: 1; min-width: 300px; font-size: 15px; line-height: 1.6; }
+.explica h3 { font-family: var(--mano); font-size: 24px; color: var(--boli); margin: 0 0 8px; }
+.explica ul { padding-left: 18px; margin: 0; }
+.explica li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="temblor"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.2"/></filter>
+    <symbol id="rombo" viewBox="0 0 20 20"><path d="M10 2 L18 10 L10 18 L2 10 Z" fill="#2450b0" stroke="#2450b0" stroke-width="1.5" stroke-linejoin="round" filter="url(#temblor)"/></symbol>
+    <symbol id="rombo-x" viewBox="0 0 20 20"><path d="M10 2 L18 10 L10 18 L2 10 Z" fill="none" stroke="#6b717b" stroke-width="1.5" stroke-linejoin="round" filter="url(#temblor)"/><path d="M6 6 L14 14 M14 6 L6 14" stroke="#6b717b" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="caja" viewBox="0 0 18 18"><path d="M2 3 L16 2 L16 16 L3 16 Z" fill="none" stroke="#33373e" stroke-width="1.4" stroke-linejoin="round" filter="url(#temblor)"/></symbol>
+    <symbol id="circulo-azul" viewBox="0 0 44 44"><path d="M22 3 C33 3 41 11 41 22 C41 33 33 41 22 41 C11 41 3 33 3 22 C3 12 10 4 21 3.5" fill="#fff" stroke="#2450b0" stroke-width="2.2" stroke-linecap="round" filter="url(#temblor)"/></symbol>
+    <symbol id="circulo-rojo" viewBox="0 0 44 44"><path d="M22 3 C33 3 41 11 41 22 C41 33 33 41 22 41 C11 41 3 33 3 22 C3 12 10 4 21 3.5" fill="#fff" stroke="#d2412f" stroke-width="2.2" stroke-linecap="round" filter="url(#temblor)"/></symbol>
+  </defs>
+</svg>
+
+<div class="lamina">
+  <div class="rotulo">Cuaderno de mazmorras · Escritorio (todos en PC) · Turno de Kyra, ya hizo un ataque</div>
+
+  <div class="pantalla cuadriculado">
+    <div class="espiral"></div>
+    <div class="barra">
+      <span class="marca">Wayforge</span>
+      <span class="mesa">mesa VDZMW7 · Cripta del puente</span>
+      <div class="der"><i class="ph ph-users-three"></i> GM, Kyra, Tomás <i class="ph ph-moon"></i> <i class="ph ph-sign-out"></i></div>
+    </div>
+    <div class="orden">
+      <span class="r">ronda 2:</span>
+      <span class="enemigo hecho">Goblin<em>20</em></span>
+      <span class="ahora">Kyra<em>13</em></span>
+      <span>Tomás<em>9</em></span>
+      <span class="enemigo">Arquero<em>7</em></span>
+    </div>
+
+    <div class="tablero">
+      <svg viewBox="0 0 1440 844" preserveAspectRatio="none">
+        <g fill="none" stroke="#33373e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#temblor)" opacity=".85">
+          <path d="M192 168 H912 V264"/>
+          <path d="M192 168 V600 H528"/>
+          <path d="M624 600 H912 V408"/>
+          <path d="M576 336 h48 v48 h-48 z"/>
+          <path d="M576 336 l48 48 M624 336 l-48 48" stroke-width="1.4"/>
+        </g>
+        <!-- Rayado a lápiz por fuera de los muros -->
+        <g stroke="#33373e" stroke-width="1" opacity=".35" filter="url(#temblor)">
+          <path d="M180 160 l-20 -20 M204 156 l-20 -20 M228 156 l-20 -20 M252 156 l-20 -20 M180 196 l-20 -20 M180 232 l-20 -20 M180 268 l-20 -20 M180 304 l-20 -20 M180 340 l-20 -20 M180 376 l-20 -20 M180 412 l-20 -20"/>
+        </g>
+        <!-- Alcance de Kyra, sombreado con marcatextos -->
+        <ellipse cx="420" cy="400" rx="128" ry="124" fill="rgba(247,225,74,.22)" stroke="rgba(214,190,40,.7)" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
+        <text x="485" y="525" font-family="Shantell Sans" font-size="16" fill="#6b717b" transform="rotate(-4 485 525)">hasta aquí: 25 ft</text>
+        <path d="M444 382 C500 340 540 310 578 296" fill="none" stroke="#d2412f" stroke-width="1.8" stroke-dasharray="6 6" stroke-linecap="round" filter="url(#temblor)"/>
+      </svg>
+      <div class="tk pj" style="left:420px;top:400px"><svg><use href="#circulo-azul"/></svg><b>K</b><span class="postit-mini">Frightened 1</span><label>Kyra</label></div>
+      <div class="tk en" style="left:600px;top:288px"><svg><use href="#circulo-rojo"/></svg><b>G</b><span class="postit-mini" style="background:#f6c3d2">Off-guard</span><label>Goblin</label></div>
+      <div class="tk pj" style="left:300px;top:300px"><svg><use href="#circulo-azul"/></svg><b>T</b><label>Tomás</label></div>
+      <div class="tk en" style="left:816px;top:336px"><svg><use href="#circulo-rojo"/></svg><b>A</b><label>Arquero</label></div>
+    </div>
+
+    <aside class="tiradas">
+      <h4>Últimas tiradas</h4>
+      <div class="tirada"><span>Kyra · Longsword</span><b>23</b><small>13 + 10 · <span class="bien">¡le diste al Goblin!</span></small></div>
+      <div class="tirada"><span>Kyra · daño</span><b>9</b><small>5 + 4 slashing</small></div>
+      <div class="tirada"><span>Goblin · a Kyra</span><b>18</b><small>11 + 7 · <span class="mal">falló</span></small></div>
+    </aside>
+
+    <section class="pagina" aria-label="Página de Kyra">
+      <div class="col">
+        <div class="quien">
+          <div class="foto"></div><span class="cinta"></span>
+          <div><h2>Kyra</h2><p>Human Fighter · nivel 3</p></div>
+        </div>
+        <div class="pg">
+          <div class="num">37 <span>/ 44 PG</span></div>
+          <div class="barra-pg">
+            <svg viewBox="0 0 240 18" preserveAspectRatio="none">
+              <path d="M2 3 L238 2 L238 16 L2 16 Z" fill="none" stroke="#33373e" stroke-width="1.6" filter="url(#temblor)"/>
+              <path d="M6 13 L14 5 M14 14 L23 5 M22 14 L31 5 M30 14 L39 5 M38 14 L47 5 M46 14 L55 5 M54 14 L63 5 M62 14 L71 5 M70 14 L79 5 M78 14 L87 5 M86 14 L95 5 M94 14 L103 5 M102 14 L111 5 M110 14 L119 5 M118 14 L127 5 M126 14 L135 5 M134 14 L143 5 M142 14 L151 5 M150 14 L159 5 M158 14 L167 5 M166 14 L175 5 M174 14 L183 5 M182 14 L191 5 M190 14 L199 5" stroke="#3f8f57" stroke-width="2.4" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="ca">CA<b>19</b></div><div>Fort<b>+8</b></div><div>Ref<b>+8</b></div><div>Will<b>+5</b></div><div>Perc<b>+7</b></div>
+        </div>
+      </div>
+
+      <div class="col acciones">
+        <h3>Tu turno
+          <span class="rombos" aria-label="1 acción usada, 2 libres"><svg><use href="#rombo-x"/></svg><svg><use href="#rombo"/></svg><svg><use href="#rombo"/></svg></span>
+          <span style="font-size:14px;font-weight:400;color:var(--lapiz-suave)">te quedan 2</span>
+        </h3>
+        <ul class="lista">
+          <li class="accion toca"><svg class="caja"><use href="#caja"/></svg><span><b>Atacar otra vez</b><span class="det">Longsword al Goblin</span></span><span class="val">+6</span><kbd>Q</kbd></li>
+          <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Moverte</b><span class="det">hasta 25 ft</span></span><span class="val">25</span><kbd>W</kbd></li>
+          <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Levantar escudo</b><span class="det">+2 a tu CA</span></span><span class="val">+2</span><kbd>E</kbd></li>
+          <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Asustarlo</b><span class="det">Demoralize</span></span><span class="val">+4</span><kbd>R</kbd></li>
+          <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Paso corto</b><span class="det">Step, 5 ft sin provocar</span></span><span class="val">5</span><kbd>T</kbd></li>
+        </ul>
+        <span class="mas"><i class="ph ph-plus-circle"></i> más acciones…</span>
+      </div>
+
+      <div class="col lado">
+        <div class="postit"><b>Frightened 1</b><p>Tienes −1 a todo. Se te pasa al final de este turno.</p></div>
+        <div class="boton-fin"><i class="ph ph-check-circle"></i> Terminar turno <kbd>F</kbd></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="rotulo">Cuaderno de mazmorras · Teléfono (mesa compartida: el tablero está en la tele)</div>
+  <div class="fila-movil">
+    <div class="telefono">
+      <div class="pantallita cuadriculado">
+        <div class="m-cab">
+          <div class="turno"><span>ronda 2 · <b>¡tu turno!</b></span><span>VDZMW7</span></div>
+          <div class="quien" style="grid-template-columns:58px 1fr">
+            <div class="foto" style="width:58px;height:58px"></div>
+            <div><h2 style="font-size:28px">Kyra</h2><p>37 / 44 PG · CA 19</p></div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:14px;font-family:var(--mano);font-size:15px;color:var(--lapiz-suave)">
+            <span class="rombos"><svg><use href="#rombo-x"/></svg><svg><use href="#rombo"/></svg><svg><use href="#rombo"/></svg></span> te quedan 2
+            <span class="postit-mini" style="position:static;margin-left:auto;transform:rotate(3deg);font-size:13px">Frightened 1</span>
+          </div>
+        </div>
+        <div class="m-cuerpo">
+          <div class="tarjeta-accion">
+            <h4>Atacar otra vez</h4>
+            <p>Es tu 2.º ataque del turno, por eso cuesta más acertar. El Goblin está desprevenido: más fácil.</p>
+            <div class="cuenta">
+              <div style="display:flex;justify-content:space-between"><span>Longsword (Str + Expert + runa)</span><span>+12</span></div>
+              <div class="menos" style="display:flex;justify-content:space-between"><span>Frightened 1</span><span>−1</span></div>
+              <div class="menos" style="display:flex;justify-content:space-between"><span>2.º ataque</span><span>−5</span></div>
+              <div class="total"><span>tiras 1d20</span><span>+6</span></div>
+            </div>
+            <div class="m-botones"><button class="toca">¡Atacar!</button><button>Daño</button><button>Crítico</button></div>
+          </div>
+          <ul class="lista">
+            <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Moverte</b><span class="det">25 ft</span></span><span class="val">25</span></li>
+            <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Levantar escudo</b></span><span class="val">+2</span></li>
+            <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Asustarlo</b></span><span class="val">+4</span></li>
+            <li class="accion"><svg class="caja"><use href="#caja"/></svg><span><b>Paso corto</b></span><span class="val">5</span></li>
+          </ul>
+        </div>
+        <div class="m-fin"><div class="boton-fin" style="margin-top:0"><i class="ph ph-check-circle"></i> Terminar turno</div></div>
+        <nav class="m-pie">
+          <a class="activo"><i class="ph ph-sword"></i>Turno</a>
+          <a><i class="ph ph-notebook"></i>Ficha</a>
+          <a><i class="ph ph-map-trifold"></i>Tablero</a>
+          <a><i class="ph ph-dice-five"></i>Tiradas</a>
+        </nav>
+      </div>
+    </div>
+    <div class="explica">
+      <h3>Cómo se siente</h3>
+      <ul>
+        <li><b>Es el cuaderno cuadriculado de siempre:</b> mapa a lápiz con trazo un poco tembloroso, como dibujado a mano, y tokens como círculos hechos en birome.</li>
+        <li><b>Tu personaje es una página arrancada</b>, apoyada sobre el tablero, con la foto pegada con cinta.</li>
+        <li><b>Las acciones son una lista para tachar;</b> la que toca va con marcatextos.</li>
+        <li><b>Las condiciones son post-its</b> con la explicación escrita a mano.</li>
+        <li><b>El orden de turnos se escribe arriba:</b> los que ya jugaron quedan tachados y el tuyo resaltado.</li>
+        <li><b>Las tiradas hablan en lenguaje de mesa:</b> "¡le diste al Goblin!".</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,930 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T01:49:32.263Z",
+  "title": "Design System: Wayforge",
+  "extensions": {
+    "themes": [
+      {
+        "name": "cuaderno",
+        "selector": ":root, :root[data-tema='cuaderno']",
+        "colorScheme": "light",
+        "note": "Default light theme; tokens without suffix."
+      },
+      {
+        "name": "noche",
+        "selector": ":root[data-tema='noche']",
+        "colorScheme": "dark",
+        "note": "Same notebook with a black cover and gel ink; tokens suffixed -noche in the frontmatter map to the same custom property."
+      }
+    ],
+    "colorMeta": {
+      "fondo": {
+        "role": "neutral",
+        "displayName": "Papel",
+        "canonical": "#f8f9f5",
+        "approx": "oklch(98.0% 0.005 117.9)",
+        "theme": "cuaderno",
+        "cssVar": "--fondo",
+        "tonalRamp": [
+          "oklch(15.0% 0.005 117.9)",
+          "oklch(26.4% 0.005 117.9)",
+          "oklch(37.9% 0.005 117.9)",
+          "oklch(49.3% 0.005 117.9)",
+          "oklch(60.7% 0.005 117.9)",
+          "oklch(72.1% 0.005 117.9)",
+          "oklch(83.6% 0.005 117.9)",
+          "oklch(95.0% 0.005 117.9)"
+        ]
+      },
+      "superficie": {
+        "role": "neutral",
+        "displayName": "Hoja",
+        "canonical": "#fbfcfd",
+        "approx": "oklch(99.1% 0.002 0)",
+        "theme": "cuaderno",
+        "cssVar": "--superficie",
+        "tonalRamp": [
+          "oklch(15.0% 0.002 0)",
+          "oklch(26.4% 0.002 0)",
+          "oklch(37.9% 0.002 0)",
+          "oklch(49.3% 0.002 0)",
+          "oklch(60.7% 0.002 0)",
+          "oklch(72.1% 0.002 0)",
+          "oklch(83.6% 0.002 0)",
+          "oklch(95.0% 0.002 0)"
+        ]
+      },
+      "superficie-2": {
+        "role": "neutral",
+        "displayName": "Hoja Sombreada",
+        "canonical": "#eef1f6",
+        "approx": "oklch(95.7% 0.007 260.7)",
+        "theme": "cuaderno",
+        "cssVar": "--superficie-2",
+        "tonalRamp": [
+          "oklch(15.0% 0.007 260.7)",
+          "oklch(26.4% 0.007 260.7)",
+          "oklch(37.9% 0.007 260.7)",
+          "oklch(49.3% 0.007 260.7)",
+          "oklch(60.7% 0.007 260.7)",
+          "oklch(72.1% 0.007 260.7)",
+          "oklch(83.6% 0.007 260.7)",
+          "oklch(95.0% 0.007 260.7)"
+        ]
+      },
+      "borde": {
+        "role": "neutral",
+        "displayName": "Borde",
+        "canonical": "#c9d3e1",
+        "approx": "oklch(86.3% 0.022 256.7)",
+        "theme": "cuaderno",
+        "cssVar": "--borde",
+        "tonalRamp": [
+          "oklch(15.0% 0.022 256.7)",
+          "oklch(26.4% 0.022 256.7)",
+          "oklch(37.9% 0.022 256.7)",
+          "oklch(49.3% 0.022 256.7)",
+          "oklch(60.7% 0.022 256.7)",
+          "oklch(72.1% 0.022 256.7)",
+          "oklch(83.6% 0.022 256.7)",
+          "oklch(95.0% 0.022 256.7)"
+        ]
+      },
+      "texto": {
+        "role": "neutral",
+        "displayName": "Grafito",
+        "canonical": "#33373e",
+        "approx": "oklch(33.6% 0.013 261.7)",
+        "theme": "cuaderno",
+        "cssVar": "--texto",
+        "tonalRamp": [
+          "oklch(15.0% 0.013 261.7)",
+          "oklch(26.4% 0.013 261.7)",
+          "oklch(37.9% 0.013 261.7)",
+          "oklch(49.3% 0.013 261.7)",
+          "oklch(60.7% 0.013 261.7)",
+          "oklch(72.1% 0.013 261.7)",
+          "oklch(83.6% 0.013 261.7)",
+          "oklch(95.0% 0.013 261.7)"
+        ]
+      },
+      "texto-suave": {
+        "role": "neutral",
+        "displayName": "Grafito Suave",
+        "canonical": "#646a74",
+        "approx": "oklch(52.3% 0.017 260.7)",
+        "theme": "cuaderno",
+        "cssVar": "--texto-suave",
+        "tonalRamp": [
+          "oklch(15.0% 0.017 260.7)",
+          "oklch(26.4% 0.017 260.7)",
+          "oklch(37.9% 0.017 260.7)",
+          "oklch(49.3% 0.017 260.7)",
+          "oklch(60.7% 0.017 260.7)",
+          "oklch(72.1% 0.017 260.7)",
+          "oklch(83.6% 0.017 260.7)",
+          "oklch(95.0% 0.017 260.7)"
+        ]
+      },
+      "acento": {
+        "role": "primary",
+        "displayName": "Bolígrafo Azul",
+        "canonical": "#2450b0",
+        "approx": "oklch(45.9% 0.161 263.1)",
+        "theme": "cuaderno",
+        "cssVar": "--acento",
+        "tonalRamp": [
+          "oklch(15.0% 0.161 263.1)",
+          "oklch(26.4% 0.161 263.1)",
+          "oklch(37.9% 0.161 263.1)",
+          "oklch(49.3% 0.161 263.1)",
+          "oklch(60.7% 0.161 263.1)",
+          "oklch(72.1% 0.161 263.1)",
+          "oklch(83.6% 0.161 263.1)",
+          "oklch(95.0% 0.161 263.1)"
+        ]
+      },
+      "acento-suave": {
+        "role": "primary",
+        "displayName": "Azul Lavado",
+        "canonical": "#5f7fc6",
+        "approx": "oklch(60.4% 0.115 264.8)",
+        "theme": "cuaderno",
+        "cssVar": "--acento-suave",
+        "tonalRamp": [
+          "oklch(15.0% 0.115 264.8)",
+          "oklch(26.4% 0.115 264.8)",
+          "oklch(37.9% 0.115 264.8)",
+          "oklch(49.3% 0.115 264.8)",
+          "oklch(60.7% 0.115 264.8)",
+          "oklch(72.1% 0.115 264.8)",
+          "oklch(83.6% 0.115 264.8)",
+          "oklch(95.0% 0.115 264.8)"
+        ]
+      },
+      "sobre-acento": {
+        "role": "neutral",
+        "displayName": "Sobre Bolígrafo",
+        "canonical": "#ffffff",
+        "approx": "oklch(100.0% 0.000 0)",
+        "theme": "cuaderno",
+        "cssVar": "--sobre-acento",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 0)",
+          "oklch(26.4% 0.000 0)",
+          "oklch(37.9% 0.000 0)",
+          "oklch(49.3% 0.000 0)",
+          "oklch(60.7% 0.000 0)",
+          "oklch(72.1% 0.000 0)",
+          "oklch(83.6% 0.000 0)",
+          "oklch(95.0% 0.000 0)"
+        ]
+      },
+      "peligro": {
+        "role": "secondary",
+        "displayName": "Tinta Roja",
+        "canonical": "#c8392b",
+        "approx": "oklch(55.7% 0.182 29.6)",
+        "theme": "cuaderno",
+        "cssVar": "--peligro",
+        "tonalRamp": [
+          "oklch(15.0% 0.182 29.6)",
+          "oklch(26.4% 0.182 29.6)",
+          "oklch(37.9% 0.182 29.6)",
+          "oklch(49.3% 0.182 29.6)",
+          "oklch(60.7% 0.182 29.6)",
+          "oklch(72.1% 0.182 29.6)",
+          "oklch(83.6% 0.182 29.6)",
+          "oklch(95.0% 0.182 29.6)"
+        ]
+      },
+      "exito": {
+        "role": "tertiary",
+        "displayName": "Verde de Acierto",
+        "canonical": "#2e7d4a",
+        "approx": "oklch(52.7% 0.111 152.2)",
+        "theme": "cuaderno",
+        "cssVar": "--exito",
+        "tonalRamp": [
+          "oklch(15.0% 0.111 152.2)",
+          "oklch(26.4% 0.111 152.2)",
+          "oklch(37.9% 0.111 152.2)",
+          "oklch(49.3% 0.111 152.2)",
+          "oklch(60.7% 0.111 152.2)",
+          "oklch(72.1% 0.111 152.2)",
+          "oklch(83.6% 0.111 152.2)",
+          "oklch(95.0% 0.111 152.2)"
+        ]
+      },
+      "marca": {
+        "role": "tertiary",
+        "displayName": "Marcatextos Amarillo",
+        "canonical": "#f7e14a",
+        "approx": "oklch(90.2% 0.165 100.8)",
+        "theme": "cuaderno",
+        "cssVar": "--marca",
+        "tonalRamp": [
+          "oklch(15.0% 0.165 100.8)",
+          "oklch(26.4% 0.165 100.8)",
+          "oklch(37.9% 0.165 100.8)",
+          "oklch(49.3% 0.165 100.8)",
+          "oklch(60.7% 0.165 100.8)",
+          "oklch(72.1% 0.165 100.8)",
+          "oklch(83.6% 0.165 100.8)",
+          "oklch(95.0% 0.165 100.8)"
+        ]
+      },
+      "sobre-marca": {
+        "role": "neutral",
+        "displayName": "Sobre Marcatextos",
+        "canonical": "#33373e",
+        "approx": "oklch(33.6% 0.013 261.7)",
+        "theme": "cuaderno",
+        "cssVar": "--sobre-marca",
+        "tonalRamp": [
+          "oklch(15.0% 0.013 261.7)",
+          "oklch(26.4% 0.013 261.7)",
+          "oklch(37.9% 0.013 261.7)",
+          "oklch(49.3% 0.013 261.7)",
+          "oklch(60.7% 0.013 261.7)",
+          "oklch(72.1% 0.013 261.7)",
+          "oklch(83.6% 0.013 261.7)",
+          "oklch(95.0% 0.013 261.7)"
+        ]
+      },
+      "postit": {
+        "role": "tertiary",
+        "displayName": "Post-it Rosa",
+        "canonical": "#f8c9d6",
+        "approx": "oklch(88.0% 0.056 359.9)",
+        "theme": "cuaderno",
+        "cssVar": "--postit",
+        "tonalRamp": [
+          "oklch(15.0% 0.056 359.9)",
+          "oklch(26.4% 0.056 359.9)",
+          "oklch(37.9% 0.056 359.9)",
+          "oklch(49.3% 0.056 359.9)",
+          "oklch(60.7% 0.056 359.9)",
+          "oklch(72.1% 0.056 359.9)",
+          "oklch(83.6% 0.056 359.9)",
+          "oklch(95.0% 0.056 359.9)"
+        ]
+      },
+      "tinta-postit": {
+        "role": "neutral",
+        "displayName": "Tinta de Post-it",
+        "canonical": "#2b2a22",
+        "approx": "oklch(28.3% 0.014 101.4)",
+        "theme": "cuaderno",
+        "cssVar": "--tinta-postit",
+        "tonalRamp": [
+          "oklch(15.0% 0.014 101.4)",
+          "oklch(26.4% 0.014 101.4)",
+          "oklch(37.9% 0.014 101.4)",
+          "oklch(49.3% 0.014 101.4)",
+          "oklch(60.7% 0.014 101.4)",
+          "oklch(72.1% 0.014 101.4)",
+          "oklch(83.6% 0.014 101.4)",
+          "oklch(95.0% 0.014 101.4)"
+        ]
+      },
+      "cinta": {
+        "role": "tertiary",
+        "displayName": "Cinta",
+        "canonical": "rgba(246, 163, 189, 0.6)",
+        "approx": "oklch(80.4% 0.103 359.3)",
+        "theme": "cuaderno",
+        "cssVar": "--cinta",
+        "tonalRamp": [
+          "oklch(15.0% 0.103 359.3)",
+          "oklch(26.4% 0.103 359.3)",
+          "oklch(37.9% 0.103 359.3)",
+          "oklch(49.3% 0.103 359.3)",
+          "oklch(60.7% 0.103 359.3)",
+          "oklch(72.1% 0.103 359.3)",
+          "oklch(83.6% 0.103 359.3)",
+          "oklch(95.0% 0.103 359.3)"
+        ]
+      },
+      "cuadricula": {
+        "role": "neutral",
+        "displayName": "Línea de Cuadrícula",
+        "canonical": "rgba(122, 156, 200, 0.32)",
+        "approx": "oklch(68.4% 0.076 255.1)",
+        "theme": "cuaderno",
+        "cssVar": "--cuadricula",
+        "tonalRamp": [
+          "oklch(15.0% 0.076 255.1)",
+          "oklch(26.4% 0.076 255.1)",
+          "oklch(37.9% 0.076 255.1)",
+          "oklch(49.3% 0.076 255.1)",
+          "oklch(60.7% 0.076 255.1)",
+          "oklch(72.1% 0.076 255.1)",
+          "oklch(83.6% 0.076 255.1)",
+          "oklch(95.0% 0.076 255.1)"
+        ]
+      },
+      "sombra": {
+        "role": "neutral",
+        "displayName": "Sombra",
+        "canonical": "rgba(40, 50, 70, 0.45)",
+        "approx": "oklch(31.7% 0.039 263.8)",
+        "theme": "cuaderno",
+        "cssVar": "--sombra",
+        "tonalRamp": [
+          "oklch(15.0% 0.039 263.8)",
+          "oklch(26.4% 0.039 263.8)",
+          "oklch(37.9% 0.039 263.8)",
+          "oklch(49.3% 0.039 263.8)",
+          "oklch(60.7% 0.039 263.8)",
+          "oklch(72.1% 0.039 263.8)",
+          "oklch(83.6% 0.039 263.8)",
+          "oklch(95.0% 0.039 263.8)"
+        ]
+      },
+      "fondo-noche": {
+        "role": "neutral",
+        "displayName": "Papel (Noche)",
+        "canonical": "#14171d",
+        "approx": "oklch(20.4% 0.013 264.2)",
+        "theme": "noche",
+        "cssVar": "--fondo",
+        "tonalRamp": [
+          "oklch(15.0% 0.013 264.2)",
+          "oklch(26.4% 0.013 264.2)",
+          "oklch(37.9% 0.013 264.2)",
+          "oklch(49.3% 0.013 264.2)",
+          "oklch(60.7% 0.013 264.2)",
+          "oklch(72.1% 0.013 264.2)",
+          "oklch(83.6% 0.013 264.2)",
+          "oklch(95.0% 0.013 264.2)"
+        ]
+      },
+      "superficie-noche": {
+        "role": "neutral",
+        "displayName": "Hoja (Noche)",
+        "canonical": "#1c2028",
+        "approx": "oklch(24.3% 0.016 264.2)",
+        "theme": "noche",
+        "cssVar": "--superficie",
+        "tonalRamp": [
+          "oklch(15.0% 0.016 264.2)",
+          "oklch(26.4% 0.016 264.2)",
+          "oklch(37.9% 0.016 264.2)",
+          "oklch(49.3% 0.016 264.2)",
+          "oklch(60.7% 0.016 264.2)",
+          "oklch(72.1% 0.016 264.2)",
+          "oklch(83.6% 0.016 264.2)",
+          "oklch(95.0% 0.016 264.2)"
+        ]
+      },
+      "superficie-2-noche": {
+        "role": "neutral",
+        "displayName": "Hoja Sombreada (Noche)",
+        "canonical": "#252a34",
+        "approx": "oklch(28.4% 0.020 264.2)",
+        "theme": "noche",
+        "cssVar": "--superficie-2",
+        "tonalRamp": [
+          "oklch(15.0% 0.020 264.2)",
+          "oklch(26.4% 0.020 264.2)",
+          "oklch(37.9% 0.020 264.2)",
+          "oklch(49.3% 0.020 264.2)",
+          "oklch(60.7% 0.020 264.2)",
+          "oklch(72.1% 0.020 264.2)",
+          "oklch(83.6% 0.020 264.2)",
+          "oklch(95.0% 0.020 264.2)"
+        ]
+      },
+      "borde-noche": {
+        "role": "neutral",
+        "displayName": "Borde (Noche)",
+        "canonical": "#343b48",
+        "approx": "oklch(35.1% 0.025 262.8)",
+        "theme": "noche",
+        "cssVar": "--borde",
+        "tonalRamp": [
+          "oklch(15.0% 0.025 262.8)",
+          "oklch(26.4% 0.025 262.8)",
+          "oklch(37.9% 0.025 262.8)",
+          "oklch(49.3% 0.025 262.8)",
+          "oklch(60.7% 0.025 262.8)",
+          "oklch(72.1% 0.025 262.8)",
+          "oklch(83.6% 0.025 262.8)",
+          "oklch(95.0% 0.025 262.8)"
+        ]
+      },
+      "texto-noche": {
+        "role": "neutral",
+        "displayName": "Grafito (Noche)",
+        "canonical": "#dfe3ea",
+        "approx": "oklch(91.5% 0.010 261.8)",
+        "theme": "noche",
+        "cssVar": "--texto",
+        "tonalRamp": [
+          "oklch(15.0% 0.010 261.8)",
+          "oklch(26.4% 0.010 261.8)",
+          "oklch(37.9% 0.010 261.8)",
+          "oklch(49.3% 0.010 261.8)",
+          "oklch(60.7% 0.010 261.8)",
+          "oklch(72.1% 0.010 261.8)",
+          "oklch(83.6% 0.010 261.8)",
+          "oklch(95.0% 0.010 261.8)"
+        ]
+      },
+      "texto-suave-noche": {
+        "role": "neutral",
+        "displayName": "Grafito Suave (Noche)",
+        "canonical": "#9aa3b2",
+        "approx": "oklch(71.3% 0.024 260.7)",
+        "theme": "noche",
+        "cssVar": "--texto-suave",
+        "tonalRamp": [
+          "oklch(15.0% 0.024 260.7)",
+          "oklch(26.4% 0.024 260.7)",
+          "oklch(37.9% 0.024 260.7)",
+          "oklch(49.3% 0.024 260.7)",
+          "oklch(60.7% 0.024 260.7)",
+          "oklch(72.1% 0.024 260.7)",
+          "oklch(83.6% 0.024 260.7)",
+          "oklch(95.0% 0.024 260.7)"
+        ]
+      },
+      "acento-noche": {
+        "role": "primary",
+        "displayName": "Bolígrafo Azul (Noche)",
+        "canonical": "#8fb0ff",
+        "approx": "oklch(76.4% 0.120 266.3)",
+        "theme": "noche",
+        "cssVar": "--acento",
+        "tonalRamp": [
+          "oklch(15.0% 0.120 266.3)",
+          "oklch(26.4% 0.120 266.3)",
+          "oklch(37.9% 0.120 266.3)",
+          "oklch(49.3% 0.120 266.3)",
+          "oklch(60.7% 0.120 266.3)",
+          "oklch(72.1% 0.120 266.3)",
+          "oklch(83.6% 0.120 266.3)",
+          "oklch(95.0% 0.120 266.3)"
+        ]
+      },
+      "acento-suave-noche": {
+        "role": "primary",
+        "displayName": "Azul Lavado (Noche)",
+        "canonical": "#6c8bd6",
+        "approx": "oklch(64.6% 0.118 266.1)",
+        "theme": "noche",
+        "cssVar": "--acento-suave",
+        "tonalRamp": [
+          "oklch(15.0% 0.118 266.1)",
+          "oklch(26.4% 0.118 266.1)",
+          "oklch(37.9% 0.118 266.1)",
+          "oklch(49.3% 0.118 266.1)",
+          "oklch(60.7% 0.118 266.1)",
+          "oklch(72.1% 0.118 266.1)",
+          "oklch(83.6% 0.118 266.1)",
+          "oklch(95.0% 0.118 266.1)"
+        ]
+      },
+      "sobre-acento-noche": {
+        "role": "neutral",
+        "displayName": "Sobre Bolígrafo (Noche)",
+        "canonical": "#10131a",
+        "approx": "oklch(18.7% 0.015 266.8)",
+        "theme": "noche",
+        "cssVar": "--sobre-acento",
+        "tonalRamp": [
+          "oklch(15.0% 0.015 266.8)",
+          "oklch(26.4% 0.015 266.8)",
+          "oklch(37.9% 0.015 266.8)",
+          "oklch(49.3% 0.015 266.8)",
+          "oklch(60.7% 0.015 266.8)",
+          "oklch(72.1% 0.015 266.8)",
+          "oklch(83.6% 0.015 266.8)",
+          "oklch(95.0% 0.015 266.8)"
+        ]
+      },
+      "peligro-noche": {
+        "role": "secondary",
+        "displayName": "Tinta Roja (Noche)",
+        "canonical": "#ff7f70",
+        "approx": "oklch(74.0% 0.159 28.3)",
+        "theme": "noche",
+        "cssVar": "--peligro",
+        "tonalRamp": [
+          "oklch(15.0% 0.159 28.3)",
+          "oklch(26.4% 0.159 28.3)",
+          "oklch(37.9% 0.159 28.3)",
+          "oklch(49.3% 0.159 28.3)",
+          "oklch(60.7% 0.159 28.3)",
+          "oklch(72.1% 0.159 28.3)",
+          "oklch(83.6% 0.159 28.3)",
+          "oklch(95.0% 0.159 28.3)"
+        ]
+      },
+      "exito-noche": {
+        "role": "tertiary",
+        "displayName": "Verde de Acierto (Noche)",
+        "canonical": "#6fd296",
+        "approx": "oklch(78.8% 0.128 155.4)",
+        "theme": "noche",
+        "cssVar": "--exito",
+        "tonalRamp": [
+          "oklch(15.0% 0.128 155.4)",
+          "oklch(26.4% 0.128 155.4)",
+          "oklch(37.9% 0.128 155.4)",
+          "oklch(49.3% 0.128 155.4)",
+          "oklch(60.7% 0.128 155.4)",
+          "oklch(72.1% 0.128 155.4)",
+          "oklch(83.6% 0.128 155.4)",
+          "oklch(95.0% 0.128 155.4)"
+        ]
+      },
+      "marca-noche": {
+        "role": "tertiary",
+        "displayName": "Marcatextos Amarillo (Noche)",
+        "canonical": "#e8d64a",
+        "approx": "oklch(86.6% 0.156 101.9)",
+        "theme": "noche",
+        "cssVar": "--marca",
+        "tonalRamp": [
+          "oklch(15.0% 0.156 101.9)",
+          "oklch(26.4% 0.156 101.9)",
+          "oklch(37.9% 0.156 101.9)",
+          "oklch(49.3% 0.156 101.9)",
+          "oklch(60.7% 0.156 101.9)",
+          "oklch(72.1% 0.156 101.9)",
+          "oklch(83.6% 0.156 101.9)",
+          "oklch(95.0% 0.156 101.9)"
+        ]
+      },
+      "sobre-marca-noche": {
+        "role": "neutral",
+        "displayName": "Sobre Marcatextos (Noche)",
+        "canonical": "#14171d",
+        "approx": "oklch(20.4% 0.013 264.2)",
+        "theme": "noche",
+        "cssVar": "--sobre-marca",
+        "tonalRamp": [
+          "oklch(15.0% 0.013 264.2)",
+          "oklch(26.4% 0.013 264.2)",
+          "oklch(37.9% 0.013 264.2)",
+          "oklch(49.3% 0.013 264.2)",
+          "oklch(60.7% 0.013 264.2)",
+          "oklch(72.1% 0.013 264.2)",
+          "oklch(83.6% 0.013 264.2)",
+          "oklch(95.0% 0.013 264.2)"
+        ]
+      },
+      "postit-noche": {
+        "role": "tertiary",
+        "displayName": "Post-it Rosa (Noche)",
+        "canonical": "#d9a2b2",
+        "approx": "oklch(76.8% 0.068 359.7)",
+        "theme": "noche",
+        "cssVar": "--postit",
+        "tonalRamp": [
+          "oklch(15.0% 0.068 359.7)",
+          "oklch(26.4% 0.068 359.7)",
+          "oklch(37.9% 0.068 359.7)",
+          "oklch(49.3% 0.068 359.7)",
+          "oklch(60.7% 0.068 359.7)",
+          "oklch(72.1% 0.068 359.7)",
+          "oklch(83.6% 0.068 359.7)",
+          "oklch(95.0% 0.068 359.7)"
+        ]
+      },
+      "cinta-noche": {
+        "role": "tertiary",
+        "displayName": "Cinta (Noche)",
+        "canonical": "rgba(217, 154, 173, 0.45)",
+        "approx": "oklch(75.2% 0.079 359.4)",
+        "theme": "noche",
+        "cssVar": "--cinta",
+        "tonalRamp": [
+          "oklch(15.0% 0.079 359.4)",
+          "oklch(26.4% 0.079 359.4)",
+          "oklch(37.9% 0.079 359.4)",
+          "oklch(49.3% 0.079 359.4)",
+          "oklch(60.7% 0.079 359.4)",
+          "oklch(72.1% 0.079 359.4)",
+          "oklch(83.6% 0.079 359.4)",
+          "oklch(95.0% 0.079 359.4)"
+        ]
+      },
+      "cuadricula-noche": {
+        "role": "neutral",
+        "displayName": "Línea de Cuadrícula (Noche)",
+        "canonical": "rgba(143, 176, 255, 0.13)",
+        "approx": "oklch(76.4% 0.120 266.3)",
+        "theme": "noche",
+        "cssVar": "--cuadricula",
+        "tonalRamp": [
+          "oklch(15.0% 0.120 266.3)",
+          "oklch(26.4% 0.120 266.3)",
+          "oklch(37.9% 0.120 266.3)",
+          "oklch(49.3% 0.120 266.3)",
+          "oklch(60.7% 0.120 266.3)",
+          "oklch(72.1% 0.120 266.3)",
+          "oklch(83.6% 0.120 266.3)",
+          "oklch(95.0% 0.120 266.3)"
+        ]
+      },
+      "sombra-noche": {
+        "role": "neutral",
+        "displayName": "Sombra (Noche)",
+        "canonical": "rgba(0, 0, 0, 0.6)",
+        "approx": "oklch(0.0% 0.000 0)",
+        "theme": "noche",
+        "cssVar": "--sombra",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 0)",
+          "oklch(26.4% 0.000 0)",
+          "oklch(37.9% 0.000 0)",
+          "oklch(49.3% 0.000 0)",
+          "oklch(60.7% 0.000 0)",
+          "oklch(72.1% 0.000 0)",
+          "oklch(83.6% 0.000 0)",
+          "oklch(95.0% 0.000 0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Current PG on the sheet."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Character name in blue ballpoint (25px on phone)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Open action card name; turn header at 21px semibold."
+      },
+      "row": {
+        "displayName": "Row",
+        "purpose": "Action names in ruled lists."
+      },
+      "number": {
+        "displayName": "Number",
+        "purpose": "Row values; stats at 20px; margin roll totals at 28px."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Ballpoint button labels."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Tabs, captions, stat abbreviations, trait chips."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rule descriptions and guidance, in Atkinson Hyperlegible Next."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "English PF2e term and detail after a Spanish action name; help text."
+      }
+    },
+    "background": {
+      "name": "cuadricula-24",
+      "value": "linear-gradient(var(--cuadricula) 1px, transparent 1px), linear-gradient(90deg, var(--cuadricula) 1px, transparent 1px); background-size: 24px 24px",
+      "purpose": "Intentional: the notebook grid under the whole app; the Konva board draws the same grid. Not decorative noise."
+    },
+    "shadows": [
+      {
+        "name": "hoja",
+        "value": "0 22px 40px -18px var(--sombra), 0 1px 2px color-mix(in srgb, var(--sombra) 30%, transparent)",
+        "purpose": "The torn-out character sheet."
+      },
+      {
+        "name": "tarjeta",
+        "value": "0 16px 32px -16px var(--sombra), 0 1px 2px color-mix(in srgb, var(--sombra) 30%, transparent)",
+        "purpose": "The open action card."
+      },
+      {
+        "name": "postit",
+        "value": "0 8px 16px -8px var(--sombra)",
+        "purpose": "Condition post-its."
+      },
+      {
+        "name": "foto",
+        "value": "0 5px 12px -4px var(--sombra)",
+        "purpose": "Taped portrait photo."
+      },
+      {
+        "name": "tira-iniciativa",
+        "value": "0 6px 16px -10px var(--sombra)",
+        "purpose": "Initiative strip on the board."
+      },
+      {
+        "name": "tinta-boli",
+        "value": "0 6px 12px -6px var(--acento)",
+        "purpose": "Primary ballpoint buttons only."
+      },
+      {
+        "name": "cajon",
+        "value": "-20px 0 40px -20px var(--sombra)",
+        "purpose": "Right-side drawer for full sheet and rolls."
+      }
+    ],
+    "motion": [
+      {
+        "name": "plegar-hoja",
+        "value": "transform 300ms ease-out",
+        "purpose": "Folding the sheet down to its 56px tab and back."
+      },
+      {
+        "name": "barra-pg",
+        "value": "width 500ms ease-out",
+        "purpose": "PG hatching growing or shrinking."
+      },
+      {
+        "name": "presion",
+        "value": "scale(0.97)",
+        "purpose": "Pressed state of ballpoint buttons (0.98 on plain controls)."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition-duration and animation-duration 0.01ms",
+        "purpose": "Global prefers-reduced-motion override."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px",
+        "note": "Phone controller below, board + resting sheet above."
+      },
+      {
+        "name": "xl",
+        "value": "1280px",
+        "note": "Sheet columns widen to 310px / 1fr / 270px."
+      },
+      {
+        "name": "pointer-fine",
+        "value": "(pointer: fine)",
+        "note": "Action rows tighten from 44px to 34px."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón de bolígrafo",
+      "kind": "button",
+      "refersTo": "boton-boli",
+      "description": "Primary game action: Atacar, Usar, Terminar turno. Ballpoint ink with an irregular hand-drawn radius.",
+      "html": "<button class=\"ds-boli\">Terminar turno <kbd class=\"ds-boli-tecla\">F</kbd></button>",
+      "css": ".ds-boli{display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 20px;border:0;border-radius:10px 13px 9px 12px;background:var(--acento);color:var(--sobre-acento);font-family:'Shantell Sans','Comic Neue',cursive;font-size:17px;font-weight:700;box-shadow:0 6px 12px -6px var(--acento);transform:rotate(-1deg);cursor:pointer;transition:transform .15s,box-shadow .15s}.ds-boli:hover{box-shadow:0 8px 14px -6px var(--acento)}.ds-boli:active{transform:rotate(-1deg) scale(.97)}.ds-boli:focus-visible{outline:2px solid var(--acento);outline-offset:2px}.ds-boli-tecla{display:inline-flex;height:20px;min-width:20px;align-items:center;justify-content:center;border:1.3px solid color-mix(in srgb,var(--sobre-acento) 85%,transparent);border-radius:4px;font-family:'Shantell Sans','Comic Neue',cursive;font-size:11px}"
+    },
+    {
+      "name": "Botón de bolígrafo, contorno",
+      "kind": "button",
+      "refersTo": "boton-boli-contorno",
+      "description": "Secondary game action beside a primary one (Daño, Crítico ×2, Refocus).",
+      "html": "<button class=\"ds-boli-contorno\">Daño</button>",
+      "css": ".ds-boli-contorno{height:48px;padding:0 20px;border:2px solid var(--acento);border-radius:10px 13px 9px 12px;background:transparent;color:var(--acento);font-family:'Shantell Sans','Comic Neue',cursive;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s,transform .15s}.ds-boli-contorno:hover{background:color-mix(in srgb,var(--acento) 10%,transparent)}.ds-boli-contorno:active{transform:scale(.97)}.ds-boli-contorno:focus-visible{outline:2px solid var(--acento);outline-offset:2px}"
+    },
+    {
+      "name": "Botón sin acciones",
+      "kind": "button",
+      "refersTo": "boton-boli-sin-acciones",
+      "description": "A game action the player cannot pay for: no ink, and the label says what is missing.",
+      "html": "<button class=\"ds-boli-sin\" disabled>Te falta 1 acción</button>",
+      "css": ".ds-boli-sin{height:48px;padding:0 20px;border:0;border-radius:10px 13px 9px 12px;background:var(--superficie-2);color:var(--texto-suave);font-family:'Shantell Sans','Comic Neue',cursive;font-size:17px;font-weight:700;cursor:not-allowed}"
+    },
+    {
+      "name": "Renglones de acción",
+      "kind": "custom",
+      "refersTo": "renglon-accion",
+      "description": "Actions as ruled notebook lines: blue rhombs, handwritten name, English term, blue value. The probable action is highlighted; an unaffordable one is dimmed, struck through and has crossed-out rhombs.",
+      "html": "<ul class=\"ds-renglones\"><li><button class=\"ds-renglon\"><span class=\"ds-costo\"><svg viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M10 2.2 L17.7 10.3 L9.8 17.8 L2.3 9.6 Z\" stroke-linejoin=\"round\" stroke-width=\"1.7\" fill=\"var(--acento)\" stroke=\"var(--acento)\"/></svg></span><span><span class=\"ds-nombre ds-marcatextos\">Atacar con Staff</span> <span class=\"ds-detalle\">Strike</span></span><span class=\"ds-valor\">+4</span></button></li><li><button class=\"ds-renglon\"><span class=\"ds-costo\"><svg viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M10 2.2 L17.7 10.3 L9.8 17.8 L2.3 9.6 Z\" stroke-linejoin=\"round\" stroke-width=\"1.7\" fill=\"var(--acento)\" stroke=\"var(--acento)\"/></svg></span><span><span class=\"ds-nombre\">Agarrar</span> <span class=\"ds-detalle\">Grapple · Athletics</span></span><span class=\"ds-valor\">−1</span></button></li><li><button class=\"ds-renglon\"><span class=\"ds-costo\"><svg viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M10 2.2 L17.7 10.3 L9.8 17.8 L2.3 9.6 Z\" stroke-linejoin=\"round\" stroke-width=\"1.7\" fill=\"none\" stroke=\"var(--texto-suave)\"/><path d=\"M5.5 5.8 L14.4 14.3 M14.2 5.6 L5.8 14.4\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke=\"var(--texto-suave)\"/></svg><svg viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M10 2.2 L17.7 10.3 L9.8 17.8 L2.3 9.6 Z\" stroke-linejoin=\"round\" stroke-width=\"1.7\" fill=\"none\" stroke=\"var(--texto-suave)\"/><path d=\"M5.5 5.8 L14.4 14.3 M14.2 5.6 L5.8 14.4\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke=\"var(--texto-suave)\"/></svg></span><span class=\"ds-agotada\"><span class=\"ds-nombre ds-tachado\">Proyectiles mágicos</span> <span class=\"ds-detalle\">2 espacios libres · Force Barrage</span></span><span class=\"ds-valor ds-agotada\">2d4+2</span></button></li></ul>",
+      "css": ".ds-renglones{list-style:none;margin:0;padding:0;width:420px;max-width:100%}.ds-renglon{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;min-height:44px;padding:4px;border:0;border-bottom:1px dashed var(--borde);background:transparent;color:var(--texto);text-align:left;cursor:pointer;transition:background .15s}.ds-renglon:hover{background:color-mix(in srgb,var(--acento) 6%,transparent)}.ds-renglon:focus-visible{outline:2px solid var(--acento);outline-offset:2px}.ds-costo{display:flex;justify-content:center;gap:2px}.ds-nombre{font-family:'Shantell Sans','Comic Neue',cursive;font-size:16px;font-weight:600}.ds-detalle{font-family:'Atkinson Hyperlegible Next',system-ui,sans-serif;font-size:12.5px;color:var(--texto-suave)}.ds-valor{font-family:'Shantell Sans','Comic Neue',cursive;font-size:19px;font-weight:700;color:var(--acento);white-space:nowrap}.ds-marcatextos{background:linear-gradient(174deg,transparent 20%,var(--marca) 20% 86%,transparent 86%);color:var(--sobre-marca);padding-inline:.25em;margin-inline:-.25em;box-decoration-break:clone;-webkit-box-decoration-break:clone}.ds-agotada{opacity:.55}.ds-tachado{text-decoration:line-through 2px var(--texto)}"
+    },
+    {
+      "name": "Post-it de condición",
+      "kind": "card",
+      "refersTo": "postit-condicion",
+      "description": "A condition as a pink post-it with its short explanation, tilted about 2°.",
+      "html": "<div class=\"ds-postit\"><div class=\"ds-postit-nombre\">Frightened 1</div><p class=\"ds-postit-ayuda\">Miedo: −1 a todos tus chequeos y CDs. Baja 1 al final de cada turno tuyo.</p></div>",
+      "css": ".ds-postit{display:inline-block;max-width:230px;padding:10px 14px;background:var(--postit);color:#2b2a22;font-family:'Shantell Sans','Comic Neue',cursive;box-shadow:0 8px 16px -8px var(--sombra);transform:rotate(2deg)}.ds-postit-nombre{font-size:17px;font-weight:700;line-height:1.25}.ds-postit-ayuda{margin:4px 0 0;font-size:13px;line-height:1.375}"
+    },
+    {
+      "name": "Hoja arrancada con PG",
+      "kind": "card",
+      "refersTo": "hoja",
+      "description": "The torn-out character page: ruled, perforated top edge, taped photo, handwritten PG over a pencil-hatched bar in a hand-drawn frame.",
+      "html": "<section class=\"ds-hoja\"><div class=\"ds-quien\"><div class=\"ds-foto\"><div class=\"ds-foto-marco\">E</div><span class=\"ds-cinta\"></span></div><div><h2 class=\"ds-nombre-pj\">Ezren</h2><p class=\"ds-sub\">Human Wizard · nivel 3</p></div></div><div class=\"ds-pg\"><span class=\"ds-pg-n\">18</span><span class=\"ds-pg-max\">/ 29 PG</span></div><div class=\"ds-barra\" role=\"progressbar\" aria-valuenow=\"18\" aria-valuemin=\"0\" aria-valuemax=\"29\"><div class=\"ds-barra-relleno\" style=\"width:62%\"></div><svg viewBox=\"0 0 200 12\" preserveAspectRatio=\"none\" aria-hidden=\"true\" class=\"ds-barra-marco\"><path d=\"M1.5 1.8 C 50 1.1, 120 2.4, 198.6 1.4 L 198.2 10.6 C 140 11.2, 70 10.1, 1.2 10.8 Z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linejoin=\"round\" vector-effect=\"non-scaling-stroke\"/></svg></div></section>",
+      "css": ".ds-hoja{position:relative;width:300px;padding:20px;background-color:var(--superficie);background-image:linear-gradient(color-mix(in srgb,var(--cuadricula) 70%,transparent) 1px,transparent 1px);background-size:100% 30px;background-position:0 14px;box-shadow:0 22px 40px -18px var(--sombra),0 1px 2px color-mix(in srgb,var(--sombra) 30%,transparent);transform:rotate(-.3deg);color:var(--texto)}.ds-hoja::before{content:'';position:absolute;inset:-7px 0 auto 0;height:8px;background:radial-gradient(circle at 6px -2px,transparent 5px,var(--superficie) 5.5px) 0 0/12px 8px repeat-x}.ds-quien{display:flex;align-items:center;gap:14px}.ds-foto{position:relative}.ds-foto-marco{width:72px;height:72px;display:flex;align-items:center;justify-content:center;border:4px solid #fff;border-radius:3px;background:var(--superficie-2);font-family:'Shantell Sans','Comic Neue',cursive;font-size:24px;font-weight:700;color:var(--acento);transform:rotate(-3deg);box-shadow:0 5px 12px -4px var(--sombra)}.ds-cinta{position:absolute;top:-8px;left:12px;width:44px;height:16px;background:var(--cinta);transform:rotate(-8deg)}.ds-nombre-pj{margin:0;font-family:'Shantell Sans','Comic Neue',cursive;font-size:30px;line-height:1;font-weight:700;color:var(--acento)}.ds-sub{margin:4px 0 0;font-family:'Shantell Sans','Comic Neue',cursive;font-size:14px;color:var(--texto-suave)}.ds-pg{margin-top:12px}.ds-pg-n{font-family:'Shantell Sans','Comic Neue',cursive;font-size:38px;line-height:1;font-weight:700}.ds-pg-max{margin-left:4px;font-family:'Shantell Sans','Comic Neue',cursive;font-size:17px;color:var(--texto-suave)}.ds-barra{position:relative;height:14px;margin-top:6px;background:var(--superficie)}.ds-barra-relleno{position:absolute;inset:0 auto 0 0;background:repeating-linear-gradient(-55deg,#3f8f57 0 2.5px,transparent 2.5px 6px);transition:width .5s ease-out}.ds-barra-marco{position:absolute;inset:-2px;width:calc(100% + 4px);height:calc(100% + 4px);overflow:visible;color:var(--texto);pointer-events:none}"
+    },
+    {
+      "name": "Tarjeta de detalle con Cuenta",
+      "kind": "card",
+      "refersTo": "tarjeta-detalle",
+      "description": "An opened action: title, English term, description, the written sum with subtractions in red, a hand-drawn rule and the blue total.",
+      "html": "<div class=\"ds-tarjeta\"><div class=\"ds-t-cabeza\"><svg viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M10 2.2 L17.7 10.3 L9.8 17.8 L2.3 9.6 Z\" stroke-linejoin=\"round\" stroke-width=\"1.7\" fill=\"var(--acento)\" stroke=\"var(--acento)\"/></svg><svg viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M10 2.2 L17.7 10.3 L9.8 17.8 L2.3 9.6 Z\" stroke-linejoin=\"round\" stroke-width=\"1.7\" fill=\"var(--acento)\" stroke=\"var(--acento)\"/></svg><div><h3 class=\"ds-t-titulo\">Rayo de escarcha</h3><p class=\"ds-t-sub\">Ray of Frost</p></div></div><p class=\"ds-t-desc\">Un rayo helado: ataque de conjuro contra la CA, 2d4 de daño de frío.</p><div class=\"ds-cuenta\"><div class=\"ds-c-linea\"><span>Int</span><span>4</span></div><div class=\"ds-c-linea\"><span>Trained (+2 + nivel 3)</span><span>+5</span></div><div class=\"ds-c-linea ds-c-resta\"><span>Frightened 1</span><span>−1</span></div><svg viewBox=\"0 0 200 6\" preserveAspectRatio=\"none\" aria-hidden=\"true\" style=\"display:block;width:100%;height:6px;overflow:visible\"><path d=\"M0.5 3.4 C 40 2.1, 80 4.2, 120 2.9 S 175 2.2, 199.5 3.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" vector-effect=\"non-scaling-stroke\"/></svg><div class=\"ds-c-total\"><span>Tiras 1d20</span><span>+8</span></div></div></div>",
+      "css": ".ds-tarjeta{width:400px;max-width:100%;padding:14px 16px;background:var(--superficie);color:var(--texto);box-shadow:0 16px 32px -16px var(--sombra),0 1px 2px color-mix(in srgb,var(--sombra) 30%,transparent);transform:rotate(.5deg)}.ds-t-cabeza{display:flex;align-items:flex-start;gap:6px}.ds-t-cabeza svg{margin-top:8px}.ds-t-titulo{margin:0 0 0 6px;font-family:'Shantell Sans','Comic Neue',cursive;font-size:22px;font-weight:700;line-height:1.25}.ds-t-sub{margin:0 0 0 6px;font-family:'Atkinson Hyperlegible Next',system-ui,sans-serif;font-size:13px;color:var(--texto-suave)}.ds-t-desc{font-family:'Atkinson Hyperlegible Next',system-ui,sans-serif;font-size:14px;line-height:1.375}.ds-cuenta{padding:8px 12px;border-radius:2px;background:color-mix(in srgb,var(--superficie-2) 70%,transparent);font-family:'Shantell Sans','Comic Neue',cursive;font-size:14.5px;line-height:1.625;color:var(--texto)}.ds-c-linea,.ds-c-total{display:flex;justify-content:space-between;gap:16px;font-variant-numeric:tabular-nums}.ds-c-resta{color:var(--peligro)}.ds-c-total{margin-top:4px;font-size:17px;font-weight:700;color:var(--acento)}"
+    },
+    {
+      "name": "Pestañas índice",
+      "kind": "nav",
+      "refersTo": "pestana-indice",
+      "description": "Index tabs, one per way of recovering what you spend, standing on a hand-drawn baseline.",
+      "html": "<div class=\"ds-pestanas\" role=\"tablist\"><button role=\"tab\" aria-selected=\"false\" class=\"ds-pestana\">Tu turno</button><button role=\"tab\" aria-selected=\"true\" class=\"ds-pestana\">Siempre <small>17</small></button><button role=\"tab\" aria-selected=\"false\" class=\"ds-pestana\">Foco <small>1</small></button><button role=\"tab\" aria-selected=\"false\" class=\"ds-pestana\">Conjuros <small>2</small></button><span class=\"ds-pestanas-raya\"><svg viewBox=\"0 0 200 6\" preserveAspectRatio=\"none\" aria-hidden=\"true\" style=\"display:block;width:100%;height:6px;overflow:visible\"><path d=\"M0.5 3.4 C 40 2.1, 80 4.2, 120 2.9 S 175 2.2, 199.5 3.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" vector-effect=\"non-scaling-stroke\"/></svg></span></div>",
+      "css": ".ds-pestanas{position:relative;display:flex;gap:4px;padding-bottom:3px}.ds-pestanas-raya{position:absolute;left:0;right:0;bottom:0;color:color-mix(in srgb,var(--texto) 70%,transparent)}.ds-pestana{position:relative;z-index:1;padding:4px 10px 2px;border:1.5px solid transparent;border-bottom:0;border-radius:6px 6px 0 0;background:transparent;color:var(--texto-suave);font-family:'Shantell Sans','Comic Neue',cursive;font-size:14px;cursor:pointer;transition:color .15s}.ds-pestana small{margin-left:4px;font-size:11.5px;color:var(--texto-suave)}.ds-pestana:hover{color:var(--texto)}.ds-pestana[aria-selected=true]{border-color:color-mix(in srgb,var(--texto) 60%,transparent);background:var(--superficie);color:var(--texto);font-weight:700}.ds-pestana:focus-visible{outline:2px solid var(--acento);outline-offset:2px}"
+    },
+    {
+      "name": "Orden de iniciativa escrito",
+      "kind": "nav",
+      "refersTo": "renglon-accion-marcado",
+      "description": "Initiative written on a strip over the board: done entries struck in graphite, the current one highlighted, enemies in red.",
+      "html": "<ol class=\"ds-orden\"><li class=\"ds-o-ronda\">ronda 1:</li><li class=\"ds-o-hecho\">Goblin <small>25</small></li><li class=\"ds-o-ahora\">Ezren <small>22</small></li><li>Kyra <small>11</small></li><li class=\"ds-o-enemigo\">Orco <small>9</small></li></ol>",
+      "css": ".ds-orden{display:inline-flex;align-items:baseline;gap:20px;margin:0;padding:6px 16px;list-style:none;border-radius:2px;background:color-mix(in srgb,var(--fondo) 90%,transparent);font-family:'Shantell Sans','Comic Neue',cursive;font-size:16px;color:var(--texto);box-shadow:0 6px 16px -10px var(--sombra);transform:rotate(-.6deg)}.ds-orden small{margin-left:4px;font-size:12.5px;color:var(--texto-suave)}.ds-o-ronda{font-size:14px;color:var(--texto-suave)}.ds-o-hecho{color:var(--texto-suave);text-decoration:line-through 1.5px}.ds-o-ahora{font-weight:700;background:linear-gradient(174deg,transparent 20%,var(--marca) 20% 86%,transparent 86%);color:var(--sobre-marca);padding-inline:.25em;margin-inline:-.25em}.ds-o-ahora small{color:var(--sobre-marca)}.ds-o-enemigo{color:var(--peligro)}"
+    },
+    {
+      "name": "Control compartido y campo",
+      "kind": "input",
+      "refersTo": "entrada",
+      "description": "Plain utility controls for header, forms and editors: never used for game actions.",
+      "html": "<div class=\"ds-campo\"><label class=\"ds-etiqueta\" for=\"ds-e\">Nombre</label><input id=\"ds-e\" class=\"ds-entrada\" placeholder=\"Ezren\"><button class=\"ds-control\">Salir</button></div>",
+      "css": ".ds-campo{display:flex;flex-direction:column;gap:4px;width:260px}.ds-etiqueta{font-family:'Atkinson Hyperlegible Next',system-ui,sans-serif;font-size:14px;color:var(--texto-suave)}.ds-entrada{height:40px;padding:0 12px;border:1px solid var(--borde);border-radius:8px;background:var(--superficie);color:var(--texto);font-family:'Atkinson Hyperlegible Next',system-ui,sans-serif;caret-color:var(--acento)}.ds-entrada:focus-visible{outline:2px solid var(--acento);outline-offset:2px}.ds-control{margin-top:8px;height:40px;padding:0 12px;border:1px solid var(--borde);border-radius:8px;background:var(--superficie);color:var(--texto);font-family:'Atkinson Hyperlegible Next',system-ui,sans-serif;font-size:14px;cursor:pointer;transition:background .15s,transform .15s}.ds-control:hover{background:var(--superficie-2)}.ds-control:active{transform:scale(.98)}.ds-control:focus-visible{outline:2px solid var(--acento);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Cuaderno de mazmorras",
+    "overview": "The game is the table's graph-paper notebook. The board is the paper's own 24px blue grid, running edge to edge under the whole app, and the player's character is a torn-out page resting on top of it. Everything is written with the tools a player has at a real table: graphite pencil for strokes and secondary text, a blue ballpoint for what is yours and what you can touch, red for enemies and subtractions, a yellow highlighter for the one thing to do now, pink post-its for conditions, adhesive tape and a taped-on photo. Strokes carry a slight tremor; sheets sit a fraction of a degree off square.\n\nDensity is that of a well-kept notebook page: lists as ruled lines with dashed separators, numbers big and handwritten, explanations small and readable. The world explicitly rejects the dark, paneled HUD of virtual tabletops: there are no boxed dashboards floating over the map, only paper resting on paper. Two themes carry the same notebook: **Cuaderno** (light, cold white paper, blue grid) and **Noche** (the same notebook with a black cover and gel ink, for low light). A theme is only a block of custom properties on `:root[data-tema]`; the board reads the same variables at runtime.\n\nThe interface speaks Spanish; Pathfinder 2e rule terms stay in English (Frightened, Strike, Ray of Frost) beside the Spanish name, so players can match them to the rulebook.",
+    "keyCharacteristics": [
+      "24px blue graph grid under everything, the board included; it is the world's material, not decoration.",
+      "Hand-drawn SVG and canvas strokes for rules, frames, rhombs and token rims.",
+      "Three inks with fixed meanings (blue ballpoint, red, graphite) plus one highlighter reserved for \"what to do now\".",
+      "Handwritten Shantell Sans for titles and numbers, Atkinson Hyperlegible Next for reading text.",
+      "Depth from paper resting on paper: long soft shadows, tape, small rotations."
+    ],
+    "rules": [
+      {
+        "name": "The Highlighter Rule",
+        "body": "Yellow highlighter (marca) marks only what to do now: \"¡Tu turno!\", the current entry in the initiative order, the probable action row, the blot under the token whose turn it is, and the reach of your Stride on the board. It never marks selection, an active tab, a hover or decoration. (Native text selection uses it because selecting text is highlighting.)",
+        "section": "colors"
+      },
+      {
+        "name": "The Three Inks Rule",
+        "body": "Blue ballpoint is yours and touchable; red is enemies and anything that subtracts; graphite is everything secondary or already done. An ink never borrows another's meaning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Pink Post-it Rule",
+        "body": "A condition is always a pink post-it with its short explanation in handwriting, rotated about 2°. Pink is chosen so it can never be confused with the highlighter.",
+        "section": "colors"
+      },
+      {
+        "name": "The Handwriting-for-Numbers Rule",
+        "body": "Titles and every number a player reads at a glance are handwritten in Shantell Sans; paragraphs that explain a rule are in Atkinson Hyperlegible Next. Never set a description in Shantell or a key number in Atkinson.",
+        "section": "typography"
+      },
+      {
+        "name": "The Two Languages Rule",
+        "body": "The Spanish name leads in handwriting; the PF2e term follows in English, smaller and in graphite Atkinson (\"Cubrirte · Take Cover\"). Rule terms are never translated away.",
+        "section": "typography"
+      },
+      {
+        "name": "The Paper-on-Paper Rule",
+        "body": "Anything that sits above the notebook is a piece of paper: it gets a sombra shadow, may be taped, and may sit up to 3° off square. Nothing is a floating panel.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Hand-Drawn Rule",
+        "body": "Rules, frames, rhombs and token rims are SVG or canvas strokes with a tremor. A straight CSS border is reserved for dashed list separators and plain controls.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do keep the 24px grid under the whole app and let the board be the same paper when there is no map image.",
+      "Do reserve the highlighter (marca) for what to do now: your turn, the current initiative entry, the probable action, the current token and your reach.",
+      "Do write conditions as pink post-its with their explanation, in every place they appear.",
+      "Do use blue ballpoint (acento) for your own things and anything touchable, and red (peligro) for enemies and subtractions.",
+      "Do draw rules, frames and token rims by hand (SVG or canvas with a tremor) and tilt paper pieces by a degree or two.",
+      "Do dim, strike through and cross out the rhombs of any action the player can't pay for, and let its button say what is missing.",
+      "Do set titles and numbers in Shantell Sans and reading text in Atkinson Hyperlegible Next.",
+      "Do write the UI in Spanish and keep PF2e rule terms in English beside it.",
+      "Do add new themes as a single block of custom properties; the board reads the same variables."
+    ],
+    "donts": [
+      "Don't build the dark paneled HUD of virtual tabletops; paper rests on paper.",
+      "Don't use the highlighter yellow for selection states, active tabs, tape or decoration.",
+      "Don't make conditions yellow, or anything other than a pink post-it.",
+      "Don't render PG as a solid, glossy game bar; it is pencil hatching in a hand-drawn frame.",
+      "Don't use hard offset shadows or colored glows; the only colored shadow is the ballpoint button's ink.",
+      "Don't offer a game action the player can't pay for as if it were available.",
+      "Don't translate PF2e rule terms away or set a rule explanation in handwriting."
+    ]
+  }
+}

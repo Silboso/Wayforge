@@ -58,6 +58,60 @@ números: Frightened, Sickened, Clumsy, Enfeebled, Drained, Stupefied, Fatigued,
 Grabbed, Restrained y Unconscious. De las penalizaciones de estado solo cuenta la peor, como en las
 reglas. Cada condición tiene su explicación en español al tocarla.
 
+## La hoja del jugador (estética de cuaderno)
+
+La partida es un cuaderno cuadriculado: el tablero es la cuadrícula del papel y el personaje es una
+página arrancada apoyada encima. Bolígrafo azul para lo propio, rojo para enemigos y restas,
+marcatextos solo para "lo que toca ahora", post-its para las condiciones.
+
+- **En PC:** el tablero ocupa la pantalla. Abajo está la página del jugador, que se puede bajar, con tres
+  columnas: quién es y sus PG, sus acciones agrupadas, y los post-its con "Terminar turno". Las tiradas
+  van como notas al margen.
+- **En el teléfono:** la página es el mando, porque el tablero suele estar en la tele. "Terminar turno"
+  está siempre a mano y abajo hay pestañas: Turno, Ficha, Tablero y Tiradas.
+- **Teclado en PC:** Q W E R T abren las acciones del turno, Enter las usa y F termina el turno.
+- **Cada acción, al tocarla,** muestra qué hace, cuánto cuesta, cómo se recupera y la cuenta del número.
+
+### Aptitudes, separadas por cómo se recuperan
+
+| Grupo | Qué es | Se recupera |
+|---|---|---|
+| Siempre | Acciones básicas (precargadas) y trucos (cantrips) | No se gastan |
+| Foco | Conjuros de foco y algunas aptitudes de clase | Refocus (10 minutos): +1 punto |
+| Conjuros | Conjuros con espacio, por rango | Descanso de 8 horas |
+| Con límite | "Una vez por día / hora / 10 minutos / turno" | Al pasar su período |
+| Objetos | Pociones, pergaminos, elixires | No vuelven: se acaban |
+| Reacciones | Una por ronda, también en el turno de otros | Al empezar tu turno |
+| Exploración | Actividades de minutos (Treat Wounds) | Fuera de combate |
+
+Fuera de combate, la hoja ofrece descansar: Refocus o descanso de 8 horas. El descanso largo devuelve
+espacios, foco y usos diarios, y cura Con × nivel PG.
+
+## Avisos en el momento justo
+
+Cada aptitud dice cuándo sirve, con estos momentos: antes de atacar, al acertar, al hacer crítico, al
+fallar, cuando te atacan, cuando te aciertan, cuando un enemigo se mueve a tu lado, y al empezar o
+terminar tu turno. La mesa avisa en ese momento:
+
+- **Cuando te atacan y tienes una reacción para eso** (Nimble Dodge), la mesa pausa el ataque y
+  pregunta "¿Reaccionas?", con 20 segundos para decidir. Si la usas, el ataque se tira con tu CA
+  mejorada. El GM ve la espera y puede seguir sin ella.
+- **Avisos que no frenan el juego:** "¡Le diste! Tira el daño", "Te acertó: puedes usar Shield
+  Block", "El Goblin se movió a tu lado: Reactive Strike", "Te hace 7 de daño (Restar)", "¡Tu turno!"
+  con lo que tienes que recordar.
+- **Antes de atacar,** el detalle del Strike ofrece las alternativas (Power Attack, Sudden Charge).
+- **El GM** recibe "Kyra le hace 9 de daño al Goblin (Restar)".
+
+Un catálogo trae reacciones y dotes comunes listas para agregar. Raise a Shield deja el escudo
+levantado (+2 CA) hasta tu próximo turno, que es lo que habilita Shield Block.
+
+## Gráficos
+
+- **Los dados ruedan** un instante (un d20 dibujado) antes de mostrar el resultado.
+- **En el tablero:** un trazo de tinta va del atacante al objetivo, el impacto estalla y salta el
+  resultado: "¡Le diste!", "¡Crítico!", "Falló" o el daño en rojo (−9).
+- Todo respeta la preferencia de "reducir movimiento" del sistema.
+
 ## Para el jugador novato
 
 - **"¿Qué puedo hacer?"**: en tu turno, tus opciones como botones grandes con su costo (◆, ◆◆) y una

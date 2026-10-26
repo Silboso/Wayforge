@@ -23,6 +23,7 @@ export const CONDICIONES = {
   dying: { nombre: 'Dying', conValor: true, ayuda: 'Muriendo: con Dying 4 mueres. Tira salvación de recuperación al empezar tu turno.' },
   wounded: { nombre: 'Wounded', conValor: true, ayuda: 'Herido: si vuelves a caer, empiezas con más Dying.' },
   unconscious: { nombre: 'Unconscious', conValor: false, ayuda: 'Inconsciente: no puedes actuar y tienes −4 a la CA.' },
+  'shield-raised': { nombre: 'Shield raised', conValor: false, ayuda: 'Escudo levantado: +2 a tu CA hasta el inicio de tu próximo turno. Te deja usar Shield Block.' },
 } as const satisfies Record<string, { nombre: string; conValor: boolean; ayuda: string }>;
 
 export type ClaveCondicion = keyof typeof CONDICIONES;
@@ -31,6 +32,8 @@ export interface Condicion {
   clave: ClaveCondicion;
   // Las condiciones sin número guardan 1
   valor: number;
+  // Se quita sola al empezar el próximo turno de quien la tiene (Raise a Shield)
+  hasta?: 'inicio-turno';
 }
 
 // Para qué se está calculando el número
@@ -73,7 +76,9 @@ export function penalizaciones(condiciones: Condicion[], contexto: Contexto): Pa
   if (contexto.tipo === 'ataque' && valorDe(condiciones, 'prone')) deCircunstancia.push({ etiqueta: 'Prone', valor: -2 });
 
   const peor = (partes: Parte[]) => partes.reduce<Parte | null>((a, p) => (!a || p.valor < a.valor ? p : a), null);
-  return [peor(deEstado), peor(deCircunstancia)].filter((p): p is Parte => p !== null);
+  // Los bonos no se cancelan con las penalizaciones: un escudo levantado suma aunque estés Off-guard
+  const bonos: Parte[] = contexto.tipo === 'ca' && valorDe(condiciones, 'shield-raised') ? [{ etiqueta: 'Escudo levantado', valor: 2 }] : [];
+  return [...bonos, peor(deEstado), peor(deCircunstancia)].filter((p): p is Parte => p !== null);
 }
 
 // Cuántas acciones tiene al empezar su turno, y cuánto Stunned le queda después de pagarlo
@@ -91,13 +96,20 @@ export function alTerminarTurno(condiciones: Condicion[]): Condicion[] {
     .filter((c) => c.valor > 0);
 }
 
-export function ponerCondicion(condiciones: Condicion[], clave: ClaveCondicion, valor: number): Condicion[] {
+export function ponerCondicion(condiciones: Condicion[], clave: ClaveCondicion, valor: number, hasta?: Condicion['hasta']): Condicion[] {
   const resto = condiciones.filter((c) => c.clave !== clave);
-  return valor > 0 ? [...resto, { clave, valor: CONDICIONES[clave].conValor ? valor : 1 }] : resto;
+  if (valor <= 0) return resto;
+  return [...resto, { clave, valor: CONDICIONES[clave].conValor ? valor : 1, ...(hasta ? { hasta } : {}) }];
+}
+
+// Al empezar su turno se le van las que duraban "hasta tu próximo turno"
+export function alEmpezarTurno(condiciones: Condicion[]): Condicion[] {
+  return condiciones.filter((c) => c.hasta !== 'inicio-turno');
 }
 
 export function esCondicionesValida(valor: unknown): valor is Condicion[] {
   return Array.isArray(valor) && valor.length <= 30 && valor.every((c) =>
     typeof c === 'object' && c !== null && typeof c.clave === 'string' && c.clave in CONDICIONES
-    && Number.isInteger(c.valor) && c.valor >= 1 && c.valor <= 20);
+    && Number.isInteger(c.valor) && c.valor >= 1 && c.valor <= 20
+    && (c.hasta === undefined || c.hasta === 'inicio-turno'));
 }

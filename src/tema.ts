@@ -1,18 +1,18 @@
 import { useState } from 'react';
 
-export type Tema = 'taberna' | 'obsidiana';
+export type Tema = 'cuaderno' | 'noche';
 
 const CLAVE = 'wayforge:tema';
 
 function temaGuardado(): Tema {
   try {
     const guardado = localStorage.getItem(CLAVE);
-    if (guardado === 'taberna' || guardado === 'obsidiana') return guardado;
+    if (guardado === 'cuaderno' || guardado === 'noche') return guardado;
   } catch { /* almacenamiento bloqueado */ }
-  return matchMedia('(prefers-color-scheme: dark)').matches ? 'obsidiana' : 'taberna';
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'noche' : 'cuaderno';
 }
 
-// Taberna es el tema claro y Obsidiana el oscuro. Sin elección guardada, sigue al sistema.
+// Cuaderno es el tema claro y Noche el oscuro. Sin elección guardada, sigue al sistema.
 // El atributo se pone antes de renderizar (no en un efecto) para que quien lea los colores ya vea el tema nuevo.
 export function useTema() {
   const [tema, setTema] = useState<Tema>(() => {
@@ -21,7 +21,7 @@ export function useTema() {
     return inicial;
   });
   const alternar = () => {
-    const siguiente: Tema = tema === 'taberna' ? 'obsidiana' : 'taberna';
+    const siguiente: Tema = tema === 'cuaderno' ? 'noche' : 'cuaderno';
     try { localStorage.setItem(CLAVE, siguiente); } catch { /* almacenamiento bloqueado */ }
     document.documentElement.dataset.tema = siguiente;
     setTema(siguiente);
@@ -35,7 +35,11 @@ export interface ColoresTablero {
   cuadricula: string;
   acento: string;
   texto: string;
+  textoSuave: string;
   superficie: string;
+  peligro: string;
+  marca: string;
+  postit: string;
 }
 
 export function leerColoresTablero(): ColoresTablero {
@@ -46,6 +50,10 @@ export function leerColoresTablero(): ColoresTablero {
     cuadricula: leer('cuadricula'),
     acento: leer('acento'),
     texto: leer('texto'),
+    textoSuave: leer('texto-suave'),
     superficie: leer('superficie'),
+    peligro: leer('peligro'),
+    marca: leer('marca'),
+    postit: leer('postit'),
   };
 }

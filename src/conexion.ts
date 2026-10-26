@@ -5,6 +5,7 @@ import {
   type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type QueTirar,
   type ResumenPersonaje, type Sesion,
 } from '../compartido/sala';
+import { eventosDe, type Evento } from '../compartido/eventos';
 
 export type Fase = 'conectando' | 'entrada' | 'dentro';
 
@@ -38,7 +39,20 @@ export function useSala(salaId: string) {
   const [presentes, setPresentes] = useState<Presente[]>([]);
   const [conectado, setConectado] = useState(false);
   const [rechazo, setRechazo] = useState<string | null>(null);
+  // Lo que acaba de pasar (tiradas, movimientos, turnos), para avisos y animaciones. Solo lo que llega de la sala.
+  const [eventos, setEventos] = useState<{ id: number; evento: Evento }[]>([]);
+  // Lo que la sala no dejó hacer, con su motivo (para mostrarlo en un aviso)
+  const [negaciones, setNegaciones] = useState<{ id: number; motivo: string }[]>([]);
+  // Una tirada propia en camino: el dado empieza a rodar al apretar, sin esperar a la sala
+  const [pendiente, setPendiente] = useState<{ etiqueta: string; desde: number } | null>(null);
   const ws = useRef<WebSocket | null>(null);
+  // El estado también en una ref: para comparar el antes y el después de cada acción que llega
+  const estadoRef = useRef<EstadoSala | null>(null);
+  const contador = useRef(0);
+  const cambiarEstado = useCallback((nuevo: EstadoSala | null) => {
+    estadoRef.current = nuevo;
+    setEstado(nuevo);
+  }, []);
 
   const mandar = useCallback((mensaje: MensajeCliente) => {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(mensaje));
@@ -84,7 +98,7 @@ export function useSala(salaId: string) {
             if (!reanudando) {
               setFase('entrada');
               setQuien({ rol: 'visitante' });
-              setEstado(null);
+              cambiarEstado(null);
             }
             break;
           case 'bienvenida':
@@ -104,14 +118,25 @@ export function useSala(salaId: string) {
             }
             break;
           case 'estado':
-            setEstado(mensaje.estado);
+            cambiarEstado(mensaje.estado);
             setPresentes(mensaje.presentes);
             break;
-          case 'accion':
-            setEstado((actual) => actual && aplicar(actual, mensaje.accion));
+          case 'accion': {
+            const anterior = estadoRef.current;
+            if (!anterior) break;
+            const posterior = aplicar(anterior, mensaje.accion);
+            cambiarEstado(posterior);
+            const nuevos = eventosDe(anterior, mensaje.accion, posterior);
+            if (mensaje.accion.tipo === 'registrar-tirada') setPendiente(null);
+            if (nuevos.length) setEventos((prev) => [...prev, ...nuevos.map((evento) => ({ id: ++contador.current, evento }))].slice(-30));
             break;
+          }
           case 'presentes':
             setPresentes(mensaje.presentes);
+            break;
+          case 'negado':
+            setPendiente(null);
+            setNegaciones((prev) => [...prev, { id: ++contador.current, motivo: mensaje.motivo }].slice(-10));
             break;
         }
       };
@@ -135,11 +160,17 @@ export function useSala(salaId: string) {
       if (socket.readyState === WebSocket.CONNECTING) socket.onopen = () => socket.close();
       else socket.close();
     };
-  }, [salaId]);
+  }, [salaId, cambiarEstado]);
 
   const enviar = useCallback((accion: Accion) => {
-    setEstado((actual) => actual && aplicar(actual, accion));
+    const actual = estadoRef.current;
+    if (actual) cambiarEstado(aplicar(actual, accion));
     mandar({ tipo: 'accion', accion });
+  }, [mandar, cambiarEstado]);
+
+  // Respuesta a un ataque en pausa: la reacción elegida, o null para dejarlo pasar
+  const responder = useCallback((esperaId: string, aptitudId: string | null) => {
+    mandar({ tipo: 'responder', esperaId, aptitudId });
   }, [mandar]);
 
   const entrarComoGM = useCallback((codigo: string) => {
@@ -163,22 +194,39 @@ export function useSala(salaId: string) {
     guardar(almacen.sesion(salaId), null);
     guardar(almacen.gmCodigo(salaId), null);
     setQuien({ rol: 'visitante' });
-    setEstado(null);
+    cambiarEstado(null);
     setFase('entrada');
-  }, [mandar, salaId]);
+  }, [mandar, salaId, cambiarEstado]);
 
   // Sin personaje: tirada libre del GM (por ejemplo, el ataque de un enemigo)
-  const tirar = useCallback((personajeId: string | undefined, que: QueTirar) => {
+  const tirar = useCallback((personajeId: string | undefined, que: QueTirar, etiqueta = 'Tirando…') => {
+    setPendiente({ etiqueta, desde: Date.now() });
     mandar({ tipo: 'tirar', ...(personajeId ? { personajeId } : {}), que });
   }, [mandar]);
+
+  // Mover un token: la sala calcula el camino y, en combate, gasta los Strides
+  const mover = useCallback((tokenId: string, x: number, y: number) => {
+    mandar({ tipo: 'mover', tokenId, x, y });
+  }, [mandar]);
+
+  // Usar una aptitud: la sala revisa todo y tira si corresponde
+  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string) => {
+    if (etiqueta) setPendiente({ etiqueta, desde: Date.now() });
+    mandar({ tipo: 'usar', aptitudId, ...(objetivo ? { objetivo } : {}) });
+  }, [mandar]);
+
+  // Avisos que nacen en la propia pantalla (antes de mandar algo que la sala va a rechazar)
+  const negarLocal = useCallback((motivo: string) => {
+    setNegaciones((prev) => [...prev, { id: ++contador.current, motivo }].slice(-10));
+  }, []);
 
   const iniciarCombate = useCallback((tokens: string[]) => {
     mandar({ tipo: 'iniciar-combate', tokens });
   }, [mandar]);
 
   return {
-    fase, lobby, quien, estado, presentes, conectado, rechazo,
-    enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate,
+    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente,
+    enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
     limpiarRechazo: () => setRechazo(null),
   };
 }
