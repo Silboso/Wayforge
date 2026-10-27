@@ -115,6 +115,10 @@ export interface Personaje {
   atajos?: (string | null)[];
   // Atributos de +4 o más con medio aumento anotado (el siguiente los sube uno)
   parciales?: Atributo[];
+  // Hero Points (0 a 3): repetir una tirada, o gastarlos todos para no morir
+  puntosHeroicos?: number;
+  // La actividad de exploración (Avoid Notice, Scout…): decide con qué tira la iniciativa
+  exploracion?: string;
 }
 
 export interface Parte {
@@ -323,6 +327,8 @@ export function esPersonajeValido(valor: unknown): valor is Personaje {
     && (Object.keys(ATRIBUTOS) as Atributo[]).every((a) => esEntero(atributos[a], -5, 10))
     && esEntero(p.pgAscendencia, 0, 30) && esEntero(p.pgClase, 0, 20)
     && esEntero(p.pgActual, 0, 999) && esEntero(p.pgTemporales, 0, 999)
+    && (p.puntosHeroicos === undefined || esEntero(p.puntosHeroicos, 0, 3))
+    && (p.exploracion === undefined || esTexto(p.exploracion, 30))
     && esEntero(p.velocidad, 0, 200)
     && esRango(p.percepcion)
     && typeof salvaciones === 'object' && salvaciones !== null && SALVACIONES.every((s) => esRango(salvaciones[s.clave]))

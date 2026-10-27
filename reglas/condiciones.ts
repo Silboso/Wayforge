@@ -22,6 +22,8 @@ export const CONDICIONES = {
   hidden: { nombre: 'Hidden', conValor: false, ayuda: 'Escondido: saben dónde estás más o menos, pero no te ven.' },
   invisible: { nombre: 'Invisible', conValor: false, ayuda: 'Invisible: no te pueden ver.' },
   dying: { nombre: 'Dying', conValor: true, ayuda: 'Muriendo: con Dying 4 mueres. Tira salvación de recuperación al empezar tu turno.' },
+  doomed: { nombre: 'Doomed', conValor: true, ayuda: 'Condenado: mueres con Dying 4 menos esto. Baja 1 con cada descanso largo.' },
+  dead: { nombre: 'Dead', conValor: false, ayuda: 'Muerto. Solo magia muy poderosa (Raise Dead, Resurrect) lo trae de vuelta.' },
   wounded: { nombre: 'Wounded', conValor: true, ayuda: 'Herido: si vuelves a caer, empiezas con más Dying.' },
   unconscious: { nombre: 'Unconscious', conValor: false, ayuda: 'Inconsciente: no puedes actuar y tienes −4 a la CA.' },
   'shield-raised': { nombre: 'Shield raised', conValor: false, ayuda: 'Escudo levantado: +2 a tu CA hasta el inicio de tu próximo turno. Te deja usar Shield Block.' },

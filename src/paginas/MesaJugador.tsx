@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowsClockwiseIcon, BackpackIcon, BedIcon, BookOpenTextIcon, CaretDownIcon, CaretUpIcon, CoffeeIcon, CrosshairIcon, DiceFiveIcon,
   BooksIcon, DotsThreeOutlineIcon, MapTrifoldIcon, NotebookIcon, NotePencilIcon, PencilSimpleIcon, QuestionIcon, StickerIcon, SignOutIcon, SwordIcon, UsersIcon, UsersThreeIcon, XIcon,
-  SparkleIcon, ChatCircleDotsIcon,
+  SparkleIcon, ChatCircleDotsIcon, MedalIcon,
 } from '@phosphor-icons/react';
 import { calcular, leerDados, signo, type Personaje } from '../../reglas/pf2e';
 import { DESCANSOS, disponibilidad, recursosDe, todasLasAptitudes, type Aptitud, type Descanso } from '../../reglas/aptitudes';
@@ -25,6 +25,7 @@ import { BarraHabilidades } from '../componentes/hud/BarraHabilidades';
 import { BarraEstados } from '../componentes/hud/BarraEstados';
 import { Telon, TituloEscena } from '../componentes/Escenas';
 import { PanelChat } from '../componentes/Chat';
+import { ElegirActividad, ElegirCurar, PuntosHeroicos } from '../componentes/Descanso';
 import { deMascara, visionActiva } from '../../compartido/vision';
 import { ElegirLuz } from '../componentes/Luz';
 import { MenuObjetivo } from '../componentes/hud/MenuObjetivo';
@@ -97,6 +98,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   // Los objetivos ya tocados de algo que alcanza a varios (Electric Arc)
   const [marcados, setMarcados] = useState<string[]>([]);
   const [subiendoNivel, setSubiendoNivel] = useState(false);
+  // Treat Wounds esperando que se elija la dificultad (a quién)
+  const [curando, setCurando] = useState<string | null>(null);
 
   useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
 
@@ -141,7 +144,16 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     setMenuAbierto(false);
     setPestana('tablero');
   };
-  const usarAptitud = (a: Aptitud, objetivoId?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number } }): boolean => {
+  const usarAptitud = (a: Aptitud, objetivoId?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }): boolean => {
+    // Treat Wounds: a quién (al lado, o a ti) y con qué dificultad
+    if (a.id === 'basica:treat-wounds' && !mas?.nivel) {
+      const destino = objetivoId ? estado.tokens[objetivoId] : miToken;
+      if (!destino) return false;
+      if (motivoParaActuar(estado, p.id, a.costo)) return sala.negarLocal(motivoParaActuar(estado, p.id, a.costo)!), false;
+      setCurando(destino.id);
+      setElegida(null);
+      return true;
+    }
     if (a.id === 'basica:stride' || a.id === 'basica:step') {
       setPestana('tablero');
       setElegida(null);
@@ -324,9 +336,11 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         });
       } else {
         const extra = aptitudesPara(p, 'al-fallar');
+        const heroicos = estado.personajes[p.id]?.puntosHeroicos ?? 0;
         avisos.push({
           id: id(), tono: 'malo', titulo: t.objetivo.grado === 'pifia' ? `Pifia contra ${contra}` : `Fallaste contra ${contra}`,
-          cuerpo: <>{t.total} contra su defensa.{extra.length > 0 && <> Puedes: {nombres(extra)}.</>}</>, dura: 7000,
+          cuerpo: <>{t.total} contra su defensa.{extra.length > 0 && <> Puedes: {nombres(extra)}.</>}</>, dura: 9000,
+          ...(heroicos > 0 && t.dados.length === 1 && t.caras === 20 ? { botones: [{ etiqueta: `Repetir (Hero Point, te quedan ${heroicos})`, principal: true, hacer: () => sala.heroico('repetir', t.id) }] } : {}),
         });
       }
     }
@@ -595,7 +609,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         {estado.telon && <Telon />}
         {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
         {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className={plegada ? 'bottom-[92px]' : 'bottom-[422px]'} />}
-        {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} />}
+        {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} p={p} onRepetir={(id) => sala.heroico('repetir', id)} />}
         {/* Los compañeros en miniatura, a la izquierda; los botones de paneles se corren a su lado */}
         <Companeros estado={estado} presentes={sala.presentes} excluir={p.id} className="absolute top-[100px] left-3 z-20"
           onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
@@ -746,6 +760,17 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         </Modal>
       )}
       {ayuda && <AyudaTeclas onCerrar={() => setAyuda(false)} />}
+      {curando && miToken && (
+        <ElegirCurar p={p} medicina={ficha.habilidades.medicine.total} inicial={curando}
+          candidatos={Object.values(estado.tokens)
+            .filter((t) => t.personajeId && (t.id === miToken.id || !motivoAlcance(miToken, t, 5)))
+            .map((t) => ({ id: t.id, nombre: t.id === miToken.id ? `${t.nombre} (tú)` : t.nombre }))}
+          onCerrar={() => setCurando(null)}
+          onElegir={(objetivoId, nivel) => {
+            sala.usar('basica:treat-wounds', objetivoId === miToken.id ? undefined : objetivoId, 'Curando heridas', { nivel });
+            setCurando(null);
+          }} />
+      )}
       {viendoCondiciones && (
         <ModalCondiciones condiciones={condiciones} onCerrar={() => setViendoCondiciones(false)}
           onPoner={(clave, valor) => miToken && sala.enviar({ tipo: 'poner-condicion', tokenId: miToken.id, clave, valor: Math.max(0, valor) })} />
@@ -979,8 +1004,12 @@ export function OrdenEscrito({ estado, combate, onEnfocar }: { estado: EstadoSal
 }
 
 // Las últimas tiradas, como notas al margen derecho
-function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas: () => void }) {
+function MargenTiradas({ estado, onVerTodas, p, onRepetir }: { estado: EstadoSala; onVerTodas: () => void; p?: Personaje; onRepetir?: (id: string) => void }) {
   const ultimas = estado.tiradas.slice(-3).reverse();
+  // La tirada propia que se puede repetir con un Hero Point: la última de un d20 que no resolvió el motor
+  const repetible = p && (p.puntosHeroicos ?? 0) > 0
+    ? estado.tiradas.slice(-12).reverse().find((t) => t.personajeId === p.id && t.dados.length === 1 && t.caras === 20 && !t.resultado)?.id
+    : undefined;
   if (ultimas.length === 0) return null;
   return (
     <aside className="absolute top-16 right-6 z-10 w-[260px] font-titulo">
@@ -989,7 +1018,15 @@ function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas:
         {ultimas.map((t) => (
           <li key={t.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-b-[1.5px] border-dashed border-borde py-1.5">
             <span className="truncate text-[14.5px]">{t.quien} · {t.etiqueta}</span>
-            <b className="row-span-2 text-[28px] leading-none text-acento">{t.total}</b>
+            <b className="row-span-2 text-[28px] leading-none text-acento">
+              {t.total}
+              {t.id === repetible && onRepetir && (
+                <button onClick={() => onRepetir(t.id)} title="Repetir con un Hero Point (vale la nueva)" aria-label="Repetir con un Hero Point"
+                  className="ml-1 inline-flex size-6 translate-y-[-4px] items-center justify-center rounded-full border border-[#c48a16] align-middle text-[#c48a16] hover:bg-[#c48a16]/10">
+                  <MedalIcon size={13} weight="fill" aria-hidden />
+                </button>
+              )}
+            </b>
             <small className="truncate text-[12.5px] text-texto-suave">
               {textoTirada(t)}
               {/* Solo los ataques tienen grado; el daño contra alguien dice a quién */}
@@ -1010,7 +1047,8 @@ function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas:
   );
 }
 
-function ColumnaQuien({ contexto: { p, ficha, sala, onEditar, onSubirNivel, combate }, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
+function ColumnaQuien({ contexto, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
+  const { p, ficha, sala, onEditar, onSubirNivel, combate } = contexto;
   const tirar = (que: QueTirar) => sala.tirar(p.id, que);
   return (
     <div className="flex flex-col gap-3 px-5 pt-4 pb-4">
@@ -1032,6 +1070,7 @@ function ColumnaQuien({ contexto: { p, ficha, sala, onEditar, onSubirNivel, comb
         {p.pgTemporales > 0 && <span className="ml-2 font-titulo text-[13px] text-acento">+{p.pgTemporales} temp</span>}
         <div className="mt-1.5"><BarraPG actual={p.pgActual} max={ficha.pgMax.total} temporales={p.pgTemporales} /></div>
       </button>
+      <PuntosHeroicos p={p} muriendo={!!contexto.miToken?.condiciones?.some((c) => c.clave === 'dying')} onRecuperar={() => sala.heroico('recuperar')} />
       <div className="flex gap-1 font-titulo">
         {([
           ['CA', String(ficha.ca.total), null],
@@ -1134,7 +1173,12 @@ function ColumnaLado({ contexto, condiciones }: { contexto: Contexto; condicione
               Terminar turno <Tecla sobreTinta>Espacio</Tecla>
             </button>
           )
-          : <Descansos p={p} sala={sala} />}
+          : (
+            <>
+              <ElegirActividad actual={p.exploracion} onCambiar={(a) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { exploracion: a ?? '' } })} />
+              <Descansos p={p} sala={sala} />
+            </>
+          )}
       </div>
     </div>
   );

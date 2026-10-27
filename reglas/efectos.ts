@@ -35,7 +35,9 @@ export type Duracion =
   // Dura mientras quien lo causó lo mantenga (Sustain) en cada turno suyo
   | { tipo: 'sostenido'; desde?: string; ronda?: number }
   // Hasta que alguien lo quite (o se salve, si es daño persistente)
-  | { tipo: 'hasta-quitar' };
+  | { tipo: 'hasta-quitar' }
+  // Hasta un minuto del reloj de la mesa (la inmunidad de una hora a Treat Wounds)
+  | { tipo: 'minutos'; hasta: number };
 
 // Cómo se ve en el tablero: un brillo para lo bueno, una llama para el fuego que sigue
 export type Aspecto = 'bendicion' | 'escudo' | 'fuego' | 'frio' | 'electricidad' | 'acido' | 'veneno' | 'sangrado' | 'mental' | 'lento' | 'marca';
@@ -152,9 +154,30 @@ export function sostener(efectos: EfectoActivo[], tokenId: string, ronda: number
   return efectos.map((e) => (e.duracion.tipo === 'sostenido' && e.duracion.desde === tokenId ? { ...e, duracion: { ...e.duracion, ronda } } : e));
 }
 
+// Pasa el tiempo fuera de combate: cada minuto son 10 rondas; lo que se mantenía se acaba (nadie lo sostiene)
+export function pasarTiempo(efectos: EfectoActivo[], minutos: number, reloj: number): { quedan: EfectoActivo[]; vencidos: EfectoActivo[] } {
+  const quedan: EfectoActivo[] = [];
+  const vencidos: EfectoActivo[] = [];
+  for (const e of efectos) {
+    const d = e.duracion;
+    if (d.tipo === 'rondas') {
+      const resto = d.rondas - minutos * 10;
+      if (resto <= 0) vencidos.push(e); else quedan.push({ ...e, duracion: { ...d, rondas: resto } });
+    } else if (d.tipo === 'minutos') {
+      if (reloj >= d.hasta) vencidos.push(e); else quedan.push(e);
+    } else if (d.tipo === 'sostenido' && minutos > 0) {
+      vencidos.push(e);
+    } else {
+      quedan.push(e);
+    }
+  }
+  return { quedan, vencidos };
+}
+
 export function duracionTexto(d: Duracion): string {
   if (d.tipo === 'rondas') return d.rondas === 1 ? '1 ronda' : `${d.rondas} rondas`;
   if (d.tipo === 'sostenido') return 'mientras lo mantenga';
+  if (d.tipo === 'minutos') return 'un rato (según el reloj)';
   return 'hasta que se quite';
 }
 
@@ -204,7 +227,8 @@ export function esEfectoValido(valor: unknown, esExpresion: (t: string) => boole
     && obj(d) && (
       (d.tipo === 'rondas' && entero(d.rondas, 1, 1000) && (d.cuentaEn === undefined || texto(d.cuentaEn, 100)))
       || (d.tipo === 'sostenido' && (d.desde === undefined || texto(d.desde, 100)) && (d.ronda === undefined || entero(d.ronda, 0, 100000)))
-      || d.tipo === 'hasta-quitar');
+      || d.tipo === 'hasta-quitar'
+      || (d.tipo === 'minutos' && entero(d.hasta, 0, 10_000_000)));
 }
 
 export function esEfectosValidos(valor: unknown, esExpresion: (t: string) => boolean): boolean {

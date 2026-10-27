@@ -4,8 +4,10 @@
 import { esCriaturaValida, type Criatura } from '../reglas/criaturas';
 import { calcular, esPersonajeValido, leerExpresion, type Grado, type Personaje, type Valor } from '../reglas/pf2e';
 import {
-  contarRondas, esEfectoValido, esEfectosValidos, ponerEfecto, sostener, velocidadConEfectos, vencerSostenidos, type Aspecto, type EfectoActivo,
+  contarRondas, crearEfecto, esEfectoValido, esEfectosValidos, pasarTiempo, ponerEfecto, sostener, velocidadConEfectos, vencerSostenidos, type Aspecto, type EfectoActivo,
 } from '../reglas/efectos';
+import { ACTIVIDADES, esActividad } from '../reglas/exploracion';
+import { MAX_HEROICOS } from '../reglas/muerte';
 import {
   accionesAlEmpezar, alEmpezarTurno, alTerminarTurno, CONDICIONES, esCondicionesValida, penalizaciones, ponerCondicion,
   type ClaveCondicion, type Condicion,
@@ -201,6 +203,8 @@ export interface EstadoSala {
   telon?: boolean;
   // El chat de la mesa, el más nuevo al final
   chat?: MensajeChat[];
+  // El reloj de la mesa, en minutos desde que empezó (lo adelantan los descansos, Treat Wounds y el GM)
+  reloj?: number;
 }
 
 export const MAX_ESCENAS = 30;
@@ -227,6 +231,12 @@ export type Accion =
   | { tipo: 'telon'; bajo: boolean }
   // Un mensaje del chat (lo arma la sala con quién lo mandó)
   | { tipo: 'chat'; mensaje: MensajeChat }
+  // Pasa el tiempo fuera de combate: los efectos se cuentan (1 minuto = 10 rondas)
+  | { tipo: 'pasar-tiempo'; minutos: number }
+  // Todo el grupo descansa: 10 minutos (Refocus) o una noche (8 horas)
+  | { tipo: 'descanso-grupo'; descanso: 'diez' | 'noche' }
+  // El GM da (o quita) Hero Points
+  | { tipo: 'dar-heroico'; personajeId: string; cantidad: number }
   // La preparación: el GM la abre con quiénes pelean; cada uno elige su tirada y avisa que está listo
   | { tipo: 'preparar-combate'; tokens: string[] }
   | { tipo: 'cancelar-preparacion' }
@@ -330,8 +340,11 @@ export type MensajeCliente =
   // Mover un token a una casilla: la sala calcula el camino, valida la Velocidad y gasta los Strides
   | { tipo: 'mover'; tokenId: string; x: number; y: number }
   // Usar una aptitud: la sala revisa turno, acciones, usos y alcance, y hace todo junto.
-  // `objetivos` para las de varios; `punto` es la esquina de una explosión o hacia dónde va un cono o una línea
-  | { tipo: 'usar'; aptitudId: string; objetivo?: string; objetivos?: string[]; punto?: { x: number; y: number } }
+  // `objetivos` para las de varios; `punto` es la esquina de una explosión o hacia dónde va un cono o una línea;
+  // `nivel`: la dificultad elegida (Treat Wounds: 1 Trained … 4 Legendary)
+  | { tipo: 'usar'; aptitudId: string; objetivo?: string; objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }
+  // Gastar Hero Points: todos para dejar de morir, o uno para repetir una tirada propia
+  | { tipo: 'heroico'; uso: 'recuperar' | 'repetir'; tiradaId?: string }
   // Respuesta a un ataque en pausa: la reacción elegida, o null para dejarlo pasar
   | { tipo: 'responder'; esperaId: string; aptitudId: string | null }
   // Dónde está mi puntero en el tablero (en casillas; null si salió) y a quién apunto. No se guarda.
@@ -427,6 +440,26 @@ function cambiarEscena(estado: EstadoSala, destino: Escena): EstadoSala {
     siguiente = { ...siguiente, tokens: { ...siguiente.tokens, [t.id]: { ...t, x: lugar.x, y: lugar.y } } };
   }
   return siguiente;
+}
+
+// Pasa el tiempo fuera de combate: el reloj avanza y los efectos de todos se cuentan
+function pasarMinutos(estado: EstadoSala, minutos: number): EstadoSala {
+  const reloj = (estado.reloj ?? 0) + minutos;
+  const tokens = { ...estado.tokens };
+  for (const t of Object.values(estado.tokens)) {
+    if (!t.efectos?.length) continue;
+    const { quedan, vencidos } = pasarTiempo(t.efectos, minutos, reloj);
+    tokens[t.id] = sinEfectos({ ...t, efectos: [...quedan, ...vencidos] }, vencidos);
+  }
+  return { ...estado, reloj, tokens };
+}
+
+// "2 h 10 min" para el reloj de la mesa
+export function relojTexto(minutos: number): string {
+  const dias = Math.floor(minutos / 1440);
+  const h = Math.floor((minutos % 1440) / 60);
+  const m = minutos % 60;
+  return [dias ? `día ${dias + 1}` : '', h ? `${h} h` : '', `${m} min`].filter(Boolean).join(' ');
 }
 
 // Un mapa en blanco para una escena nueva (con el terreno de siempre)
@@ -715,10 +748,65 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
       return { ...estado, telon: accion.bajo };
     case 'chat':
       return { ...estado, chat: [...(estado.chat ?? []), accion.mensaje].slice(-MAX_CHAT) };
+    case 'pasar-tiempo':
+      return pasarMinutos(estado, accion.minutos);
+    case 'descanso-grupo': {
+      const largo = accion.descanso === 'noche';
+      let personajes = estado.personajes;
+      let tokens = estado.tokens;
+      for (const t of Object.values(estado.tokens)) {
+        const p = t.personajeId ? personajes[t.personajeId] : undefined;
+        if (!p || (t.condiciones ?? []).some((c) => c.clave === 'dead')) continue;
+        const max = calcular(p).pgMax.total;
+        const descansado = { ...p, ...descansar(p, largo ? 'diario' : 'refocus', max) };
+        personajes = { ...personajes, [p.id]: descansado };
+        // Con la vida completa y descansando se va Wounded; la noche baja Doomed y quita la fatiga
+        let condiciones = t.condiciones ?? [];
+        if (descansado.pgActual >= max) condiciones = ponerCondicion(condiciones, 'wounded', 0);
+        if (largo) {
+          const doomed = condiciones.find((c) => c.clave === 'doomed')?.valor ?? 0;
+          condiciones = ponerCondicion(ponerCondicion(condiciones, 'doomed', doomed - 1), 'fatigued', 0);
+        }
+        tokens = { ...tokens, [t.id]: { ...t, condiciones } };
+      }
+      return pasarMinutos({ ...estado, personajes, tokens }, largo ? 480 : 10);
+    }
+    case 'dar-heroico': {
+      const p = estado.personajes[accion.personajeId];
+      if (!p) return estado;
+      const puntosHeroicos = Math.max(0, Math.min(MAX_HEROICOS, (p.puntosHeroicos ?? 0) + accion.cantidad));
+      return { ...estado, personajes: { ...estado.personajes, [p.id]: { ...p, puntosHeroicos } } };
+    }
     case 'preparar-combate': {
       const tokens = [...new Set(accion.tokens)].filter((id) => estado.tokens[id]);
       if (tokens.length === 0 || estado.combate) return estado;
-      return { ...estado, preparacion: { tokens, tiradas: {}, listos: [], usadas: [], ultimos: [] } };
+      const actividad = (id: string) => {
+        const pid = estado.tokens[id]?.personajeId;
+        const a = pid ? estado.personajes[pid]?.exploracion : undefined;
+        return esActividad(a) ? a : undefined;
+      };
+      const tiradas: Record<string, ClaveIniciativa> = {};
+      for (const id of tokens) {
+        const clave = ACTIVIDADES[actividad(id) ?? 'search'].iniciativa;
+        if (actividad(id) && clave) tiradas[id] = clave;
+      }
+      let conBonos = estado.tokens;
+      for (const explorador of tokens.filter((id) => actividad(id) === 'scout')) {
+        const quien = estado.tokens[explorador]!;
+        for (const id of tokens) {
+          const t = conBonos[id];
+          if (!t?.personajeId || id === explorador) continue;
+          const efecto = crearEfecto({ clave: 'scout', nombre: `Scout (${quien.nombre})`, beneficioso: true, modificadores: [{ blanco: 'iniciativa', tipo: 'circunstancia', valor: 1 }], rondas: 1, aspecto: 'marca' },
+            `scout-${explorador}-${id}`.slice(0, 100), { tokenId: explorador, nombre: quien.nombre }, id, undefined);
+          conBonos = { ...conBonos, [id]: conEfecto(t, efecto) };
+        }
+      }
+      // Defend: entra con el escudo levantado (si lleva escudo)
+      for (const id of tokens.filter((x) => actividad(x) === 'defend')) {
+        const t = conBonos[id]!;
+        if (estado.personajes[t.personajeId!]?.escudo) conBonos = { ...conBonos, [id]: { ...t, condiciones: ponerCondicion(t.condiciones ?? [], 'shield-raised', 1, 'inicio-turno') } };
+      }
+      return { ...estado, tokens: conBonos, preparacion: { tokens, tiradas, listos: [], usadas: [], ultimos: [] } };
     }
     case 'cancelar-preparacion':
       return { ...estado, preparacion: null };
@@ -867,7 +955,11 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
         // Quien se cura deja de morir y despierta, pero queda más herido (Wounded +1)
         const condiciones = token.condiciones ?? [];
         const dying = condiciones.some((c) => c.clave === 'dying');
-        if (!dying) return { ...estado, personajes };
+        // Estable a 0 PG e inconsciente: con PG otra vez, se despierta
+        if (!dying) {
+          const despierta = condiciones.some((c) => c.clave === 'unconscious') ? ponerCondicion(condiciones, 'unconscious', 0) : condiciones;
+          return { ...estado, personajes, tokens: { ...estado.tokens, [token.id]: { ...token, condiciones: despierta } } };
+        }
         const wounded = condiciones.find((c) => c.clave === 'wounded')?.valor ?? 0;
         const puestas = ponerCondicion(ponerCondicion(ponerCondicion(condiciones, 'dying', 0), 'unconscious', 0), 'wounded', wounded + 1);
         return { ...estado, personajes, tokens: { ...estado.tokens, [token.id]: { ...token, condiciones: puestas } } };
@@ -1009,9 +1101,11 @@ export function motivoParaActuar(estado: EstadoSala, personajeId: string, costo:
 export function motivoParaActuarToken(estado: EstadoSala, token: Token | undefined, costo: number | 'reaccion' | 'libre' | 'larga'): string | null {
   const c = estado.combate;
   if (costo === 'larga') return c ? 'Es una actividad de minutos: no se puede en combate.' : null;
-  if (!c || !token || !c.orden.some((x) => x.tokenId === token.id)) return null;
   // A un jugador se le habla de tú; al GM, de su criatura
-  const propio = !!token.personajeId;
+  const propio = !!token?.personajeId;
+  const caido = token?.condiciones?.find((x) => x.clave === 'dead' || x.clave === 'unconscious');
+  if (caido) return caido.clave === 'dead' ? (propio ? 'Estás muerto.' : `${token!.nombre} está muerto.`) : (propio ? 'Estás inconsciente: no puedes actuar.' : `${token!.nombre} está inconsciente.`);
+  if (!c || !token || !c.orden.some((x) => x.tokenId === token.id)) return null;
   if (costo === 'reaccion') return c.reacciones.includes(token.id) ? (propio ? 'Ya usaste tu reacción esta ronda.' : `${token.nombre} ya usó su reacción esta ronda.`) : null;
   const enTurno = tokenEnTurno(estado);
   if (enTurno?.id !== token.id) return `${propio ? 'No es tu turno' : `No es el turno de ${token.nombre}`}: ahora juega ${enTurno?.nombre ?? 'otro'}.`;
@@ -1076,6 +1170,12 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
       return esTexto(a.id, 60) && esNombre(a.nombre);
     case 'telon':
       return typeof a.bajo === 'boolean';
+    case 'pasar-tiempo':
+      return esEntero(a.minutos, 1, 10_080);
+    case 'descanso-grupo':
+      return a.descanso === 'diez' || a.descanso === 'noche';
+    case 'dar-heroico':
+      return esTexto(a.personajeId) && esEntero(a.cantidad, -3, 3);
     case 'preparar-combate':
       return Array.isArray(a.tokens) && a.tokens.length >= 1 && a.tokens.length <= 60 && a.tokens.every((t) => esTexto(t));
     case 'elegir-iniciativa':

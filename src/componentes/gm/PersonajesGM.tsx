@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PuntosHeroicos } from '../Descanso';
 import type { Personaje } from '../../../reglas/pf2e';
 import { tokenEnTurno, type EstadoSala, type Token } from '../../../compartido/sala';
 import type { Sala } from '../../conexion';
@@ -71,6 +72,9 @@ export function PersonajesGM({ estado, sala, objetivo, onCrear, onEditar }: {
             </div>
             <span className="text-sm tabular-nums text-texto-suave">{p.pgActual} PG</span>
           </button>
+          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+            <PuntosHeroicos p={p} muriendo={false} onCambiar={(cantidad) => sala.enviar({ tipo: 'dar-heroico', personajeId: p.id, cantidad })} />
+          </div>
           {p.nivel < 20 && (
             <button className="flex size-10 shrink-0 items-center justify-center rounded-lg text-acento hover:bg-acento/10" onClick={() => setSubiendo(p.id)}
               aria-label={`Subir a ${p.nombre} a nivel ${p.nivel + 1}`} title={`Subir a nivel ${p.nivel + 1}`}>

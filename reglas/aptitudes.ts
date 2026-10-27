@@ -130,7 +130,7 @@ export const ACCIONES_BASICAS: Aptitud[] = [
 
 // Hasta dónde llegan las que van contra alguien (en pies): Demoralize a 30 ft, las de agarre al lado
 const DISTANCIAS: Record<string, number> = {
-  'basica:demoralize': 30, 'basica:grapple': 5, 'basica:trip': 5, 'basica:shove': 5, 'basica:disarm': 5,
+  'basica:demoralize': 30, 'basica:treat-wounds': 5, 'basica:grapple': 5, 'basica:trip': 5, 'basica:shove': 5, 'basica:disarm': 5,
 };
 for (const a of ACCIONES_BASICAS) if (DISTANCIAS[a.id]) a.distancia = DISTANCIAS[a.id];
 

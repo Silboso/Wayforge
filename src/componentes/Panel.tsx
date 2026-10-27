@@ -3,6 +3,7 @@ import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
 import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
 import { TERRENOS } from './Terreno';
 import { ElegirLuz } from './Luz';
+import { SeccionTiempo } from './Descanso';
 import { subirImagen } from '../imagenes';
 import { EditorCondiciones } from './Condiciones';
 import {
@@ -42,6 +43,7 @@ export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSelec
       ) : (
         <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={onSeleccionar} />
       )}
+      <SeccionTiempo estado={estado} enviar={enviar} />
       <EditorMapa salaId={salaId} estado={estado} enviar={enviar} />
       {murosNiebla}
       <Codigos salaId={salaId} codigoGM={codigoGM} />

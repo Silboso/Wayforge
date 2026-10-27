@@ -10,6 +10,8 @@ import { modificadorDefensa, motivoInmune, objetivosDe, persistenteAlTerminar, r
 import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
 import { claveDe, interaccionDe, VAN_ULTIMO } from '../reglas/interacciones';
 import { momentoIniciativa } from '../reglas/disparadores';
+import { conDying, curarHeridas, NIVELES_CURAR, recuperacion } from '../reglas/muerte';
+import type { Condicion } from '../reglas/condiciones';
 import { alLadoDe, conCobertura, explorar, iluminacion, visibilidad, visionActiva, vistaDeJugador } from '../compartido/vision';
 
 // Los dados de la sala, para el motor de interacciones
@@ -128,6 +130,8 @@ export class Sala extends DurableObject<Env> {
         return this.puerta(ws, conexion.quien, m.id);
       case 'decir':
         return this.decir(ws, conexion.quien, m);
+      case 'heroico':
+        return this.heroico(ws, conexion.quien, m);
       case 'puntero':
       case 'senal':
         return this.presencia(ws, conexion, m);
@@ -217,12 +221,13 @@ export class Sala extends DurableObject<Env> {
         // Quien pasó el turno lo vio adelantado: primero se le corrige, después va todo en orden
         this.enviarEstado(ws);
         for (const a of persistenteAlTerminar(this.estado, termina, AZAR)) await this.guardarYRepartir(a);
-        return this.guardarYRepartir(accion);
+        await this.guardarYRepartir(accion);
+        return this.recuperacionAlEmpezar();
       }
     }
-    await this.guardar(accion);
-    // Quien la mandó ya la aplicó en su pantalla (optimista); se reparte al resto
-    this.repartir({ tipo: 'accion', accion }, ws);
+    // Quien la mandó ya la aplicó en su pantalla (optimista); al resto le llega filtrada (niebla, escenas, telón)
+    await this.guardarYRepartir(accion, ws);
+    if (accion.tipo === 'avanzar-turno') await this.recuperacionAlEmpezar();
 
     if (accion.tipo === 'editar-personaje' || accion.tipo === 'borrar-personaje') this.repartirLobby();
     if (accion.tipo === 'borrar-personaje') {
@@ -490,6 +495,7 @@ export class Sala extends DurableObject<Env> {
     }
 
     if (a.id === 'basica:hide') return this.esconderse(token, p, observan);
+    if (a.id === 'basica:treat-wounds') return this.curarHeridas(ws, token, p, objetivo ?? token, m.nivel);
 
     if (inter && alcance && !('motivo' in alcance)) {
       const numero = (miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
@@ -597,11 +603,14 @@ export class Sala extends DurableObject<Env> {
     const piso = Math.min(...orden.map((c) => c.iniciativa), 1) - 1;
     for (const id of ultimos) orden.push({ tokenId: id, iniciativa: piso, desempate: -1 });
     await this.guardarYRepartir({ tipo: 'iniciar-combate', orden });
+    // Si el primero en jugar está muriendo, tira su recuperación
+    await this.recuperacionAlEmpezar();
   }
 
   // Aplica, guarda y reparte. Con niebla, lo que el grupo ve ahora queda explorado, y a cada jugador le llega
   // solo lo suyo: la acción tal cual si no cambia lo que ve ni toca algo oculto; si no, su vista nueva.
-  private async guardarYRepartir(accion: Accion) {
+  // `optimista`: quien mandó la acción ya la aplicó en su pantalla; no se le repite (sí lo que cambie de su vista)
+  private async guardarYRepartir(accion: Accion, optimista?: WebSocket) {
     await this.guardar(accion);
     // Con el telón bajo, lo que ven los personajes no se explora (el GM está armando la escena)
     const mascara = visionActiva(this.estado.mapa) && !this.estado.telon ? explorar(this.estado) : null;
@@ -619,17 +628,121 @@ export class Sala extends DurableObject<Env> {
       // Un susurro ajeno o una tirada secreta no le llegan
       if (accion.tipo === 'chat' && !puedeVerMensaje(accion.mensaje, quien)) continue;
       if (accion.tipo === 'registrar-tirada' && !puedeVerTirada(accion.tirada, quien)) continue;
+      const yaLaTiene = ws === optimista;
       if (quien.rol === 'gm') {
-        enviar(ws, { tipo: 'accion', accion });
+        if (!yaLaTiene) enviar(ws, { tipo: 'accion', accion });
         if (mascara) enviar(ws, { tipo: 'accion', accion: { tipo: 'explorar', mascara } });
       } else if (todo) {
         this.enviarEstado(ws, accion);
       } else if (!cambio && !oculta) {
-        enviar(ws, { tipo: 'accion', accion });
+        if (!yaLaTiene) enviar(ws, { tipo: 'accion', accion });
       } else {
-        enviar(ws, { tipo: 'vista', ...(oculta ? {} : { accion }), tokens: vista.estado.tokens, mapa: vista.estado.mapa });
+        enviar(ws, { tipo: 'vista', ...(oculta || yaLaTiene ? {} : { accion }), tokens: vista.estado.tokens, mapa: vista.estado.mapa });
       }
     }
+  }
+
+  // Al empezar el turno de un personaje que está muriendo: su salvación de recuperación (chequeo plano 10 + Dying)
+  private async recuperacionAlEmpezar() {
+    const t = tokenEnTurno(this.estado);
+    const condiciones = t?.condiciones ?? [];
+    if (!t?.personajeId || !condiciones.some((c) => c.clave === 'dying')) return;
+    const d = dado(20);
+    const r = recuperacion(condiciones, d);
+    const despues = conDying(condiciones, r.dying);
+    const muere = despues.some((c) => c.clave === 'dead');
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: t.nombre, etiqueta: `Salvación de recuperación (Dying ${condiciones.find((c) => c.clave === 'dying')!.valor})`,
+        dados: [d], caras: 20, modificador: 0, total: d, cuando: Date.now(), personajeId: t.personajeId, autorTokenId: t.id,
+        objetivo: { nombre: t.nombre, tokenId: t.id, cd: r.cd, grado: r.grado, salvacion: true },
+        resultado: { nota: muere ? 'muere' : r.dying === 0 ? 'se estabiliza (sigue inconsciente, Wounded +1)' : `queda Dying ${r.dying}` },
+      },
+    });
+    await this.ponerCondiciones(t.id, condiciones, despues);
+  }
+
+  // Cambia las condiciones de un token a las de `despues` (con una acción por cada una que cambió)
+  private async ponerCondiciones(tokenId: string, antes: Condicion[], despues: Condicion[]) {
+    const claves = new Set([...antes, ...despues].map((c) => c.clave));
+    for (const clave of claves) {
+      const a = antes.find((c) => c.clave === clave)?.valor ?? 0;
+      const b = despues.find((c) => c.clave === clave)?.valor ?? 0;
+      if (a !== b) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId, clave, valor: b });
+    }
+  }
+
+  // Hero Points: gastarlos todos para dejar de morir (sin sumar Wounded), o uno para repetir una tirada propia
+  private async heroico(ws: WebSocket, quien: Sesion, m: Record<string, unknown>) {
+    if (quien.rol !== 'jugador') return;
+    const p = this.estado.personajes[quien.personajeId];
+    const token = p && tokenDePersonaje(this.estado, p.id);
+    if (!p || !token) return;
+    const puntos = p.puntosHeroicos ?? 0;
+    if (puntos < 1) return this.negar(ws, 'No te quedan Hero Points.');
+    const decir = (texto: string) => this.guardarYRepartir({ tipo: 'chat', mensaje: { id: crypto.randomUUID(), quien: p.nombre, rol: 'jugador', personajeId: p.id, texto, cuando: Date.now() } });
+    if (m.uso === 'recuperar') {
+      const condiciones = token.condiciones ?? [];
+      if (!condiciones.some((c) => c.clave === 'dying')) return this.negar(ws, 'Solo sirve cuando estás muriendo (Dying).');
+      await this.guardarYRepartir({ tipo: 'dar-heroico', personajeId: p.id, cantidad: -puntos });
+      await this.ponerCondiciones(token.id, condiciones, conDying(condiciones, 0, true));
+      return decir(`Gasta ${puntos === 1 ? 'su Hero Point' : `sus ${puntos} Hero Points`}: deja de morir y queda estable a 0 PG.`);
+    }
+    // Repetir: una tirada propia de un d20 que no haya resuelto ya el motor (su efecto ya se aplicó)
+    const t = this.estado.tiradas.slice(-12).find((x) => x.id === m.tiradaId);
+    if (!t || t.personajeId !== p.id || t.dados.length !== 1 || t.caras !== 20 || t.resultado || t.secreta) {
+      return this.negar(ws, 'Esa tirada no se puede repetir (solo una tirada tuya reciente de un d20).');
+    }
+    const d = dado(20);
+    const total = d + t.modificador;
+    await this.guardarYRepartir({ tipo: 'dar-heroico', personajeId: p.id, cantidad: -1 });
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        ...t, id: crypto.randomUUID(), dados: [d], total, cuando: Date.now(), etiqueta: `${t.etiqueta} · repetida (Hero Point)`.slice(0, 200),
+        ...(t.objetivo ? { objetivo: { ...t.objetivo, ...(t.objetivo.cd !== undefined && t.objetivo.grado ? { grado: gradoDeExito(total, d, t.objetivo.cd) } : {}) } } : {}),
+      },
+    });
+  }
+
+  // Treat Wounds: Medicine contra la dificultad elegida; cura (o, con pifia, hace daño). El curado queda inmune
+  // una hora, se le va Wounded y pasan 10 minutos para todos.
+  private async curarHeridas(ws: WebSocket, token: Token, p: Personaje, objetivo: Token, pedido: unknown) {
+    const destino = objetivo.personajeId ? this.estado.personajes[objetivo.personajeId] : undefined;
+    if (!destino) return this.negar(ws, 'Treat Wounds es para personajes (los tuyos o tus aliados).');
+    if (objetivo.id !== token.id && motivoAlcance(token, objetivo, 5)) return this.negar(ws, `Tienes que estar al lado de ${objetivo.nombre}.`);
+    const rango = p.habilidades.medicine;
+    const nivel = NIVELES_CURAR.find((n) => n.rango === pedido) ?? [...NIVELES_CURAR].reverse().find((n) => n.rango <= rango);
+    if (!nivel || nivel.rango > rango) return this.negar(ws, 'Necesitas Medicine en Trained (o más, para las dificultades altas).');
+    if (objetivo.efectos?.some((e) => e.clave === 'inmune:treat-wounds')) return this.negar(ws, `${objetivo.nombre} ya recibió Treat Wounds hace menos de una hora.`);
+    const mod = calcular(p, token.condiciones ?? [], token.efectos ?? []).habilidades.medicine.total;
+    const d = dado(20);
+    const total = d + mod;
+    const grado = gradoDeExito(total, d, nivel.cd);
+    const efecto = curarHeridas(grado, nivel);
+    const tirada = efecto.cura ?? efecto.dana;
+    const leida = tirada ? leerExpresion(tirada) : null;
+    const cantidad = leida ? leida.dados.reduce((s, x) => s + Array.from({ length: x.cantidad }, () => dado(x.caras)).reduce((a, b) => a + b, 0), 0) + leida.modificador : 0;
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: `Treat Wounds ${nivel.nombre} (Medicine)`, dados: [d], caras: 20, modificador: mod, total, cuando: Date.now(),
+        personajeId: p.id, autorTokenId: token.id, objetivo: { nombre: objetivo.nombre, tokenId: objetivo.id, cd: nivel.cd, grado },
+        resultado: efecto.cura ? { curacion: cantidad, nota: `cura ${cantidad} (${efecto.cura})` } : efecto.dana ? { dano: cantidad, nota: `le hace ${cantidad} de daño (${efecto.dana})` } : { nota: 'no cura nada' },
+      },
+    });
+    if (efecto.cura) {
+      await this.guardarYRepartir({ tipo: 'curar', tokenId: objetivo.id, cantidad });
+      await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: objetivo.id, clave: 'wounded', valor: 0 });
+    }
+    if (efecto.dana) await this.guardarYRepartir({ tipo: 'danar', tokenId: objetivo.id, cantidad });
+    // La inmunidad dura una hora a partir de que termina (10 minutos de atención)
+    const reloj = (this.estado.reloj ?? 0) + 10;
+    await this.guardarYRepartir({
+      tipo: 'poner-efecto', tokenId: objetivo.id, efecto: {
+        id: crypto.randomUUID(), clave: 'inmune:treat-wounds', nombre: 'Ya atendido (Treat Wounds)', beneficioso: true, modificadores: [],
+        inmuneA: 'treat-wounds', duracion: { tipo: 'minutos', hasta: reloj + 60 }, origen: { tokenId: token.id, nombre: p.nombre },
+      },
+    });
+    await this.guardarYRepartir({ tipo: 'pasar-tiempo', minutos: 10 });
   }
 
   // El chat: la sala firma el mensaje con quién lo manda. Un susurro va al GM o a un personaje que exista.

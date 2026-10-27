@@ -154,7 +154,18 @@ enemigos, salvo que el GM mueva a alguien).
 **Listo cuando:** Fireball sobre 3 goblins tira las 3 salvaciones, aplica el daño por grado y deja el
 registro claro.
 
-### Fase 4 — Muerte, descanso y exploración
+### Fase 4 — Muerte, descanso y exploración *(hecha)*
+
+Ya hecho: al caer a 0 PG se queda Dying e inconsciente; **al empezar cada turno la sala tira la salvación de
+recuperación** (chequeo plano 10 + Dying): a 0 se estabiliza con Wounded +1, y con Dying 4 (menos Doomed) muere.
+Inconsciente o muerto no se actúa; con curación se despierta. **Hero Points** (0–3, los da el GM): uno repite una
+tirada propia de un d20 (vale la nueva), todos juntos sacan de Dying sin sumar Wounded. **Reloj de la mesa**: el GM
+pasa el tiempo (10 min, 1 h, 8 h) y los efectos se cuentan solos (1 minuto = 10 rondas); **descanso corto** del
+grupo (Refocus, y quien está a vida completa pierde Wounded) y **la noche** (vida, espacios, foco; Doomed −1, sin
+fatiga). **Treat Wounds**: eliges a quién y la dificultad según tu rango en Medicine (con la chance a la vista),
+cura o daña según el grado, quita Wounded, deja una hora de inmunidad y suma 10 minutos. **Actividades de
+exploración**: Avoid Notice tira la iniciativa con Stealth, Scout da +1 a los aliados, Defend entra con el escudo
+levantado.
 
 1. Dying / Wounded / Doomed automáticos al llegar a 0 PG; recuperación al inicio del turno con su
    tirada; Hero Points.

@@ -266,9 +266,17 @@ export function useSala(salaId: string) {
 
   // Usar una aptitud: la sala revisa todo y tira si corresponde
   // `mas`: varios objetivos, o el punto de un área (la esquina de una explosión, hacia dónde va un cono)
-  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number } }) => {
+  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }) => {
     if (etiqueta) setPendiente({ etiqueta, desde: Date.now() });
-    mandar({ tipo: 'usar', aptitudId, ...(objetivo ? { objetivo } : {}), ...(mas?.objetivos ? { objetivos: mas.objetivos } : {}), ...(mas?.punto ? { punto: mas.punto } : {}) });
+    mandar({
+      tipo: 'usar', aptitudId, ...(objetivo ? { objetivo } : {}), ...(mas?.objetivos ? { objetivos: mas.objetivos } : {}), ...(mas?.punto ? { punto: mas.punto } : {}),
+      ...(mas?.nivel ? { nivel: mas.nivel } : {}),
+    });
+  }, [mandar]);
+
+  // Gastar Hero Points: todos para no morir, o uno para repetir una tirada
+  const heroico = useCallback((uso: 'recuperar' | 'repetir', tiradaId?: string) => {
+    mandar({ tipo: 'heroico', uso, ...(tiradaId ? { tiradaId } : {}) });
   }, [mandar]);
 
   // Avisos que nacen en la propia pantalla (antes de mandar algo que la sala va a rechazar)
@@ -320,7 +328,7 @@ export function useSala(salaId: string) {
   return {
     fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales,
     enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
-    moverPuntero, apuntar, senalar, puerta, decir,
+    moverPuntero, apuntar, senalar, puerta, decir, heroico,
     limpiarRechazo: () => setRechazo(null),
   };
 }
