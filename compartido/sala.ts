@@ -14,7 +14,7 @@ import { descansar, disponibilidad, todasLasAptitudes, usar, type Aptitud, type 
 import { momentoIniciativa, tieneMomento, type Momento, type MomentoIniciativa } from '../reglas/disparadores';
 import { alcanzables, caminoA, distanciaEntre, huella, type Casilla, type OpcionesMovimiento } from '../reglas/movimiento';
 import { esClaveIniciativa, type ClaveIniciativa } from './tiradas';
-import { cruzaMuro, esMurosValido, type Muro } from './vision';
+import { cruzaMuro, esBrillo, esLucesValido, esMurosValido, type Brillo, type Luz, type LuzAmbiente, type Muro } from './vision';
 
 export type TipoToken = 'personaje' | 'enemigo' | 'npc';
 
@@ -45,6 +45,8 @@ export interface Token {
   condiciones?: Condicion[];
   // Lo que le dejaron puesto las aptitudes (Bless, fuego persistente…), con su duración
   efectos?: EfectoActivo[];
+  // La luz que lleva (una antorcha: 20 ft brillante y 20 más tenue)
+  luz?: Brillo;
   // Números de enemigos y NPCs; los personajes los sacan de su ficha
   ca?: number;
   pg?: { actual: number; max: number };
@@ -67,6 +69,10 @@ export interface Mapa {
   // Lo que el grupo ya exploró, como máscara de casillas; `visibles` solo viaja en la vista de un jugador
   exploradas?: string;
   visibles?: string;
+  // La luz del lugar y las fuentes que puso el GM; `penumbra` (lo que se ve apagado) solo viaja a un jugador
+  luz?: LuzAmbiente;
+  luces?: Luz[];
+  penumbra?: string;
   // Medidas de la cuadrícula sobre la imagen, en píxeles de la imagen
   tamanoCelda: number;
   desplazamientoX: number;
@@ -95,7 +101,31 @@ export interface Tirada {
   objetivo?: { nombre: string; tokenId?: string; cd?: number; grado?: Grado; salvacion?: boolean };
   // Lo que el motor de interacciones le aplicó al objetivo por esta tirada
   resultado?: { dano?: number; curacion?: number; tipo?: string; nota?: string };
+  // Tirada en secreto del GM (Recall Knowledge, Perception contra una trampa): solo la ve el GM
+  secreta?: boolean;
 }
+
+// Un mensaje del chat de la mesa. `para`: un susurro ("gm" o el id de un personaje); lo ven solo quien lo
+// manda, quien lo recibe y el GM
+export interface MensajeChat {
+  id: string;
+  quien: string;
+  rol: 'gm' | 'jugador';
+  personajeId?: string;
+  texto: string;
+  cuando: number;
+  para?: string;
+}
+
+export const MAX_CHAT = 80;
+
+// ¿Puede ver esto alguien de la mesa? (los susurros ajenos y las tiradas secretas del GM, no)
+export function puedeVerMensaje(m: MensajeChat, quien: Sesion): boolean {
+  if (!m.para || quien.rol === 'gm') return true;
+  if (quien.rol !== 'jugador') return false;
+  return m.personajeId === quien.personajeId || m.para === quien.personajeId;
+}
+export const puedeVerTirada = (t: Tirada, quien: Sesion) => !t.secreta || quien.rol === 'gm';
 
 // Un ataque en pausa: el objetivo tiene una reacción para "cuando te atacan" y la mesa espera su respuesta
 export interface Espera {
@@ -145,6 +175,15 @@ export interface Combate {
   reacciones: string[];
 }
 
+// Una escena guardada (no la que se está jugando): su mapa, sus criaturas y dónde quedaron los personajes
+export interface Escena {
+  id: string;
+  nombre: string;
+  mapa: Mapa;
+  tokens: Token[];
+  posiciones?: Record<string, { x: number; y: number }>;
+}
+
 export interface EstadoSala {
   mapa: Mapa;
   tokens: Record<string, Token>;
@@ -155,7 +194,16 @@ export interface EstadoSala {
   // Entre "se viene un combate" y la tirada de iniciativa
   preparacion?: Preparacion | null;
   esperas: Espera[];
+  // La escena que se juega (su mapa y sus tokens son `mapa` y `tokens`) y las demás, guardadas
+  escena?: { id: string; nombre: string };
+  escenas?: Escena[];
+  // Con el telón bajo, los jugadores no ven el tablero: el GM prepara la escena
+  telon?: boolean;
+  // El chat de la mesa, el más nuevo al final
+  chat?: MensajeChat[];
 }
+
+export const MAX_ESCENAS = 30;
 
 export const MAX_TIRADAS = 40;
 
@@ -171,6 +219,14 @@ export type Accion =
   | { tipo: 'borrar-personaje'; id: string }
   | { tipo: 'poner-condicion'; tokenId: string; clave: ClaveCondicion; valor: number; hasta?: Condicion['hasta'] }
   | { tipo: 'terminar-combate' }
+  // Escenas: crear una (en blanco, o copia de la actual), pasar a otra, renombrar, borrar; y el telón
+  | { tipo: 'crear-escena'; id: string; nombre: string; copiar?: boolean }
+  | { tipo: 'cambiar-escena'; id: string }
+  | { tipo: 'renombrar-escena'; id: string; nombre: string }
+  | { tipo: 'borrar-escena'; id: string }
+  | { tipo: 'telon'; bajo: boolean }
+  // Un mensaje del chat (lo arma la sala con quién lo mandó)
+  | { tipo: 'chat'; mensaje: MensajeChat }
   // La preparación: el GM la abre con quiénes pelean; cada uno elige su tirada y avisa que está listo
   | { tipo: 'preparar-combate'; tokens: string[] }
   | { tipo: 'cancelar-preparacion' }
@@ -213,11 +269,13 @@ export type Accion =
   // Abrir o cerrar una puerta (la sala revisa quién puede y si está al lado)
   | { tipo: 'alternar-puerta'; id: string; abierta: boolean }
   // Lo que el grupo vio queda explorado
-  | { tipo: 'explorar'; mascara: string };
+  | { tipo: 'explorar'; mascara: string }
+  // Encender o apagar la luz que lleva un token (sin `luz`, la apaga)
+  | { tipo: 'llevar-luz'; tokenId: string; luz?: Brillo };
 
 const SOLO_SALA: Accion['tipo'][] = [
   'registrar-tirada', 'iniciar-combate', 'contar-ataque', 'abrir-espera', 'cerrar-espera', 'mover-turno', 'sostener', 'mostrar-area',
-  'dar-temporales', 'usar-preparacion', 'alternar-puerta', 'explorar',
+  'dar-temporales', 'usar-preparacion', 'alternar-puerta', 'explorar', 'chat',
 ];
 
 // Quién eres en la mesa. El visitante aún no entra: solo ve la lista de personajes.
@@ -266,7 +324,8 @@ export type MensajeCliente =
   | { tipo: 'nuevo-personaje'; personaje: Personaje; codigo: string }
   | { tipo: 'salir' }
   | { tipo: 'accion'; accion: Accion }
-  | { tipo: 'tirar'; personajeId?: string; que: QueTirar }
+  // `secreto`: solo el GM, y solo él la ve
+  | { tipo: 'tirar'; personajeId?: string; que: QueTirar; secreto?: boolean }
   | { tipo: 'iniciar-combate'; tokens: string[] }
   // Mover un token a una casilla: la sala calcula el camino, valida la Velocidad y gasta los Strides
   | { tipo: 'mover'; tokenId: string; x: number; y: number }
@@ -279,6 +338,8 @@ export type MensajeCliente =
   | { tipo: 'puntero'; x: number | null; y: number | null; apunta: string | null }
   // "¡Aquí!": una señal en un punto del tablero que ven todos
   | { tipo: 'senal'; x: number; y: number }
+  // Hablar en el chat; `para` lo vuelve susurro ("gm" o el id de un personaje)
+  | { tipo: 'decir'; texto: string; para?: string }
   // Abrir o cerrar una puerta: el GM cualquiera; un jugador, la que tiene al lado (en combate gasta una acción)
   | { tipo: 'puerta'; id: string };
 
@@ -298,7 +359,8 @@ export type MensajeSala =
   | { tipo: 'lobby'; personajes: ResumenPersonaje[] }
   | { tipo: 'bienvenida'; sesion: string; quien: Sesion }
   | { tipo: 'rechazo'; motivo: string }
-  | { tipo: 'estado'; estado: EstadoSala; presentes: Presente[]; tuConexion: string }
+  // `por`: la acción que provocó mandar el estado entero (pasar de escena, el telón), para avisar en pantalla
+  | { tipo: 'estado'; estado: EstadoSala; presentes: Presente[]; tuConexion: string; por?: Accion }
   | { tipo: 'accion'; accion: Accion }
   // Con niebla, a un jugador: la acción (si no revela nada oculto) y lo que ahora ve (tokens y mapa)
   | { tipo: 'vista'; accion?: Accion; tokens: Record<string, Token>; mapa: Mapa }
@@ -334,7 +396,42 @@ export function estadoInicial(): EstadoSala {
     combate: null,
     preparacion: null,
     esperas: [],
+    escena: { id: 'inicio', nombre: 'Primera escena' },
+    escenas: [],
+    telon: false,
   };
+}
+
+// Pasa a otra escena: la actual se guarda (mapa, criaturas, dónde estaba cada personaje) y la otra se abre.
+// Los personajes viajan: vuelven a donde estaban en esa escena, o aparecen en la entrada. El combate termina.
+function cambiarEscena(estado: EstadoSala, destino: Escena): EstadoSala {
+  const actual = estado.escena ?? { id: 'inicio', nombre: 'Primera escena' };
+  const pjs = Object.values(estado.tokens).filter((t) => t.personajeId);
+  const guardada: Escena = {
+    id: actual.id, nombre: actual.nombre,
+    mapa: { ...estado.mapa, visibles: undefined, penumbra: undefined },
+    tokens: Object.values(estado.tokens).filter((t) => !t.personajeId),
+    posiciones: Object.fromEntries(pjs.map((t) => [t.id, { x: t.x, y: t.y }])),
+  };
+  let siguiente: EstadoSala = {
+    ...estado,
+    mapa: destino.mapa,
+    tokens: Object.fromEntries(destino.tokens.map((t) => [t.id, t])),
+    escena: { id: destino.id, nombre: destino.nombre },
+    escenas: [...(estado.escenas ?? []).filter((e) => e.id !== destino.id), guardada],
+    combate: null, preparacion: null, esperas: [],
+  };
+  for (const t of pjs) {
+    const antes = destino.posiciones?.[t.id];
+    const lugar = antes ?? casillaLibre(siguiente);
+    siguiente = { ...siguiente, tokens: { ...siguiente.tokens, [t.id]: { ...t, x: lugar.x, y: lugar.y } } };
+  }
+  return siguiente;
+}
+
+// Un mapa en blanco para una escena nueva (con el terreno de siempre)
+export function mapaNuevo(): Mapa {
+  return estadoInicial().mapa;
 }
 
 export function tokenDePersonaje(estado: EstadoSala, personajeId: string): Token | undefined {
@@ -593,6 +690,31 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     }
     case 'terminar-combate':
       return { ...estado, combate: null };
+    case 'crear-escena': {
+      const escenas = estado.escenas ?? [];
+      if (escenas.length >= MAX_ESCENAS || escenas.some((e) => e.id === accion.id) || estado.escena?.id === accion.id) return estado;
+      const nueva: Escena = accion.copiar
+        ? {
+          id: accion.id, nombre: accion.nombre, mapa: { ...estado.mapa, exploradas: '', visibles: undefined, penumbra: undefined },
+          tokens: Object.values(estado.tokens).filter((t) => !t.personajeId).map((t) => ({ ...t, id: `${t.id.slice(0, 40)}-${accion.id.slice(0, 8)}` })),
+        }
+        : { id: accion.id, nombre: accion.nombre, mapa: mapaNuevo(), tokens: [] };
+      return { ...estado, escenas: [...escenas, nueva] };
+    }
+    case 'cambiar-escena': {
+      const destino = (estado.escenas ?? []).find((e) => e.id === accion.id);
+      return destino ? cambiarEscena(estado, destino) : estado;
+    }
+    case 'renombrar-escena': {
+      if (estado.escena?.id === accion.id || (!estado.escena && accion.id === 'inicio')) return { ...estado, escena: { id: accion.id, nombre: accion.nombre } };
+      return { ...estado, escenas: (estado.escenas ?? []).map((e) => (e.id === accion.id ? { ...e, nombre: accion.nombre } : e)) };
+    }
+    case 'borrar-escena':
+      return { ...estado, escenas: (estado.escenas ?? []).filter((e) => e.id !== accion.id) };
+    case 'telon':
+      return { ...estado, telon: accion.bajo };
+    case 'chat':
+      return { ...estado, chat: [...(estado.chat ?? []), accion.mensaje].slice(-MAX_CHAT) };
     case 'preparar-combate': {
       const tokens = [...new Set(accion.tokens)].filter((id) => estado.tokens[id]);
       if (tokens.length === 0 || estado.combate) return estado;
@@ -769,6 +891,12 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     }
     case 'explorar':
       return { ...estado, mapa: { ...estado.mapa, exploradas: accion.mascara } };
+    case 'llevar-luz': {
+      const token = estado.tokens[accion.tokenId];
+      if (!token) return estado;
+      const { luz: _luz, ...sinLuz } = token;
+      return { ...estado, tokens: { ...estado.tokens, [token.id]: accion.luz ? { ...token, luz: accion.luz } : sinLuz } };
+    }
     case 'contar-ataque': {
       const c = estado.combate;
       if (!c || tokenEnTurno(estado)?.id !== accion.tokenId) return estado;
@@ -799,6 +927,7 @@ export function puede(quien: Sesion, accion: Accion, estado: EstadoSala): boolea
     // En la preparación, cada jugador elige con qué tira y avisa que está listo
     case 'elegir-iniciativa':
     case 'marcar-listo':
+    case 'llevar-luz':
       return esMio(accion.tokenId);
     case 'avanzar-turno':
     case 'gastar-acciones':
@@ -938,12 +1067,23 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
     case 'avanzar-turno':
     case 'cancelar-preparacion':
       return true;
+    case 'crear-escena':
+      return esTexto(a.id, 60) && esNombre(a.nombre) && (a.copiar === undefined || typeof a.copiar === 'boolean');
+    case 'cambiar-escena':
+    case 'borrar-escena':
+      return esTexto(a.id, 60);
+    case 'renombrar-escena':
+      return esTexto(a.id, 60) && esNombre(a.nombre);
+    case 'telon':
+      return typeof a.bajo === 'boolean';
     case 'preparar-combate':
       return Array.isArray(a.tokens) && a.tokens.length >= 1 && a.tokens.length <= 60 && a.tokens.every((t) => esTexto(t));
     case 'elegir-iniciativa':
       return esTexto(a.tokenId) && esClaveIniciativa(a.clave);
     case 'marcar-listo':
       return esTexto(a.tokenId) && typeof a.listo === 'boolean';
+    case 'llevar-luz':
+      return esTexto(a.tokenId) && (a.luz === undefined || esBrillo(a.luz));
     case 'mover-en-orden':
       return esTexto(a.tokenId) && esEntero(a.posicion, 0, 200);
     case 'fijar-iniciativa':
@@ -993,6 +1133,8 @@ function esObjeto(o: unknown): o is object {
   return typeof o === 'object' && o !== null && !Array.isArray(o);
 }
 
+const esNombre = (t: unknown) => esTexto(t, 60) && (t as string).trim().length > 0;
+
 function esTokenValido(t: unknown): boolean {
   if (!esObjeto(t)) return false;
   const k = t as Record<string, unknown>;
@@ -1007,6 +1149,7 @@ function esTokenValido(t: unknown): boolean {
     && (k.efectos === undefined || esEfectosValidos(k.efectos, esExpresion))
     && (k.ca === undefined || esEntero(k.ca, 0, 80))
     && (k.percepcion === undefined || esEntero(k.percepcion, -10, 60))
+    && (k.luz === undefined || esBrillo(k.luz))
     && (k.criatura === undefined || esCriaturaValida(k.criatura))
     && (pg === undefined || (esObjeto(pg) && esEntero(pg.actual, 0, 9999) && esEntero(pg.max, 1, 9999)));
 }
@@ -1022,6 +1165,8 @@ function esMapaValido(m: Record<string, unknown>): boolean {
     && (m.muros === undefined || esMurosValido(m.muros))
     && (m.niebla === undefined || typeof m.niebla === 'boolean')
     && (m.exploradas === undefined || (typeof m.exploradas === 'string' && m.exploradas.length <= 20_000 && /^[0-9a-f]*$/.test(m.exploradas)))
+    && (m.luz === undefined || m.luz === 'brillante' || m.luz === 'tenue' || m.luz === 'oscuridad')
+    && (m.luces === undefined || esLucesValido(m.luces))
     // Lo visible lo calcula la sala para cada jugador: nadie lo manda
-    && m.visibles === undefined;
+    && m.visibles === undefined && m.penumbra === undefined;
 }

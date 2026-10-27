@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  BookOpenTextIcon, CopyIcon, DiceFiveIcon, PawPrintIcon, SwordIcon, UsersThreeIcon, WrenchIcon, XIcon,
+  BookOpenTextIcon, ChatCircleDotsIcon, CopyIcon, DiceFiveIcon, PawPrintIcon, SwordIcon, UsersThreeIcon, WrenchIcon, XIcon,
 } from '@phosphor-icons/react';
 import { personajeNuevo, leerExpresion, type Personaje } from '../../reglas/pf2e';
 import { danoAjustado, type AtaqueCriatura } from '../../reglas/criaturas';
@@ -26,13 +26,15 @@ import { EditorCriatura } from '../componentes/gm/EditorCriatura';
 import { HojaCriatura, MenuCriatura } from '../componentes/gm/HojaCriatura';
 import { BandaElegir, Cabecera, OrdenEscrito } from './MesaJugador';
 import { OrdenRevelado } from '../componentes/Preparacion';
+import { PanelEscenas, TituloEscena } from '../componentes/Escenas';
+import { PanelChat } from '../componentes/Chat';
 import { BarraMuros, SeccionMurosNiebla } from '../componentes/gm/MurosNiebla';
-import { casillasVisibles, deMascara, visionActiva } from '../../compartido/vision';
+import { casillasVisibles, deMascara, iluminacion, visionActiva } from '../../compartido/vision';
 import type { HerramientaMuros } from '../componentes/Tablero';
 import { Companeros } from '../componentes/hud/Companeros';
 
 type Tema = ReturnType<typeof useTema>;
-type CajonGM = 'mesa' | 'bestiario' | 'personajes' | 'combate' | 'tiradas' | 'reglas';
+type CajonGM = 'mesa' | 'bestiario' | 'personajes' | 'combate' | 'tiradas' | 'chat' | 'reglas';
 
 const CAJONES: { clave: CajonGM; nombre: string; tecla: string; icono: ReactNode }[] = [
   { clave: 'combate', nombre: 'Combate', tecla: 'C', icono: <SwordIcon size={20} aria-hidden /> },
@@ -40,6 +42,7 @@ const CAJONES: { clave: CajonGM; nombre: string; tecla: string; icono: ReactNode
   { clave: 'personajes', nombre: 'Personajes', tecla: 'P', icono: <UsersThreeIcon size={20} aria-hidden /> },
   { clave: 'mesa', nombre: 'Mesa', tecla: 'M', icono: <WrenchIcon size={20} aria-hidden /> },
   { clave: 'tiradas', nombre: 'Tiradas', tecla: 'D', icono: <DiceFiveIcon size={20} aria-hidden /> },
+  { clave: 'chat', nombre: 'Chat', tecla: 'V', icono: <ChatCircleDotsIcon size={20} aria-hidden /> },
   { clave: 'reglas', nombre: 'Reglas', tecla: 'H', icono: <BookOpenTextIcon size={20} aria-hidden /> },
 ];
 
@@ -78,6 +81,12 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   // Dibujando muros (con qué herramienta) y mirando la niebla como la ven los jugadores
   const [herramientaMuros, setHerramientaMuros] = useState<HerramientaMuros | null>(null);
   const [verNiebla, setVerNiebla] = useState(false);
+  // La luz real del lugar, para que el GM vea dónde está oscuro
+  const oscuridadGM = useMemo(() => {
+    if ((estado.mapa.luz ?? 'brillante') === 'brillante') return null;
+    const luz = iluminacion(estado);
+    return (k: string) => ({ 0: 0.5, 1: 0.22, 2: 0 } as const)[luz(k)];
+  }, [estado.mapa, estado.tokens]);
   const nieblaGM = useMemo(() => {
     if (!verNiebla || !visionActiva(estado.mapa)) return null;
     const visibles = casillasVisibles(estado);
@@ -173,6 +182,12 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       const t = estado.tokens[e.tokenId];
       if (!t || t.personajeId) return [];
       return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
+    }
+    // Lo que dicen los jugadores (si el chat no está abierto)
+    if (e.tipo === 'chat') {
+      if (e.mensaje.rol === 'gm' || cajon === 'chat') return [];
+      return [{ id: id(), tono: 'nota', titulo: e.mensaje.para ? `${e.mensaje.quien} te susurra` : e.mensaje.quien, cuerpo: e.mensaje.texto.slice(0, 140), dura: 7000,
+        botones: [{ etiqueta: 'Responder', principal: true, hacer: () => setCajon('chat') }] }];
     }
     // La preparación del combate: lo que usan los jugadores y cuándo están todos listos
     if (e.tipo === 'preparativo') {
@@ -312,14 +327,16 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         onCrear={() => setCreando(personajeNuevo(crypto.randomUUID()))} onEditar={setEditandoP} />;
       case 'mesa': return <HerramientasGM salaId={salaId} codigoGM={codigoGM} estado={estado} seleccionado={actorId} onSeleccionar={setActorId} enviar={sala.enviar}
         onEditarPersonaje={(id) => { const p = estado.personajes[id]; if (p) setEditandoP(p); }}
+        escenas={<PanelEscenas estado={estado} enviar={sala.enviar} />}
         murosNiebla={<SeccionMurosNiebla estado={estado} enviar={sala.enviar} verNiebla={verNiebla} onVerNiebla={setVerNiebla}
           onEditar={() => { setHerramientaMuros('habitacion'); setCajon(null); }} />} />;
       case 'tiradas': return (
         <div className="flex flex-col gap-4">
-          <TiradaLibre esGM objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null} onTirar={(que) => sala.tirar(undefined, que)} />
+          <TiradaLibre esGM objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null} onTirar={(que, secreto) => sala.tirar(undefined, que, undefined, undefined, secreto)} />
           <ListaTiradas tiradas={estado.tiradas} verCd />
         </div>
       );
+      case 'chat': return <PanelChat estado={estado} quien={sala.quien} onDecir={sala.decir} />;
       case 'reglas': return <PanelReglas />;
     }
   };
@@ -359,7 +376,13 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
             onAgregar: (nuevos) => sala.enviar({ tipo: 'editar-mapa', cambios: { muros: [...(estado.mapa.muros ?? []), ...nuevos] } }),
             onCambiar: (muro) => sala.enviar({ tipo: 'editar-mapa', cambios: { muros: (estado.mapa.muros ?? []).map((m) => (m.id === muro.id ? muro : m)) } }),
             onBorrar: (id) => sala.enviar({ tipo: 'editar-mapa', cambios: { muros: (estado.mapa.muros ?? []).filter((m) => m.id !== id) } }),
+            onLuz: (c) => {
+              const luces = estado.mapa.luces ?? [];
+              const hay = luces.find((l) => l.x === c.x && l.y === c.y);
+              sala.enviar({ tipo: 'editar-mapa', cambios: { luces: hay ? luces.filter((l) => l !== hay) : [...luces, { id: crypto.randomUUID().slice(0, 12), x: c.x, y: c.y, brillante: 20, tenue: 20 }] } });
+            },
           } : null}
+          oscuridad={oscuridadGM}
         />
         {herramientaMuros && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-4">
@@ -445,6 +468,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
 
       <AvisoTirada tiradas={estado.tiradas} verCd pendiente={sala.pendiente}
         lugar={`top-[120px] lg:top-auto lg:inset-x-auto lg:right-6 ${actor ? (plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[340px]') : 'lg:bottom-6'}`} />
+      <TituloEscena eventos={sala.eventos} />
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
         className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[72px] lg:w-[340px] ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
 
@@ -464,6 +488,14 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
             </div>
           );
         })()}
+        {estado.telon && (
+          <div className="tarjeta-cae tarjeta pointer-events-auto flex items-center gap-3 px-4 py-2" role="status">
+            <p className="font-titulo text-[15px]"><b>Telón bajo</b> · los jugadores no ven el tablero ({estado.escena?.nombre ?? 'Primera escena'})</p>
+            <button className="boli h-9 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10" onClick={() => sala.enviar({ tipo: 'telon', bajo: false })}>
+              Subir el telón
+            </button>
+          </div>
+        )}
         <OrdenRevelado estado={estado} eventos={sala.eventos} className="mt-10" />
       </div>
 

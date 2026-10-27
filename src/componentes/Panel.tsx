@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
 import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
 import { TERRENOS } from './Terreno';
+import { ElegirLuz } from './Luz';
 import { subirImagen } from '../imagenes';
 import { EditorCondiciones } from './Condiciones';
 import {
@@ -19,6 +20,8 @@ interface Props {
   onEditarPersonaje?: (personajeId: string) => void;
   // Muros y niebla: la sección la arma la mesa del GM (necesita el editor del tablero)
   murosNiebla?: ReactNode;
+  // Escenas: van primero
+  escenas?: ReactNode;
 }
 
 const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
@@ -28,10 +31,11 @@ const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
 ];
 
 // Herramientas del GM: tokens, mapa y códigos de la mesa
-export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje, murosNiebla }: Props) {
+export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje, murosNiebla, escenas }: Props) {
   const token = seleccionado ? estado.tokens[seleccionado] : undefined;
   return (
     <div className="flex flex-col gap-4">
+      {escenas}
       {token ? (
         <EditorToken key={token.id} salaId={salaId} token={token} enviar={enviar} onCerrar={() => onSeleccionar(null)}
           onEditarPersonaje={token.personajeId && onEditarPersonaje ? () => onEditarPersonaje(token.personajeId!) : undefined} />
@@ -207,6 +211,10 @@ function EditorToken({ salaId, token, enviar, onCerrar, onEditarPersonaje }: {
             onCambio={(max) => editar({ pg: { max, actual: Math.min(token.pg?.actual ?? max, max) } })} />
         </div>
       )}
+      <div className="flex flex-col gap-1">
+        <span className="text-sm text-texto-suave">Luz que lleva</span>
+        <ElegirLuz luz={token.luz} onCambiar={(luz) => enviar({ tipo: 'llevar-luz', tokenId: token.id, ...(luz ? { luz } : {}) })} />
+      </div>
       <div className="flex flex-col gap-1">
         <span className="text-sm text-texto-suave">Condiciones</span>
         <EditorCondiciones condiciones={token.condiciones ?? []} puedeEditar

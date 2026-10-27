@@ -110,7 +110,7 @@ for (const p of personajes) {
 // Los goblins traen su ficha de criatura: el GM los juega con sus ataques, su turno y su alcance
 const criatura = (ataques) => ({
   nivel: 1, salvaciones: { fortitude: 6, reflex: 8, will: 4 }, velocidad: 25, ataques,
-  habilidades: [{ nombre: 'Stealth', bono: 7 }], rasgos: ['Goblin', 'Humanoid'], notas: '',
+  habilidades: [{ nombre: 'Stealth', bono: 7 }], rasgos: ['Goblin', 'Humanoid'], notas: 'Sentidos: darkvision',
 });
 const dogslicer = { id: 'dogslicer', nombre: 'Dogslicer', bono: 8, dano: '1d6+2', tipoDano: 'slashing', agil: true, rasgos: ['agile', 'finesse'] };
 const shortbow = { id: 'shortbow', nombre: 'Shortbow', bono: 8, dano: '1d6', tipoDano: 'piercing', agil: false, rasgos: ['deadly d10'], distancia: 60 };
@@ -129,7 +129,9 @@ enviar({ tipo: 'accion', accion: { tipo: 'editar-mapa', cambios: { muros: [
   tramo('c-sur-1', { x: 15, y: 10 }, { x: 18, y: 10 }),
   tramo('c-puerta', { x: 18, y: 10 }, { x: 19, y: 10 }, 'puerta'),
   tramo('c-sur-2', { x: 19, y: 10 }, { x: 22, y: 10 }),
-] } } });
+], luz: 'tenue', luces: [{ id: 'brasero', x: 20, y: 4, brillante: 10, tenue: 10 }] } } });
+// Atardecer: Kyra lleva una antorcha; los goblins ven en la oscuridad
+enviar({ tipo: 'accion', accion: { tipo: 'llevar-luz', tokenId: 'kyra', luz: { brillante: 20, tenue: 20 } } });
 await esperar(300);
 ws.close();
 
@@ -146,5 +148,6 @@ Mesa de prueba lista
   Para ver la preparación: el GM abre Combate → Preparar combate; a cada jugador le llega su hoja
   (Korakai puede usar Oracular Warning antes de tirar). Para ver el motor: Ezren lanza Caustic Blast entre el Goblin y el Goblin guerrero.
   Para ver la niebla: acércate a la cabaña; mira por la ventana o abre la puerta (tócala estando al lado).
+  Atardecer: fuera de la antorcha de Kyra, los goblins están en penumbra (atacarlos pide chequeo plano CD 5).
 
 Para jugar GM y jugador a la vez en la misma PC, abre al jugador en una ventana de incógnito.`);

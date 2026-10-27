@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowsClockwiseIcon, BackpackIcon, BedIcon, BookOpenTextIcon, CaretDownIcon, CaretUpIcon, CoffeeIcon, CrosshairIcon, DiceFiveIcon,
   BooksIcon, DotsThreeOutlineIcon, MapTrifoldIcon, NotebookIcon, NotePencilIcon, PencilSimpleIcon, QuestionIcon, StickerIcon, SignOutIcon, SwordIcon, UsersIcon, UsersThreeIcon, XIcon,
-  SparkleIcon,
+  SparkleIcon, ChatCircleDotsIcon,
 } from '@phosphor-icons/react';
 import { calcular, leerDados, signo, type Personaje } from '../../reglas/pf2e';
 import { DESCANSOS, disponibilidad, recursosDe, todasLasAptitudes, type Aptitud, type Descanso } from '../../reglas/aptitudes';
@@ -21,7 +21,12 @@ import {
 import { pistaObjetivo, type Pista } from '../../compartido/interacciones';
 import { OrdenRevelado, PreparacionJugador } from '../componentes/Preparacion';
 import { Companeros } from '../componentes/hud/Companeros';
+import { BarraHabilidades } from '../componentes/hud/BarraHabilidades';
+import { BarraEstados } from '../componentes/hud/BarraEstados';
+import { Telon, TituloEscena } from '../componentes/Escenas';
+import { PanelChat } from '../componentes/Chat';
 import { deMascara, visionActiva } from '../../compartido/vision';
+import { ElegirLuz } from '../componentes/Luz';
 import { MenuObjetivo } from '../componentes/hud/MenuObjetivo';
 import { aAlcance, type Evento } from '../../compartido/eventos';
 import { textoTirada } from '../../compartido/tiradas';
@@ -44,10 +49,11 @@ import { PanelEspera, PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../
 type Tema = ReturnType<typeof useTema>;
 type PestanaMovil = 'turno' | 'ficha' | 'tablero' | 'tiradas';
 // Lo que se abre en el cajón lateral (en el teléfono, en una ventana)
-type Cajon = 'ficha' | 'grupo' | 'mochila' | 'notas' | 'compendio' | 'tiradas' | 'reglas';
+type Cajon = 'ficha' | 'chat' | 'grupo' | 'mochila' | 'notas' | 'compendio' | 'tiradas' | 'reglas';
 
 const CAJONES: { clave: Cajon; nombre: string; tecla?: string }[] = [
   { clave: 'ficha', nombre: 'Ficha' },
+  { clave: 'chat', nombre: 'Chat', tecla: 'T' },
   { clave: 'grupo', nombre: 'Grupo', tecla: 'G' },
   { clave: 'mochila', nombre: 'Mochila', tecla: 'I' },
   { clave: 'notas', nombre: 'Notas', tecla: 'N' },
@@ -67,7 +73,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
 }) {
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [elegida, setElegida] = useState<string | null>(null);
-  const [seccionActiva, setSeccionActiva] = useState<Seccion['id']>('turno');
+  const [seccionActiva, setSeccionActiva] = useState<Seccion['id']>('acciones');
   const [cajon, setCajon] = useState<Cajon | null>(null);
   // El atajo que se está eligiendo (abre la ventana para elegir qué va en esa tecla)
   const [eligiendoAtajo, setEligiendoAtajo] = useState<number | null>(null);
@@ -251,6 +257,15 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         botones: sirven.map((a, i) => ({ etiqueta: `Usar ${a.verbo || a.nombre}`, principal: i === 0, hacer: () => usarReaccion(a, t.id) })),
       }];
     }
+    // Lo que dicen en el chat (si no lo dije yo y no lo estoy mirando)
+    if (e.tipo === 'chat') {
+      if (e.mensaje.personajeId === p.id || cajon === 'chat' || panelMovil === 'chat') return [];
+      return [{
+        id: id(), tono: 'nota', titulo: e.mensaje.para ? `${e.mensaje.quien} te susurra` : e.mensaje.quien,
+        cuerpo: e.mensaje.texto.length > 140 ? `${e.mensaje.texto.slice(0, 139)}…` : e.mensaje.texto, dura: 7000,
+        botones: [{ etiqueta: 'Responder', principal: true, hacer: () => setCajon('chat') }],
+      }];
+    }
     // Se viene un combate: qué elegir y qué se puede usar antes de tirar
     if (e.tipo === 'preparacion') {
       if (!miToken || !e.tokens.includes(miToken.id)) return [];
@@ -363,7 +378,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     onCerrar: () => setElegida(null),
   });
 
-  // Atajos de teclado en pantalla grande: Q W E R T abren las acciones del turno, Enter las usa, F termina el turno
+  // Atajos de teclado en pantalla grande: Q W E R D F y 1–4 abren las acciones del turno, Enter las usa, Espacio termina el turno
   useEffect(() => {
     function alPulsar(e: KeyboardEvent) {
       const destino = e.target as HTMLElement;
@@ -376,7 +391,6 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       if (i >= 0) {
         // Un atajo vacío abre la ventana para llenarlo
         if (ranura) {
-          setSeccionActiva('turno');
           setElegida(ranura.clave);
           setPlegada(false);
         } else setEligiendoAtajo(i);
@@ -391,7 +405,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         const a = acciones(filaElegida);
         if (filaElegida.tipo === 'golpe') a.onAtacar(Math.min(ataquesHechos ?? 0, 2) as 0 | 1 | 2);
         else a.onUsar();
-      } else if (tecla === 'F' && miTurno) {
+      } else if (e.key === ' ' && miTurno && !destino.closest('button')) {
+        e.preventDefault();
         sala.enviar({ tipo: 'avanzar-turno' });
       }
     }
@@ -434,6 +449,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     },
   };
   const panelDe = (c: Cajon) => c === 'ficha' ? fichaCompleta
+    : c === 'chat' ? <PanelChat estado={estado} quien={sala.quien} onDecir={sala.decir} />
     : c === 'tiradas' ? tiradas
     : c === 'grupo' ? <PanelGrupo estado={estado} presentes={sala.presentes} miId={p.id} />
     : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} />
@@ -505,6 +521,13 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const niebla = useMemo(() => (visionActiva(estado.mapa) && mascaraVisibles
     ? { visibles: deMascara(mascaraVisibles, columnas, filas), exploradas: deMascara(mascaraExploradas, columnas, filas), opaca: true }
     : null), [mascaraVisibles, mascaraExploradas, columnas, filas, estado.mapa.niebla]);
+  // Lo que el grupo ve apagado (penumbra sin low-light, u oscuridad vista con darkvision)
+  const mascaraPenumbra = estado.mapa.penumbra;
+  const oscuridad = useMemo(() => {
+    if (!mascaraPenumbra) return null;
+    const penumbra = deMascara(mascaraPenumbra, columnas, filas);
+    return penumbra.size ? (k: string) => (penumbra.has(k) ? 0.32 : 0) : null;
+  }, [mascaraPenumbra, columnas, filas]);
   const lanzarA = (punto?: { x: number; y: number }) => {
     if (!aptitudEligiendo) return;
     if (usarAptitud(aptitudEligiendo, undefined, punto ? { punto } : { objetivos: marcados })) { setEligiendo(null); setMarcados([]); }
@@ -552,6 +575,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       marcados={objetivosEligiendo?.tipo === 'varios' ? marcados : []}
       pistas={pistas}
       niebla={niebla}
+      oscuridad={oscuridad}
       onPuerta={sala.puerta}
     />
   );
@@ -567,14 +591,18 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
 
       {/* Pantalla grande: tablero + página apoyada encima */}
       <div className="relative hidden min-h-0 flex-1 lg:block">
-        {tablero(plegada ? 70 : 320)}
+        {tablero(plegada ? 70 : 400)}
+        {estado.telon && <Telon />}
         {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
-        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className={plegada ? 'bottom-[92px]' : 'bottom-[342px]'} />}
+        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className={plegada ? 'bottom-[92px]' : 'bottom-[422px]'} />}
         {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} />}
         {/* Los compañeros en miniatura, a la izquierda; los botones de paneles se corren a su lado */}
         <Companeros estado={estado} presentes={sala.presentes} excluir={p.id} className="absolute top-[100px] left-3 z-20"
           onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
-        <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} corrida={Object.keys(estado.personajes).length > 1} />
+        <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} corrida={Object.keys(estado.personajes).length > 1}>
+          <BarraEstados efectos={efectos} condiciones={condiciones} onCondiciones={() => setViendoCondiciones(true)}
+            onQuitarEfecto={(efectoId) => miToken && sala.enviar({ tipo: 'quitar-efecto', tokenId: miToken.id, efectoId })} />
+        </Botonera>
 
         <section aria-label={`Página de ${p.nombre}`}
           className={`hoja absolute inset-x-5 bottom-5 z-10 transition-transform duration-300 ease-out ${plegada ? 'translate-y-[calc(100%-56px)]' : ''}`}>
@@ -588,8 +616,17 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
 
             <div className="relative border-x border-dashed border-borde px-5 pt-3 pb-4">
               <CabeceraTurno contexto={contexto} />
-              <Pestanas lista={lista} activa={seccionActiva} onCambiar={(id) => { setSeccionActiva(id); setElegida(null); }} />
-              <div className="mt-1 max-h-[200px] overflow-y-auto pr-1">
+              <div className="mt-2 mb-1 flex items-end gap-4">
+                <BarraHabilidades incrustada ranuras={ranuras} teclas={TECLAS} libres={libres} elegida={elegida}
+                  alcanceDe={(f) => alcanceDe(p, f)?.pies ?? null}
+                  onElegir={(f) => { setElegida(elegida === f.clave ? null : f.clave); setPlegada(false); }}
+                  onAsignar={asignarAtajo} onAsomar={(f) => setAsomada(f?.clave ?? null)} />
+                <p className="hidden max-w-[190px] pb-1 font-titulo text-[12.5px] leading-snug text-texto-suave xl:block">
+                  Arrastra acciones de las pestañas a la barra; sácalas arrastrándolas afuera.
+                </p>
+              </div>
+              <Pestanas lista={lista.filter((s) => s.id !== 'turno')} activa={seccionActiva} onCambiar={(id) => { setSeccionActiva(id); setElegida(null); }} />
+              <div className="mt-1 max-h-[132px] overflow-y-auto pr-1">
                 {lista.filter((s) => s.id === seccionActiva).map((s) => (
                   <div key={s.id}>
                     {s.resumen && <p className="px-1.5 pt-1 font-titulo text-[13px] text-texto-suave">{s.resumen}</p>}
@@ -598,7 +635,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
                         onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} onAsomar={(f) => setAsomada(f?.clave ?? null)}
                         onCambiar={setEligiendoAtajo} />
                     ) : (
-                      <ListaAcciones seccion={s} elegida={elegida} marcada={marcada} libres={libres}
+                      <ListaAcciones seccion={s} elegida={elegida} marcada={marcada} libres={libres} arrastrable alcance={(f) => alcanceDe(p, f)?.pies ?? null}
                         onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} onAsomar={(f) => setAsomada(f?.clave ?? null)} />
                     )}
                   </div>
@@ -610,7 +647,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
           </div>
           {filaElegida && (
             // Sobre la lista de la que salió (no a la derecha, donde caen los avisos), con su propio scroll si es larga
-            <div className="tarjeta absolute bottom-[calc(100%+52px)] left-[300px] z-20 max-h-[calc(100vh-440px)] w-[400px] overflow-y-auto px-4 py-3.5 xl:left-[320px]">
+            <div className="tarjeta absolute bottom-[calc(100%+52px)] left-[300px] z-20 max-h-[calc(100vh-520px)] w-[400px] overflow-y-auto px-4 py-3.5 xl:left-[320px]">
               <span aria-hidden className="absolute -top-2 left-1/2 h-4 w-16 -translate-x-1/2 -rotate-2 bg-[var(--cinta)]" />
               <Detalle fila={filaElegida} ataquesHechos={ataquesHechos} libres={libres} objetivo={objetivo} enCombate={!!combate} antes={filasAlAtacar} onAbrir={setElegida}
                 dano={filaElegida.tipo === 'golpe' ? ficha.golpes[filaElegida.indice]?.dano ?? null : null}
@@ -641,6 +678,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       <div className="flex min-h-0 flex-1 flex-col lg:hidden">
         <div className={`relative min-h-0 flex-1 ${pestana === 'tablero' ? 'block' : 'hidden'}`}>
           {tablero(0)}
+          {estado.telon && <Telon />}
           {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
           {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); setPestana('turno'); }} className="bottom-3" />}
         </div>
@@ -679,6 +717,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         <Modal titulo="Más cosas" subtitulo="Para consultar sin salir de la mesa." onCerrar={() => setMasAbierto(false)}>
           <div className="grid grid-cols-2 gap-2.5">
             {([
+              ['chat', 'Chat', 'Habla con la mesa o susurra al GM', <ChatCircleDotsIcon key="i" size={26} aria-hidden />],
               ['grupo', 'Grupo', 'Cómo están tus aliados', <UsersThreeIcon key="i" size={26} aria-hidden />],
               ['mochila', 'Mochila', 'Objetos, monedas, pociones', <BackpackIcon key="i" size={26} aria-hidden />],
               ['notas', 'Notas', 'Lo que no quieres olvidar', <NotePencilIcon key="i" size={26} aria-hidden />],
@@ -728,8 +767,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         <OrdenRevelado estado={estado} eventos={sala.eventos} miTokenId={miToken?.id} className="lg:mt-10" />
       </div>
 
+      <TituloEscena eventos={sala.eventos} />
       <AvisoTirada tiradas={estado.tiradas} verCd={false} pendiente={sala.pendiente}
-        lugar={`bottom-[156px] lg:inset-x-auto lg:right-6 ${plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[362px]'}`} />
+        lugar={`bottom-[156px] lg:inset-x-auto lg:right-6 ${plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[442px]'}`} />
 
       {/* Avisos del momento: arriba a la derecha en PC, arriba en el teléfono */}
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
@@ -771,7 +811,7 @@ function ListaAtajos({ seccion, elegida, marcada, libres, onElegir, onAsomar, on
           {f ? (
             <>
               <div className="min-w-0 flex-1">
-                <ListaAcciones seccion={{ ...seccion, filas: [f] }} elegida={elegida} marcada={marcada} teclas={[TECLAS[i]!]} libres={libres}
+                <ListaAcciones seccion={{ ...seccion, filas: [f] }} elegida={elegida} marcada={marcada} teclas={[TECLAS[i]!]} libres={libres} arrastrable
                   onElegir={onElegir} onAsomar={onAsomar} />
               </div>
               <button onClick={() => onCambiar(i)} aria-label={`Cambiar el atajo ${TECLAS[i]}`} title={`Cambiar qué va en ${TECLAS[i]}`}
@@ -793,9 +833,10 @@ function ListaAtajos({ seccion, elegida, marcada, libres, onElegir, onAsomar, on
 }
 
 // Los paneles de consulta, como pestañas de índice pegadas al borde izquierdo del tablero
-function Botonera({ actual, onAbrir, corrida = false }: { actual: Cajon | null; onAbrir: (c: Cajon) => void; corrida?: boolean }) {
+function Botonera({ actual, onAbrir, corrida = false, children }: { actual: Cajon | null; onAbrir: (c: Cajon) => void; corrida?: boolean; children?: ReactNode }) {
   const iconos: Record<Cajon, ReactNode> = {
     ficha: <NotebookIcon size={20} aria-hidden />,
+    chat: <ChatCircleDotsIcon size={20} aria-hidden />,
     grupo: <UsersThreeIcon size={20} aria-hidden />,
     mochila: <BackpackIcon size={20} aria-hidden />,
     notas: <NotePencilIcon size={20} aria-hidden />,
@@ -813,6 +854,7 @@ function Botonera({ actual, onAbrir, corrida = false }: { actual: Cajon | null; 
           {c.tecla && <span className="ml-0.5 hidden xl:inline"><Tecla sobreTinta={actual === c.clave}>{c.tecla}</Tecla></span>}
         </button>
       ))}
+      {children}
     </nav>
   );
 }
@@ -1082,18 +1124,14 @@ function ColumnaLado({ contexto, condiciones }: { contexto: Contexto; condicione
         onClick={contexto.onCondiciones}>
         <StickerIcon size={16} aria-hidden /> {condiciones.length ? 'Cambiar condiciones' : 'Pegar una condición'}
       </button>
-      {miToken && (miToken.efectos?.length ?? 0) > 0 && (
-        <div className="max-h-[150px] overflow-y-auto pr-1">
-          <EfectosActivos efectos={miToken.efectos ?? []} onQuitar={(efectoId) => sala.enviar({ tipo: 'quitar-efecto', tokenId: miToken.id, efectoId })} />
-        </div>
-      )}
+      {miToken && <ElegirLuz compacto luz={miToken.luz} onCambiar={(luz) => sala.enviar({ tipo: 'llevar-luz', tokenId: miToken.id, ...(luz ? { luz } : {}) })} />}
       <div className="mt-auto flex flex-col gap-2">
         {combate && miToken && <BotonReaccion combate={combate} tokenId={miToken.id} sala={sala} />}
         {combate
           ? miTurno && (
             <button className="boli flex h-12 items-center justify-center gap-2 bg-acento font-titulo text-[17px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)] transition active:scale-[0.97]"
               onClick={() => sala.enviar({ tipo: 'avanzar-turno' })}>
-              Terminar turno <Tecla sobreTinta>F</Tecla>
+              Terminar turno <Tecla sobreTinta>Espacio</Tecla>
             </button>
           )
           : <Descansos p={p} sala={sala} />}

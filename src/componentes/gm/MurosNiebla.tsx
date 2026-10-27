@@ -1,7 +1,7 @@
-import { DoorIcon, EraserIcon, EyeIcon, LockIcon, SquareIcon, WallIcon, SquareSplitVerticalIcon, XIcon } from '@phosphor-icons/react';
+import { FlameIcon, DoorIcon, EraserIcon, EyeIcon, LockIcon, SquareIcon, WallIcon, SquareSplitVerticalIcon, XIcon } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import type { Accion, EstadoSala } from '../../../compartido/sala';
-import { visionActiva } from '../../../compartido/vision';
+import { AMBIENTES, visionActiva, type LuzAmbiente } from '../../../compartido/vision';
 import type { HerramientaMuros } from '../Tablero';
 import { useConfirmar } from '../hud/Modal';
 import { claseBotonPrincipal, claseBotonSecundario, Seccion } from '../ui';
@@ -11,8 +11,9 @@ export const HERRAMIENTAS: { clave: HerramientaMuros; nombre: string; ayuda: str
   { clave: 'muro', nombre: 'Muro', ayuda: 'Toca esquina por esquina; Esc termina el trazo.', icono: <WallIcon size={18} weight="bold" aria-hidden /> },
   { clave: 'puerta', nombre: 'Puerta', ayuda: 'Toca sus dos extremos (una casilla de ancho).', icono: <DoorIcon size={18} weight="bold" aria-hidden /> },
   { clave: 'ventana', nombre: 'Ventana', ayuda: 'Deja ver, pero no pasar.', icono: <SquareSplitVerticalIcon size={18} weight="bold" aria-hidden /> },
+  { clave: 'luz', nombre: 'Brasero', ayuda: 'Toca una casilla para poner (o quitar) una luz: 20 ft brillante y 20 más tenue.', icono: <FlameIcon size={18} weight="bold" aria-hidden /> },
   { clave: 'llave', nombre: 'Llave', ayuda: 'Toca una puerta para cerrarla con llave (solo tú la abres).', icono: <LockIcon size={18} weight="bold" aria-hidden /> },
-  { clave: 'borrar', nombre: 'Borrar', ayuda: 'Toca un muro, puerta o ventana para quitarlo.', icono: <EraserIcon size={18} weight="bold" aria-hidden /> },
+  { clave: 'borrar', nombre: 'Borrar', ayuda: 'Toca un muro, puerta, ventana o brasero para quitarlo.', icono: <EraserIcon size={18} weight="bold" aria-hidden /> },
 ];
 
 // La sección de la mesa para muros y niebla: entrar al editor, prender la niebla, ver lo que ven los jugadores
@@ -28,7 +29,7 @@ export function SeccionMurosNiebla({ estado, enviar, onEditar, verNiebla, onVerN
   const puertas = muros.filter((m) => m.tipo === 'puerta').length;
   const activa = visionActiva(estado.mapa);
   return (
-    <Seccion titulo="Muros y niebla de guerra">
+    <Seccion titulo="Muros, luz y niebla de guerra">
       <p className="text-sm text-texto-suave">
         Los muros y las puertas cerradas tapan la vista y el paso; las ventanas dejan ver. Los jugadores ven lo que ve
         cualquiera del grupo: lo demás queda bajo la niebla, y las criaturas de ahí ni les llegan.
@@ -37,6 +38,21 @@ export function SeccionMurosNiebla({ estado, enviar, onEditar, verNiebla, onVerN
         <WallIcon size={18} aria-hidden /> Dibujar muros y puertas
       </button>
       <p className="text-xs text-texto-suave">{muros.length ? `${muros.length} tramos · ${puertas} ${puertas === 1 ? 'puerta' : 'puertas'}` : 'Todavía no hay muros: sin muros, la niebla no tapa nada.'}</p>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Luz del lugar</span>
+        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Luz del lugar">
+          {(Object.keys(AMBIENTES) as LuzAmbiente[]).map((l) => {
+            const activo = (estado.mapa.luz ?? 'brillante') === l;
+            return (
+              <button key={l} role="radio" aria-checked={activo} title={AMBIENTES[l].ayuda} onClick={() => enviar({ tipo: 'editar-mapa', cambios: { luz: l } })}
+                className={`rounded-lg border-2 px-2 py-1.5 text-xs transition ${activo ? 'border-acento bg-acento/10 font-semibold' : 'border-borde hover:bg-superficie-2'}`}>
+                {AMBIENTES[l].nombre}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-texto-suave">{AMBIENTES[estado.mapa.luz ?? 'brillante'].ayuda} Darkvision ve a oscuras; low-light vision ve la penumbra como de día. Las antorchas se encienden desde la hoja (o tú, en el token).</p>
+      </div>
       <label className="flex cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-acento" checked={activa} onChange={(e) => enviar({ tipo: 'editar-mapa', cambios: { niebla: e.target.checked } })} />
         Niebla de guerra

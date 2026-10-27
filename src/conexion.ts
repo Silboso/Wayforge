@@ -129,10 +129,15 @@ export function useSala(salaId: string) {
               setRechazo(mensaje.motivo);
             }
             break;
-          case 'estado':
+          case 'estado': {
+            // Si lo mandó una acción (pasar de escena, el telón), también se avisa como evento
+            const anterior = estadoRef.current;
             cambiarEstado(mensaje.estado);
             setPresentes(mensaje.presentes);
+            const nuevos = mensaje.por && anterior ? eventosDe(anterior, mensaje.por, mensaje.estado) : [];
+            if (nuevos.length) setEventos((prev) => [...prev, ...nuevos.map((evento) => ({ id: ++contador.current, evento }))].slice(-30));
             break;
+          }
           case 'accion': {
             const anterior = estadoRef.current;
             if (!anterior) break;
@@ -242,10 +247,16 @@ export function useSala(salaId: string) {
 
   // Sin personaje: tirada libre del GM (por ejemplo, el ataque de un enemigo)
   // `caras`: qué dado empieza a girar mientras llega el resultado (por defecto, el de la expresión o un d20)
-  const tirar = useCallback((personajeId: string | undefined, que: QueTirar, etiqueta = 'Tirando…', caras?: number) => {
+  // `secreto`: tirada del GM que solo ve él
+  const tirar = useCallback((personajeId: string | undefined, que: QueTirar, etiqueta = 'Tirando…', caras?: number, secreto = false) => {
     const deExpresion = que.tipo === 'libre' ? leerExpresion(que.expresion)?.dados[0]?.caras : undefined;
     setPendiente({ etiqueta, desde: Date.now(), caras: caras ?? deExpresion ?? 20 });
-    mandar({ tipo: 'tirar', ...(personajeId ? { personajeId } : {}), que });
+    mandar({ tipo: 'tirar', ...(personajeId ? { personajeId } : {}), que, ...(secreto ? { secreto } : {}) });
+  }, [mandar]);
+
+  // Hablar en el chat (`para`: susurro al GM o a un personaje)
+  const decir = useCallback((texto: string, para?: string) => {
+    mandar({ tipo: 'decir', texto, ...(para ? { para } : {}) });
   }, [mandar]);
 
   // Mover un token: la sala calcula el camino y, en combate, gasta los Strides
@@ -309,7 +320,7 @@ export function useSala(salaId: string) {
   return {
     fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales,
     enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
-    moverPuntero, apuntar, senalar, puerta,
+    moverPuntero, apuntar, senalar, puerta, decir,
     limpiarRechazo: () => setRechazo(null),
   };
 }

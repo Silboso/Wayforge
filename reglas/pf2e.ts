@@ -350,7 +350,7 @@ function esExtrasValidos(p: Record<string, unknown>): boolean {
   return (origen === undefined || (obj(origen) && esTexto(origen.ascendencia, 60) && esTexto(origen.trasfondo, 60) && esTexto(origen.clase, 60)
       && (origen.herencia === null || esTexto(origen.herencia, 60)) && (origen.subclase === null || esTexto(origen.subclase, 60))))
     && lista(p.idiomas, 20, (x) => esTexto(x, 40))
-    && lista(p.atajos, 8, (x) => x === null || esTexto(x, 120))
+    && lista(p.atajos, 12, (x) => x === null || esTexto(x, 120))
     && lista(p.parciales, 6, (x) => typeof x === 'string' && x in ATRIBUTOS)
     && (p.sentidos === undefined || esTexto(p.sentidos, 100))
     && lista(p.saberes, 20, (x) => esTexto(x, 60))

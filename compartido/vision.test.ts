@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { personajeNuevo } from '../reglas/pf2e';
-import { aMascara, alLadoDe, casillasVisibles, cruzaMuro, deMascara, explorar, habitacion, vistaJugadores, type Muro } from './vision';
+import {
+  aMascara, alLadoDe, casillasVisibles, conCobertura, conLineaDeEfecto, cruzaMuro, deMascara, explorar, habitacion, iluminacion, percepcionGrupo, visibilidad,
+  vistaJugadores, type Muro,
+} from './vision';
 import { aplicar, esAccionValida, estadoInicial, planMovimiento, type EstadoSala, type Token } from './sala';
 
 let n = 0;
@@ -102,5 +105,76 @@ describe('visión y niebla', () => {
     expect(esAccionValida({ tipo: 'editar-mapa', cambios: { muros: [{ id: 'x', a: { x: 0, y: 0 }, b: { x: 0, y: 3 }, tipo: 'muro' }] } }, e)).toBe(true);
     expect(esAccionValida({ tipo: 'editar-mapa', cambios: { muros: [{ id: 'x', a: { x: 1, y: 1 }, b: { x: 1, y: 1 }, tipo: 'muro' }] } }, e)).toBe(false);
     expect(esAccionValida({ tipo: 'editar-mapa', cambios: { visibles: 'ff' } }, e)).toBe(false);
+  });
+});
+
+describe('luz y sentidos', () => {
+  // Kyra (humana, sin sentidos especiales) en (2,6); un goblin a 30 ft, en (8,6); todo a oscuras
+  function oscuro(extra: Partial<EstadoSala['mapa']> = {}): EstadoSala {
+    let e = aplicar(estadoInicial(), { tipo: 'crear-personaje', personaje: { ...personajeNuevo('kyra'), nombre: 'Kyra' }, x: 2, y: 6 });
+    e = aplicar(e, { tipo: 'crear-token', token: goblin('goblin', 8, 6) });
+    return aplicar(e, { tipo: 'editar-mapa', cambios: { luz: 'oscuridad', ...extra } });
+  }
+
+  it('a oscuras sin darkvision solo se conoce la casilla propia; con una antorcha, 20 ft claros y 20 tenues', () => {
+    let e = oscuro();
+    expect([...casillasVisibles(e)]).toEqual(['2,6']);
+    e = aplicar(e, { tipo: 'llevar-luz', tokenId: 'kyra', luz: { brillante: 20, tenue: 20 } });
+    const luz = iluminacion(e);
+    expect(luz('6,6')).toBe(2);
+    expect(luz('9,6')).toBe(1);
+    expect(luz('12,6')).toBe(0);
+    expect(casillasVisibles(e).has('9,6')).toBe(true);
+    expect(casillasVisibles(e).has('12,6')).toBe(false);
+  });
+
+  it('el goblin a 30 ft, en luz tenue: Kyra lo ve oculto (chequeo plano CD 5); con low-light vision, claro', () => {
+    let e = aplicar(oscuro(), { tipo: 'llevar-luz', tokenId: 'kyra', luz: { brillante: 20, tenue: 20 } });
+    expect(visibilidad(e, e.tokens.kyra!, e.tokens.goblin!)).toMatchObject({ ve: true, plano: 5, razon: 'en penumbra' });
+    e = aplicar(e, { tipo: 'editar-personaje', id: 'kyra', cambios: { sentidos: 'Low-light vision' } });
+    expect(visibilidad(e, e.tokens.kyra!, e.tokens.goblin!)).toMatchObject({ ve: true, plano: 0 });
+  });
+
+  it('sin luz el goblin no le llega al jugador; con darkvision lo ve, pero apagado (penumbra)', () => {
+    let e = oscuro();
+    expect(vistaJugadores(e).estado.tokens.goblin).toBeUndefined();
+    expect(visibilidad(e, e.tokens.kyra!, e.tokens.goblin!)).toMatchObject({ ve: false, razon: 'está a oscuras' });
+    e = aplicar(e, { tipo: 'editar-personaje', id: 'kyra', cambios: { sentidos: 'Darkvision' } });
+    expect(vistaJugadores(e).estado.tokens.goblin).toBeDefined();
+    expect(percepcionGrupo(e).penumbra.has('8,6')).toBe(true);
+  });
+
+  it('los muros cortan la luz de un brasero', () => {
+    const e = oscuro({
+      luces: [{ id: 'b', x: 5, y: 6, brillante: 20, tenue: 0 }],
+      muros: [{ id: 'm', a: { x: 7, y: 0 }, b: { x: 7, y: 16 }, tipo: 'muro' }],
+    });
+    const luz = iluminacion(e);
+    expect(luz('6,6')).toBe(2);
+    expect(luz('8,6')).toBe(0);
+  });
+
+  it('escondido o invisible: chequeo plano CD 11; al invisible el jugador ni lo recibe', () => {
+    let e = aplicar(oscuro({ luz: 'brillante' }), { tipo: 'poner-condicion', tokenId: 'goblin', clave: 'hidden', valor: 1 });
+    expect(visibilidad(e, e.tokens.kyra!, e.tokens.goblin!)).toMatchObject({ plano: 11, razon: 'escondido' });
+    e = aplicar(e, { tipo: 'poner-condicion', tokenId: 'goblin', clave: 'invisible', valor: 1 });
+    expect(vistaJugadores(e).estado.tokens.goblin).toBeUndefined();
+  });
+
+  it('una pared en medio: no hay línea de efecto, aunque una ventana deje ver', () => {
+    const e = oscuro({ luz: 'brillante', muros: [{ id: 'v', a: { x: 5, y: 0 }, b: { x: 5, y: 16 }, tipo: 'ventana' }] });
+    expect(visibilidad(e, e.tokens.kyra!, e.tokens.goblin!)).toMatchObject({ ve: true, efecto: false });
+  });
+
+  it('un área no atraviesa paredes', () => {
+    const muro: Muro = { id: 'm', a: { x: 5, y: 0 }, b: { x: 5, y: 10 }, tipo: 'muro' };
+    const casillas = [{ x: 4, y: 3 }, { x: 5, y: 3 }, { x: 6, y: 3 }];
+    expect(conLineaDeEfecto([muro], { x: 4, y: 3 }, casillas)).toEqual([{ x: 4, y: 3 }]);
+  });
+
+  it('esconderse a plena luz pide una pared pegada', () => {
+    const e = oscuro({ luz: 'brillante', muros: [{ id: 'm', a: { x: 2, y: 6 }, b: { x: 2, y: 7 }, tipo: 'muro' }] });
+    expect(conCobertura(e, e.tokens.kyra!)).toBe(true);
+    expect(conCobertura(e, e.tokens.goblin!)).toBe(false);
   });
 });

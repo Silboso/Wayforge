@@ -12,8 +12,9 @@ export type Fila =
   | { clave: string; tipo: 'golpe'; golpe: Golpe; indice: number; nombre: string; detalle: string; valor: string; cuenta: Valor }
   | { clave: string; tipo: 'aptitud'; aptitud: Aptitud; disp: Disponibilidad; nombre: string; detalle: string; valor: string | null; cuenta: Valor | null };
 
-// Los atajos de teclado, como las habilidades de un juego: seis espacios que el jugador llena como quiera
-export const TECLAS = ['Q', 'W', 'E', 'R', 'T', 'Y'];
+// Los atajos de teclado, acomodados como en League of Legends: Q W E R las principales, D F las de apoyo y
+// 1–4 para objetos. El jugador los llena como quiera (arrastrando acciones a la barra)
+export const TECLAS = ['Q', 'W', 'E', 'R', 'D', 'F', '1', '2', '3', '4'];
 
 export interface Seccion {
   id: 'turno' | 'acciones' | Grupo;
@@ -22,7 +23,7 @@ export interface Seccion {
   // "1 de 2 de foco", "rango 1: 1 de 2"
   resumen: string | null;
   filas: Fila[];
-  // Solo "Tu turno": los seis espacios de atajo, en orden (vacío = null)
+  // Solo "Tu turno": los espacios de atajo, en orden (vacío = null)
   ranuras?: (Fila | null)[];
 }
 
@@ -113,12 +114,14 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
   }
   // Los atajos: los que eligió el jugador, o lo primero de sus acciones si nunca los cambió
   const porClave = new Map(lista.flatMap((s) => s.filas).map((f) => [f.clave, f]));
-  const claves = p.atajos ?? basicas.slice(0, TECLAS.length).map((f) => f.clave);
+  // Sin elegir: las seis primeras acciones en Q W E R D F y los objetos en 1–4
+  const objetos = resto.filter((a) => a.categoria === 'objeto').slice(0, 4).map((a) => a.id);
+  const claves = p.atajos ?? [...basicas.slice(0, 6).map((f) => f.clave), ...objetos];
   const ranuras = TECLAS.map((_, i) => (claves[i] ? porClave.get(claves[i]!) ?? null : null));
   return [{
     id: 'turno',
     titulo: 'Tu turno',
-    ayuda: 'Tus atajos: Q W E R T Y. Pon aquí lo que más usas.',
+    ayuda: 'Tus atajos: Q W E R, D F y 1–4. Arrastra acciones a la barra de habilidades para cambiarlos.',
     resumen: null,
     filas: ranuras.filter((f): f is Fila => !!f),
     ranuras,

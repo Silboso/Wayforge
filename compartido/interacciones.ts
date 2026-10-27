@@ -9,6 +9,7 @@ import { ASPECTO_POR_DANO, crearEfecto, type Aspecto, type EfectoActivo } from '
 import { casillasDeArea, distanciaAEsquina, tocados } from '../reglas/areas';
 import { claveDe, nombreSalvacion, resultadoPara, temporalesDe, type Interaccion, type Salvacion } from '../reglas/interacciones';
 import { distanciaEntre } from '../reglas/movimiento';
+import { conLineaDeEfecto, visibilidad } from './vision';
 import type { Casilla } from '../reglas/movimiento';
 import { queTiraCriatura } from './tiradas';
 import { caDeToken, ladoDe, motivoAlcance, type Accion, type EstadoSala, type Tirada, type Token } from './sala';
@@ -56,7 +57,9 @@ export function objetivosDe(estado: EstadoSala, autor: Token, a: Aptitud, i: Int
   if (area.forma === 'explosion' && distancia !== undefined && distanciaAEsquina(origenDe(autor), pedido.punto!) > distancia) {
     return { motivo: `Muy lejos: ${nombre} llega a ${distancia} ft.` };
   }
-  const casillas = casillasDeArea(area, origenDe(autor), pedido.punto ?? null);
+  // Una explosión sale de su esquina; lo demás, de quien la lanza. Las paredes la cortan.
+  const desde = area.forma === 'explosion' ? pedido.punto! : { x: autor.x + ladoDe(autor) / 2, y: autor.y + ladoDe(autor) / 2 };
+  const casillas = conLineaDeEfecto(estado.mapa.muros ?? [], desde, casillasDeArea(area, origenDe(autor), pedido.punto ?? null));
   const todos = Object.values(estado.tokens).map((t) => ({ ...t, lado: ladoDe(t) }));
   let tokens: Token[] = tocados(casillas, todos).map((t) => estado.tokens[t.id]!);
   if (o.aliados) tokens = tokens.filter(aliado);
@@ -106,6 +109,8 @@ export interface Uso {
   casillas?: Casilla[];
   // Cuántos ataques lleva en el turno (para la penalización)
   numero: 0 | 1 | 2;
+  // Los objetivos que hay que pasar con un chequeo plano (5 si están ocultos, 11 si escondidos)
+  planos?: Record<string, number>;
 }
 
 // Resuelve el uso contra cada objetivo. Devuelve las acciones que la sala aplica en orden:
@@ -142,6 +147,17 @@ export function resolverUso(estado: EstadoSala, u: Uso, azar: Azar): Accion[] | 
   const ronda = estado.combate?.ronda;
   const origen = { tokenId: autor.id, nombre: autor.nombre };
   for (const t of u.objetivos) {
+    // Oculto o escondido: antes de nada, un chequeo plano; si falla, se le escapa
+    const plano = u.planos?.[t.id];
+    if (plano) {
+      const d = azar.dado(20);
+      salen.push(tirada({
+        quien: autor.nombre, etiqueta: `Chequeo plano contra ${t.nombre} (CD ${plano})`, dados: [d], caras: 20, modificador: 0, total: d,
+        personajeId: u.personaje.id, autorTokenId: autor.id, objetivo: { nombre: t.nombre, tokenId: t.id },
+        resultado: { nota: d >= plano ? 'lo encuentras' : 'se te escapa: no lo alcanza' },
+      }));
+      if (d < plano) continue;
+    }
     let grado: Grado | null = null;
     let porObjetivo: Tirada | null = null;
     const m = i.modo;
@@ -229,6 +245,9 @@ export function pistaObjetivo(estado: EstadoSala, autor: Token, a: Aptitud | nul
   if (propio && !(o && 'aliados' in o && o.aliados)) return { valido: false, texto: 'eres tú' };
   const pies = propio ? 0 : distanciaEntre(autor, ladoDe(autor), t, ladoDe(t));
   if (distancia !== undefined && pies > distancia) return { valido: false, texto: `a ${pies} ft · llega a ${distancia}` };
+  const vista = visibilidad(estado, autor, t);
+  if (!vista.efecto) return { valido: false, texto: 'hay una pared en medio' };
+  if (!vista.ve) return { valido: false, texto: vista.razon };
   if (a && i) {
     const inmune = motivoInmune(a, i, autor, t);
     if (inmune) return { valido: false, texto: 'inmune por ahora' };
@@ -240,7 +259,8 @@ export function pistaObjetivo(estado: EstadoSala, autor: Token, a: Aptitud | nul
     : m.tipo === 'salvacion' ? `salva con ${nombreSalvacion(m.salvacion)}`
     : i?.curacion ? 'lo curas' : i?.efecto ? i.efecto.nombre : i?.dano ? 'daño sin tirar' : '';
   const lejos = pies > 0 ? `${pies} ft` : '';
-  return { valido: true, texto: [que, lejos].filter(Boolean).join(' · ') || 'sirve' };
+  const plano = vista.plano ? `${vista.razon}: CD ${vista.plano}` : '';
+  return { valido: true, texto: [que, lejos, plano].filter(Boolean).join(' · ') || 'sirve' };
 }
 
 // "demoralize:<token de quien asusta>": la marca que deja la inmunidad

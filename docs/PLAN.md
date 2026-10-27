@@ -182,11 +182,22 @@ lo explorado antes queda en penumbra y lo demás bajo la niebla (con bordes difu
 que manda a cada jugador**: las criaturas que no se ven y los muros que todavía nadie descubrió no viajan.
 El GM ve todo, puede mirar la niebla como la ven los jugadores, volver a cubrir lo explorado o apagarla.
 
-1. Escenas: varios mapas por mesa, la activa la ven todos, el GM prepara las demás.
-2. Niebla: ya está con muros y visión compartida *(falta: luz y oscuridad con darkvision/low-light, visión
-   por personaje en vez de compartida, que la línea de vista limite también conjuros y ataques, y un pincel
-   para revelar a mano en mapas con imagen)*.
-3. Chat de la mesa: mensajes, susurros al GM, tiradas en el mismo registro; "tirar en secreto" del GM.
+**Luz y línea de vista:** el GM elige la luz del lugar (día, penumbra, oscuridad) y pone braseros; los tokens
+llevan antorcha, linterna o vela (los jugadores la encienden desde su hoja). Los muros cortan la luz. Cada
+personaje ve según sus sentidos: a oscuras no se ve sin darkvision; en penumbra, sin low-light vision, lo
+demás queda **oculto** (chequeo plano CD 5); lo **escondido** o invisible pide CD 11 (al invisible el jugador
+ni lo recibe). La sala no deja atacar ni lanzar contra alguien que no ves o detrás de algo sólido (una ventana
+deja ver pero no pasar), y las áreas no atraviesan paredes. **Hide** tira Stealth contra la Perception más alta
+de los enemigos que te ven (a plena luz necesitas una pared pegada); escondido, tu ataque toma desprevenido al
+objetivo (−2 a su CA) y te delata; un Stride también.
+
+1. ~~Escenas~~ (hecho: cada escena guarda su mapa, muros, luz, criaturas y dónde quedó cada personaje; el GM
+   crea, copia, renombra y pasa de una a otra; con el **telón** bajo los jugadores no ven el tablero mientras la
+   prepara, y al subirlo aparece el nombre de la escena. Las escenas guardadas nunca le llegan a un jugador).
+2. Niebla, luz y línea de vista: hechas *(falta: visión por personaje en vez de compartida, Sneak y Seek
+   contra lo escondido, y un pincel para revelar a mano en mapas con imagen)*.
+3. ~~Chat de la mesa~~ (hecho: mensajes y tiradas en el mismo registro; susurros al GM o a otro personaje que
+   solo ven quien lo manda, quien lo recibe y el GM; tiradas en secreto del GM que no le llegan a nadie más).
 4. Notas y handouts (imagen o texto) que el GM muestra a todos o a uno.
 
 ### Fase 6 — Contenido y fichas

@@ -20,6 +20,7 @@ import { EfectosTablero } from './Efectos';
 import { PresenciaTablero } from './Presencia';
 import { FondoTerreno } from './Terreno';
 import { CapaNiebla, DibujoMuros, distanciaAMuro } from './Muros';
+import { CapaOscuridad, DibujoLuces } from './Luz';
 import { habitacion, type Muro } from '../../compartido/vision';
 import type { PunteroAjeno, Senal } from '../conexion';
 
@@ -64,10 +65,19 @@ interface Props {
   // Tocar una puerta la abre o la cierra
   onPuerta?: (id: string) => void;
   // El GM dibujando muros: con qué herramienta, y qué hacer con lo dibujado
-  editorMuros?: { herramienta: HerramientaMuros; onAgregar: (muros: Muro[]) => void; onCambiar: (muro: Muro) => void; onBorrar: (id: string) => void } | null;
+  editorMuros?: {
+    herramienta: HerramientaMuros;
+    onAgregar: (muros: Muro[]) => void;
+    onCambiar: (muro: Muro) => void;
+    onBorrar: (id: string) => void;
+    // Pone o quita un brasero en esa casilla
+    onLuz: (c: Casilla) => void;
+  } | null;
+  // Cuánta oscuridad hay en cada casilla (0 nada, 1 negro): el GM ve la luz real; un jugador, lo que ve apagado
+  oscuridad?: ((k: string) => number) | null;
 }
 
-export type HerramientaMuros = 'muro' | 'puerta' | 'ventana' | 'habitacion' | 'llave' | 'borrar';
+export type HerramientaMuros = 'muro' | 'puerta' | 'ventana' | 'habitacion' | 'llave' | 'luz' | 'borrar';
 
 // Mantener presionado este tiempo (sin mover) lanza una señal
 const SENAL_MS = 450;
@@ -79,7 +89,7 @@ const PASO_MS = 120;
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
   seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onSenal, enfocar = null,
-  plantilla = null, onPunto, marcados = [], pistas = null, niebla = null, onPuerta, editorMuros = null,
+  plantilla = null, onPunto, marcados = [], pistas = null, niebla = null, onPuerta, editorMuros = null, oscuridad = null,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [medida, setMedida] = useState({ ancho: 0, alto: 0 });
@@ -289,7 +299,8 @@ export function Tablero({
     }
     return mejor;
   };
-  const borrando = editorMuros?.herramienta === 'borrar' || editorMuros?.herramienta === 'llave';
+  // Las herramientas que tocan algo (borrar, llave, luz) no dibujan tramos desde una esquina
+  const borrando = editorMuros?.herramienta === 'borrar' || editorMuros?.herramienta === 'llave' || editorMuros?.herramienta === 'luz';
   const resaltado = editorMuros && esquina && borrando
     ? muroCerca(esquina, 0.4, editorMuros.herramienta === 'llave' ? (m) => m.tipo === 'puerta' : undefined)?.id ?? null : null;
   // Un clic del editor: empieza o termina un tramo, arma la habitación, borra o pone la llave
@@ -297,6 +308,9 @@ export function Tablero({
     if (!editorMuros) return;
     const m = enCasillas(px, py);
     const h = editorMuros.herramienta;
+    const casilla = { x: Math.floor(m.x), y: Math.floor(m.y) };
+    if (h === 'luz') return editorMuros.onLuz(casilla);
+    if (h === 'borrar' && (mapa.luces ?? []).some((l) => l.x === casilla.x && l.y === casilla.y) && !muroCerca(m, 0.25)) return editorMuros.onLuz(casilla);
     if (h === 'borrar' || h === 'llave') {
       const cerca = muroCerca(m, 0.4, h === 'llave' ? (x) => x.tipo === 'puerta' : undefined);
       if (!cerca) return;
@@ -481,7 +495,9 @@ export function Tablero({
                 }}
               />
             )}
+            {oscuridad && <CapaOscuridad sombra={oscuridad} columnas={mapa.columnas} filas={mapa.filas} celda={celda} origen={origen} />}
             {murosMapa.length > 0 && <DibujoMuros muros={murosMapa} celda={celda} origen={origen} escala={vista.escala} colores={colores} resaltado={resaltado} />}
+            {(mapa.luces ?? []).length > 0 && <DibujoLuces luces={mapa.luces!} celda={celda} origen={origen} escala={vista.escala} colores={colores} />}
             {niebla && (
               <CapaNiebla visibles={niebla.visibles} exploradas={niebla.exploradas} columnas={mapa.columnas} filas={mapa.filas}
                 celda={celda} origen={origen} colores={colores} opaca={niebla.opaca} />

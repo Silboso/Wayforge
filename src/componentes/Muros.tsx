@@ -177,10 +177,4 @@ export function CapaNiebla({ visibles, exploradas, columnas, filas, celda, orige
   return <ImagenKonva image={lienzo} x={origen.x} y={origen.y} width={columnas * celda} height={filas * celda} listening={false} />;
 }
 
-// La distancia (en casillas) de un punto a un muro, para tocarlo
-export function distanciaAMuro(p: { x: number; y: number }, m: Muro): number {
-  const dx = m.b.x - m.a.x;
-  const dy = m.b.y - m.a.y;
-  const t = Math.max(0, Math.min(1, ((p.x - m.a.x) * dx + (p.y - m.a.y) * dy) / (dx * dx + dy * dy)));
-  return Math.hypot(p.x - (m.a.x + dx * t), p.y - (m.a.y + dy * t));
-}
+export { distanciaAMuro } from '../../compartido/vision';

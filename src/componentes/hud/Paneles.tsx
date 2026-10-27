@@ -331,10 +331,11 @@ export function PanelNotas({ p, onGuardar }: { p: Personaje; onGuardar: (notas: 
 // Todas las teclas, para no tener que acordarse
 export function AyudaTeclas({ onCerrar, filas: propias }: { onCerrar: () => void; filas?: [string, string][] }) {
   const filas: [string, string][] = propias ?? [
-    ['Q W E R T Y', 'Tus atajos: abren lo que pusiste en cada uno'],
+    ['Q W E R D F', 'Tus atajos (y 1 2 3 4 para objetos): abren lo que pusiste en cada uno'],
     ['Enter', 'Usa la acción abierta'],
     ['Esc', 'Cierra lo abierto o cancela "elige a quién"'],
-    ['F', 'Termina tu turno'],
+    ['Espacio', 'Termina tu turno'],
+    ['Arrastrar una acción', 'Ponerla en un espacio de la barra (afuera de la barra, la saca)'],
     ['G', 'Panel del grupo'],
     ['I', 'Mochila'],
     ['N', 'Notas'],
@@ -350,7 +351,7 @@ export function AyudaTeclas({ onCerrar, filas: propias }: { onCerrar: () => void
         {filas.map(([k, d]) => (
           <div key={k} className="flex items-center gap-3 border-b border-dashed border-borde py-2">
             <dt className="flex shrink-0 flex-wrap gap-1">
-              {k.length <= 11 && !k.includes(' ') || k === 'Q W E R T Y' ? k.split(' ').map((t) => <Tecla key={t}>{t}</Tecla>) : <span className="font-titulo text-[14px] font-semibold">{k}</span>}
+              {k.length <= 11 && !k.includes(' ') || k === 'Q W E R D F' ? k.split(' ').map((t) => <Tecla key={t}>{t}</Tecla>) : <span className="font-titulo text-[14px] font-semibold">{k}</span>}
             </dt>
             <dd className="ml-auto text-right text-[13.5px] text-texto-suave">{d}</dd>
           </div>

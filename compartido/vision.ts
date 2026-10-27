@@ -5,7 +5,7 @@
 // nadie vio todavía queda bajo la niebla. La sala filtra lo que manda a cada jugador: lo oculto no viaja.
 
 import type { Casilla } from '../reglas/movimiento';
-import type { EstadoSala, Mapa, Token } from './sala';
+import { puedeVerMensaje, puedeVerTirada, type EstadoSala, type Mapa, type Token } from './sala';
 
 export type TipoMuro = 'muro' | 'puerta' | 'ventana';
 
@@ -64,26 +64,159 @@ const casillasDe = (t: Token, lado: number) => {
 };
 const ladoDe = (t: Token) => Math.max(1, Math.ceil({ Tiny: 0.5, Small: 1, Medium: 1, Large: 2, Huge: 3, Gargantuan: 4 }[t.tamano]));
 
-// Las casillas que ve el grupo: cada personaje mira desde el centro de su token. Una casilla se ve si llega una
-// línea a su centro o a alguna de sus cuatro esquinas (un poco hacia adentro), para que las paredes no corten feo.
-export function casillasVisibles(estado: EstadoSala): Set<string> {
-  const { columnas, filas } = estado.mapa;
+// Cinco puntos de una casilla: el centro y sus esquinas un poco hacia adentro (así una pared no corta feo)
+const D = 0.32;
+const puntosDe = (x: number, y: number): Punto[] => [
+  { x: x + 0.5, y: y + 0.5 }, { x: x + 0.5 - D, y: y + 0.5 - D }, { x: x + 0.5 + D, y: y + 0.5 - D }, { x: x + 0.5 - D, y: y + 0.5 + D }, { x: x + 0.5 + D, y: y + 0.5 + D },
+];
+const centroDe = (t: Token): Punto => { const l = ladoDe(t); return { x: t.x + l / 2, y: t.y + l / 2 }; };
+
+// ---------- Luz ----------
+// La luz del lugar (día, penumbra, oscuridad) y las fuentes: lo que llevan los tokens (una antorcha) y las que
+// pone el GM (un brasero). Cada fuente da luz brillante hasta un radio y tenue otro tanto más allá; los muros
+// y las puertas cerradas la cortan, las ventanas no.
+export type LuzAmbiente = 'brillante' | 'tenue' | 'oscuridad';
+export type NivelLuz = 0 | 1 | 2;
+export interface Brillo { brillante: number; tenue: number }
+export interface Luz extends Brillo { id: string; x: number; y: number }
+
+export const FUENTES: Record<'antorcha' | 'linterna' | 'vela', Brillo & { nombre: string }> = {
+  antorcha: { nombre: 'Antorcha', brillante: 20, tenue: 20 },
+  linterna: { nombre: 'Linterna', brillante: 30, tenue: 30 },
+  vela: { nombre: 'Vela', brillante: 0, tenue: 10 },
+};
+export const AMBIENTES: Record<LuzAmbiente, { nombre: string; ayuda: string }> = {
+  brillante: { nombre: 'Día', ayuda: 'Todo iluminado.' },
+  tenue: { nombre: 'Penumbra', ayuda: 'Atardecer, una cueva con grietas: sin low-light vision, lo de lejos queda oculto (CD 5).' },
+  oscuridad: { nombre: 'Oscuridad', ayuda: 'Sin luz no se ve nada, salvo con darkvision. Las antorchas importan.' },
+};
+
+const NIVEL: Record<LuzAmbiente, NivelLuz> = { brillante: 2, tenue: 1, oscuridad: 0 };
+
+// Distancia en pies de un token (o una casilla) a una casilla, con la regla de diagonales de PF2e
+function pies(desde: { x: number; y: number }, lado: number, c: Casilla): number {
+  const hueco = (a0: number, na: number, b0: number) => Math.max(0, b0 - (a0 + na - 1), a0 - b0);
+  const dx = hueco(desde.x, lado, c.x);
+  const dy = hueco(desde.y, lado, c.y);
+  const diag = Math.min(dx, dy);
+  return (Math.max(dx, dy) + Math.floor(diag / 2)) * 5;
+}
+
+// El nivel de luz de cada casilla del tablero
+export function iluminacion(estado: EstadoSala): (k: string) => NivelLuz {
+  const base = NIVEL[estado.mapa.luz ?? 'brillante'];
+  if (base === 2) return () => 2;
   const muros = (estado.mapa.muros ?? []).filter(frenaVista);
-  const ojos = Object.values(estado.tokens).filter((t) => t.personajeId).map((t) => {
-    const l = ladoDe(t);
-    return { x: t.x + l / 2, y: t.y + l / 2, propias: casillasDe(t, l) };
-  });
-  const salen = new Set<string>();
-  if (ojos.length === 0) return salen;
-  const D = 0.32;
-  for (let y = 0; y < filas; y++) {
-    for (let x = 0; x < columnas; x++) {
-      const puntos = [{ x: x + 0.5, y: y + 0.5 }, { x: x + 0.5 - D, y: y + 0.5 - D }, { x: x + 0.5 + D, y: y + 0.5 - D }, { x: x + 0.5 - D, y: y + 0.5 + D }, { x: x + 0.5 + D, y: y + 0.5 + D }];
-      const ve = ojos.some((o) => o.propias.some((c) => c.x === x && c.y === y) || puntos.some((p) => hayLineaDeVista(muros, o, p)));
-      if (ve) salen.add(`${x},${y}`);
+  const fuentes = [
+    ...(estado.mapa.luces ?? []).map((l) => ({ ...l, lado: 1, centro: { x: l.x + 0.5, y: l.y + 0.5 } })),
+    ...Object.values(estado.tokens).filter((t) => t.luz && (t.luz.brillante + t.luz.tenue) > 0)
+      .map((t) => ({ x: t.x, y: t.y, brillante: t.luz!.brillante, tenue: t.luz!.tenue, lado: ladoDe(t), centro: centroDe(t) })),
+  ];
+  const niveles = new Map<string, NivelLuz>();
+  const { columnas, filas } = estado.mapa;
+  for (const f of fuentes) {
+    const r = Math.ceil((f.brillante + f.tenue) / 5) + f.lado;
+    for (let y = Math.max(0, f.y - r); y < Math.min(filas, f.y + r + 1); y++) {
+      for (let x = Math.max(0, f.x - r); x < Math.min(columnas, f.x + r + 1); x++) {
+        const d = pies(f, f.lado, { x, y });
+        if (d > f.brillante + f.tenue) continue;
+        const nivel: NivelLuz = d <= f.brillante ? 2 : 1;
+        const k = `${x},${y}`;
+        if ((niveles.get(k) ?? 0) >= nivel) continue;
+        if (puntosDe(x, y).some((p) => hayLineaDeVista(muros, f.centro, p))) niveles.set(k, nivel);
+      }
     }
   }
-  return salen;
+  return (k) => Math.max(base, niveles.get(k) ?? 0) as NivelLuz;
+}
+
+// ---------- Sentidos ----------
+export type Sentido = 'normal' | 'low-light' | 'darkvision';
+
+// De la ficha ("Darkvision", "Low-light vision") o, en una criatura, de sus notas y rasgos
+export function sentidoDe(estado: EstadoSala, t: Token): Sentido {
+  const texto = t.personajeId ? estado.personajes[t.personajeId]?.sentidos ?? '' : `${t.criatura?.notas ?? ''} ${(t.criatura?.rasgos ?? []).join(' ')}`;
+  return /darkvision/i.test(texto) ? 'darkvision' : /low-light/i.test(texto) ? 'low-light' : 'normal';
+}
+
+// Lo que ve el grupo junto. `penumbra`: lo que se ve pero nadie ve con claridad (luz tenue sin low-light, o
+// oscuridad vista con darkvision): para dibujarlo más apagado
+export function percepcionGrupo(estado: EstadoSala): { visibles: Set<string>; penumbra: Set<string> } {
+  const { columnas, filas } = estado.mapa;
+  const muros = (estado.mapa.muros ?? []).filter(frenaVista);
+  const luz = iluminacion(estado);
+  const ojos = Object.values(estado.tokens).filter((t) => t.personajeId).map((t) => ({ ...centroDe(t), propias: casillasDe(t, ladoDe(t)), sentido: sentidoDe(estado, t) }));
+  const visibles = new Set<string>();
+  const penumbra = new Set<string>();
+  for (let y = 0; y < filas; y++) {
+    for (let x = 0; x < columnas; x++) {
+      const k = `${x},${y}`;
+      const nivel = luz(k);
+      let ve = false;
+      let claro = false;
+      for (const o of ojos) {
+        const propia = o.propias.some((c) => c.x === x && c.y === y);
+        if (!propia && !puntosDe(x, y).some((p) => hayLineaDeVista(muros, o, p))) continue;
+        // A oscuras sin darkvision no se ve (salvo la casilla propia, que se conoce)
+        if (nivel === 0 && o.sentido !== 'darkvision' && !propia) continue;
+        ve = true;
+        if (nivel === 2 || (nivel === 1 && o.sentido !== 'normal')) { claro = true; break; }
+      }
+      if (ve) { visibles.add(k); if (!claro) penumbra.add(k); }
+    }
+  }
+  return { visibles, penumbra };
+}
+
+export function casillasVisibles(estado: EstadoSala): Set<string> {
+  return percepcionGrupo(estado).visibles;
+}
+
+// ---------- Una criatura mirando a otra ----------
+// `ve`: si la tiene a la vista; `efecto`: si nada sólido se interpone (las ventanas dejan ver pero no pasar);
+// `plano`: el chequeo plano para alcanzarla (5 si está oculta en penumbra, 11 si está escondida o invisible)
+export interface Visibilidad { ve: boolean; efecto: boolean; plano: 0 | 5 | 11; razon: string }
+
+export function visibilidad(estado: EstadoSala, obs: Token, obj: Token): Visibilidad {
+  if (obs.id === obj.id) return { ve: true, efecto: true, plano: 0, razon: '' };
+  const muros = estado.mapa.muros ?? [];
+  const ojo = centroDe(obs);
+  const puntos = casillasDe(obj, ladoDe(obj)).flatMap((c) => puntosDe(c.x, c.y));
+  const vista = muros.filter(frenaVista);
+  const solidos = muros.filter(frenaPaso);
+  const efecto = puntos.some((p) => !solidos.some((m) => cortan(ojo, p, m.a, m.b)));
+  if (!puntos.some((p) => !vista.some((m) => cortan(ojo, p, m.a, m.b)))) return { ve: false, efecto, plano: 0, razon: 'no lo ves desde aquí' };
+  const luz = iluminacion(estado);
+  const nivel = Math.max(...casillasDe(obj, ladoDe(obj)).map((c) => luz(`${c.x},${c.y}`))) as NivelLuz;
+  const sentido = sentidoDe(estado, obs);
+  if (nivel === 0 && sentido !== 'darkvision') return { ve: false, efecto, plano: 0, razon: 'está a oscuras' };
+  const condiciones = new Set((obj.condiciones ?? []).map((c) => c.clave));
+  if (condiciones.has('invisible')) return { ve: true, efecto, plano: 11, razon: 'invisible' };
+  if (condiciones.has('hidden')) return { ve: true, efecto, plano: 11, razon: 'escondido' };
+  if (nivel === 1 && sentido === 'normal') return { ve: true, efecto, plano: 5, razon: 'en penumbra' };
+  return { ve: true, efecto, plano: 0, razon: '' };
+}
+
+// La distancia (en casillas) de un punto a un muro
+export function distanciaAMuro(p: Punto, m: Muro): number {
+  const dx = m.b.x - m.a.x;
+  const dy = m.b.y - m.a.y;
+  const t = Math.max(0, Math.min(1, ((p.x - m.a.x) * dx + (p.y - m.a.y) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(p.x - (m.a.x + dx * t), p.y - (m.a.y + dy * t));
+}
+
+// ¿Tiene algo detrás de qué cubrirse? (un muro pegado a su casilla): sirve para esconderse a plena luz
+export function conCobertura(estado: EstadoSala, t: Token): boolean {
+  const c = centroDe(t);
+  const l = ladoDe(t);
+  return (estado.mapa.muros ?? []).some((m) => frenaPaso(m) && distanciaAMuro(c, m) <= l / 2 + 0.05);
+}
+
+// Las casillas de un área que alcanza desde su origen (una explosión no atraviesa paredes)
+export function conLineaDeEfecto(muros: Muro[], origen: Punto, casillas: Casilla[]): Casilla[] {
+  const solidos = muros.filter(frenaPaso);
+  if (solidos.length === 0) return casillas;
+  return casillas.filter((c) => puntosDe(c.x, c.y).some((p) => !solidos.some((m) => cortan(origen, p, m.a, m.b))));
 }
 
 // Un conjunto de casillas como máscara de bits en hexadecimal (fila por fila): corto para guardar y mandar
@@ -135,7 +268,7 @@ export function murosConocidos(muros: Muro[], exploradas: Set<string>): Muro[] {
 // de eso, así la sala sabe cuándo hace falta mandarle la vista de nuevo.
 export function vistaJugadores(estado: EstadoSala): { estado: EstadoSala; firma: string } {
   const { columnas, filas } = estado.mapa;
-  const visibles = casillasVisibles(estado);
+  const { visibles, penumbra } = percepcionGrupo(estado);
   const exploradas = deMascara(estado.mapa.exploradas, columnas, filas);
   for (const k of visibles) exploradas.add(k);
   const dentro = (k: string) => {
@@ -146,15 +279,44 @@ export function vistaJugadores(estado: EstadoSala): { estado: EstadoSala; firma:
   for (const t of Object.values(estado.tokens)) {
     // Fuera de la cuadrícula de la niebla (un mapa más grande que el tablero) no hay niebla
     const casillas = casillasDe(t, ladoDe(t)).map((c) => `${c.x},${c.y}`);
-    if (t.personajeId || casillas.some((k) => visibles.has(k) || !dentro(k))) tokens[t.id] = t;
+    const invisible = (t.condiciones ?? []).some((c) => c.clave === 'invisible');
+    if (t.personajeId || (!invisible && casillas.some((k) => visibles.has(k) || !dentro(k)))) tokens[t.id] = t;
   }
   const muros = murosConocidos(estado.mapa.muros ?? [], exploradas);
-  const mapa: Mapa = { ...estado.mapa, muros, exploradas: aMascara(exploradas, columnas, filas), visibles: aMascara(visibles, columnas, filas) };
+  // Las luces que pone el GM se ven donde ya se exploró
+  const luces = (estado.mapa.luces ?? []).filter((l) => exploradas.has(`${l.x},${l.y}`));
+  const mapa: Mapa = {
+    ...estado.mapa, muros, luces,
+    exploradas: aMascara(exploradas, columnas, filas), visibles: aMascara(visibles, columnas, filas), penumbra: aMascara(penumbra, columnas, filas),
+  };
   const ajenos = Object.values(tokens).filter((t) => !t.personajeId);
   return {
     estado: { ...estado, tokens, mapa },
-    firma: JSON.stringify([ajenos, muros, mapa.exploradas, mapa.visibles]),
+    firma: JSON.stringify([ajenos, muros, luces, mapa.exploradas, mapa.visibles, mapa.penumbra]),
   };
+}
+
+// Todo lo que le llega a un jugador: sin las escenas que el GM tiene guardadas; con el telón bajo, el tablero
+// vacío (solo los personajes); si no, lo que ve el grupo (con niebla) o todo (sin niebla)
+export function vistaDeJugador(estado: EstadoSala, personajeId?: string): { estado: EstadoSala; firma: string } {
+  const quien = personajeId ? { rol: 'jugador' as const, personajeId } : { rol: 'visitante' as const };
+  const sinEscenas: EstadoSala = {
+    ...estado, escenas: [],
+    tiradas: estado.tiradas.filter((t) => puedeVerTirada(t, quien)),
+    chat: (estado.chat ?? []).filter((m) => puedeVerMensaje(m, quien)),
+  };
+  const escena = estado.escena?.id ?? '';
+  if (estado.telon) {
+    const tokens = Object.fromEntries(Object.entries(estado.tokens).filter(([, t]) => t.personajeId));
+    const { columnas, filas, tamanoCelda, desplazamientoX, desplazamientoY, mostrarCuadricula } = estado.mapa;
+    const mapa: Mapa = { columnas, filas, tamanoCelda, desplazamientoX, desplazamientoY, mostrarCuadricula, terreno: 'ninguno', niebla: false };
+    return { estado: { ...sinEscenas, tokens, mapa }, firma: JSON.stringify(['telon', escena]) };
+  }
+  if (!visionActiva(estado.mapa)) {
+    return { estado: sinEscenas, firma: JSON.stringify([escena, Object.values(estado.tokens).filter((t) => !t.personajeId), estado.mapa]) };
+  }
+  const v = vistaJugadores(sinEscenas);
+  return { estado: v.estado, firma: JSON.stringify([escena, v.firma]) };
 }
 
 // Una habitación de un tirón: el rectángulo entre dos esquinas, con una puerta en el medio del lado de abajo
@@ -186,6 +348,13 @@ export function alLadoDe(t: Token, m: Muro): boolean {
 
 const entero = (n: unknown, min: number, max: number) => typeof n === 'number' && Number.isInteger(n) && n >= min && n <= max;
 const esPunto = (p: unknown) => typeof p === 'object' && p !== null && entero((p as Punto).x, 0, 500) && entero((p as Punto).y, 0, 500);
+
+export function esLucesValido(v: unknown): boolean {
+  return Array.isArray(v) && v.length <= 100 && v.every((l) => typeof l === 'object' && l !== null && typeof (l as Luz).id === 'string' && (l as Luz).id.length <= 60
+    && entero((l as Luz).x, 0, 500) && entero((l as Luz).y, 0, 500) && esBrillo(l));
+}
+
+export const esBrillo = (b: unknown) => typeof b === 'object' && b !== null && entero((b as Brillo).brillante, 0, 120) && entero((b as Brillo).tenue, 0, 120);
 
 export function esMurosValido(v: unknown): boolean {
   return Array.isArray(v) && v.length <= 600 && v.every((m) => {

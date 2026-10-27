@@ -1,16 +1,16 @@
 import { DurableObject } from 'cloudflare:workers';
-import { calcular, gradoDeExito, leerExpresion } from '../reglas/pf2e';
+import { calcular, gradoDeExito, leerExpresion, type Personaje } from '../reglas/pf2e';
 import {
-  aplicar, caDeToken, casillaLibre, dentroDelTablero, ladoDe, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, preparacionDe, puede,
+  aplicar, caDeToken, casillaLibre, puedeVerMensaje, puedeVerTirada, dentroDelTablero, ladoDe, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, preparacionDe, puede,
   puedeMoverToken, reaccionesPara, resumen, tokenDePersonaje, tokenEnTurno,
-  type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
+  type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada, type Token,
 } from '../compartido/sala';
 import { iniciativaDe, queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
-import { motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Azar } from '../compartido/interacciones';
+import { modificadorDefensa, motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Azar } from '../compartido/interacciones';
 import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
 import { claveDe, interaccionDe, VAN_ULTIMO } from '../reglas/interacciones';
 import { momentoIniciativa } from '../reglas/disparadores';
-import { alLadoDe, explorar, visionActiva, vistaJugadores } from '../compartido/vision';
+import { alLadoDe, conCobertura, explorar, iluminacion, visibilidad, visionActiva, vistaDeJugador } from '../compartido/vision';
 
 // Los dados de la sala, para el motor de interacciones
 const AZAR: Azar = { dado: (caras) => dado(caras), id: () => crypto.randomUUID(), ahora: () => Date.now() };
@@ -126,6 +126,8 @@ export class Sala extends DurableObject<Env> {
         return this.responder(conexion.quien, m.esperaId, m.aptitudId);
       case 'puerta':
         return this.puerta(ws, conexion.quien, m.id);
+      case 'decir':
+        return this.decir(ws, conexion.quien, m);
       case 'puntero':
       case 'senal':
         return this.presencia(ws, conexion, m);
@@ -308,6 +310,11 @@ export class Sala extends DurableObject<Env> {
     const objetivoToken = objetivoId ? this.estado.tokens[objetivoId] : undefined;
     // Quien tira sin personaje (el GM por un enemigo) se busca por el nombre que escribió, para dibujar el golpe
     const autor = tokenPropio ?? Object.values(this.estado.tokens).find((t) => !t.personajeId && t.nombre.toLowerCase() === nombre.toLowerCase());
+    // La luz y los muros: sin línea de efecto o sin verlo no hay ataque; si está oculto o escondido, chequeo plano
+    const vis = plan.esAtaque && tokenPropio && objetivoToken ? visibilidad(this.estado, tokenPropio, objetivoToken) : null;
+    if (vis && !validado && (!vis.efecto || !vis.ve)) {
+      return ws && this.negar(ws, !vis.efecto ? `Hay algo sólido entre ${tokenPropio!.nombre} y ${objetivoToken!.nombre}.` : `${objetivoToken!.nombre}: ${vis.razon}.`);
+    }
 
     // Un ataque contra un personaje con reacción para "cuando te atacan": la mesa espera su respuesta
     if (!reaccion && esD20 && objetivoToken?.personajeId && (plan.esAtaque || que.tipo === 'libre')) {
@@ -329,11 +336,26 @@ export class Sala extends DurableObject<Env> {
 
     // Contra la CA de un objetivo: la sala dice el grado de éxito
     const ca = objetivoToken && esD20 ? caDeToken(this.estado, objetivoToken) : null;
-    const cd = ca ? ca.total + (reaccion?.bonoCA ?? 0) : 0;
+    // Quien ataca escondido toma desprevenido al objetivo (−2 a su CA) y, al atacar, deja de estar escondido
+    const escondido = !!(plan.esAtaque && tokenPropio?.condiciones?.some((c) => c.clave === 'hidden'));
+    const cd = ca ? ca.total + (reaccion?.bonoCA ?? 0) - (escondido && ca ? 2 : 0) : 0;
+    let grado = ca ? gradoDeExito(total, dados[0]!, cd) : undefined;
+    let nota = escondido && ca ? ' · desde las sombras (−2 a su CA)' : '';
+    if (grado && vis?.plano && (grado === 'exito' || grado === 'critico')) {
+      const d = dado(20);
+      await this.guardarYRepartir({
+        tipo: 'registrar-tirada', tirada: {
+          id: crypto.randomUUID(), quien: nombre, etiqueta: `Chequeo plano: ${objetivoToken!.nombre} ${vis.razon} (CD ${vis.plano})`, dados: [d], caras: 20,
+          modificador: 0, total: d, cuando: Date.now(), ...(personaje ? { personajeId: personaje.id } : {}),
+        },
+      });
+      if (d < vis.plano) { grado = 'fallo'; nota += ` · se le escapa (${vis.razon})`; }
+    }
     const tirada: Tirada = {
+      ...(quien.rol === 'gm' && m.secreto === true ? { secreta: true } : {}),
       id: crypto.randomUUID(),
       quien: nombre,
-      etiqueta: reaccion?.nombre ? `${plan.etiqueta} · ${objetivoToken?.nombre} usó ${reaccion.nombre} (+${reaccion.bonoCA} CA)` : plan.etiqueta,
+      etiqueta: `${reaccion?.nombre ? `${plan.etiqueta} · ${objetivoToken?.nombre} usó ${reaccion.nombre} (+${reaccion.bonoCA} CA)` : plan.etiqueta}${nota}`,
       dados,
       caras: plan.dados.length === 1 ? plan.dados[0]!.caras : 0,
       modificador: plan.modificador,
@@ -342,7 +364,7 @@ export class Sala extends DurableObject<Env> {
       ...(personaje ? { personajeId: personaje.id } : {}),
       ...(autor ? { autorTokenId: autor.id } : {}),
       ...(objetivoToken
-        ? { objetivo: { nombre: objetivoToken.nombre, tokenId: objetivoToken.id, ...(ca ? { cd, grado: gradoDeExito(total, dados[0]!, cd) } : {}) } }
+        ? { objetivo: { nombre: objetivoToken.nombre, tokenId: objetivoToken.id, ...(ca && grado ? { cd, grado } : {}) } }
         : {}),
     };
     await this.guardarYRepartir({ tipo: 'registrar-tirada', tirada });
@@ -351,6 +373,7 @@ export class Sala extends DurableObject<Env> {
     if (plan.esAtaque && tokenPropio && tokenEnTurno(this.estado)?.id === tokenPropio.id) {
       await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: tokenPropio.id, gastaAccion: que.tipo === 'ataque' || que.tipo === 'criatura' });
     }
+    if (escondido && tokenPropio) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: tokenPropio.id, clave: 'hidden', valor: 0 });
   }
 
   private negar(ws: WebSocket, motivo: string) {
@@ -389,6 +412,7 @@ export class Sala extends DurableObject<Env> {
     }
     if (plan.camino.length < 2) return;
     await this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: plan.camino, acciones: plan.acciones });
+    if (plan.acciones > 0 && t.condiciones?.some((c) => c.clave === 'hidden')) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: t.id, clave: 'hidden', valor: 0 });
   }
 
   // Usar una aptitud de una vez: revisa turno, acciones, usos, requisitos y alcance; gasta y tira
@@ -417,9 +441,21 @@ export class Sala extends DurableObject<Env> {
       if (lejos) return this.negar(ws, lejos);
     }
 
-    // Con interacción (salvaciones, áreas, efectos): a quiénes alcanza, y que no estén inmunes, antes de gastar nada
+    // Contra alguien: que lo vea y que no haya nada sólido en medio
     const inter = interaccionDe(a);
+    const contra = objetivo && objetivo.id !== token.id && (a.tirada || inter) ? visibilidad(this.estado, token, objetivo) : null;
+    if (contra && (!contra.efecto || !contra.ve)) return this.negar(ws, !contra.efecto ? `Hay algo sólido entre tú y ${objetivo!.nombre}.` : `${objetivo!.nombre}: ${contra.razon}.`);
+    // Hide pide sombra o algo detrás de qué cubrirse, si alguien te está viendo
+    const observan = a.id === 'basica:hide'
+      ? Object.values(this.estado.tokens).filter((t) => !t.personajeId && t.tipo === 'enemigo' && visibilidad(this.estado, t, token).ve)
+      : [];
+    if (a.id === 'basica:hide' && observan.length && iluminacion(this.estado)(`${token.x},${token.y}`) === 2 && !conCobertura(this.estado, token)) {
+      return this.negar(ws, 'Para esconderte necesitas sombra o algo detrás de qué cubrirte (una pared pegada a ti).');
+    }
+
+    // Con interacción (salvaciones, áreas, efectos): a quiénes alcanza, y que no estén inmunes, antes de gastar nada
     let alcance: ReturnType<typeof objetivosDe> | null = null;
+    const planos: Record<string, number> = {};
     if (inter) {
       const punto = typeof m.punto === 'object' && m.punto !== null && Number.isInteger((m.punto as { x: unknown }).x) && Number.isInteger((m.punto as { y: unknown }).y)
         ? m.punto as { x: number; y: number } : undefined;
@@ -429,6 +465,15 @@ export class Sala extends DurableObject<Env> {
       for (const t of alcance.tokens) {
         const inmune = motivoInmune(a, inter, token, t);
         if (inmune) return this.negar(ws, inmune);
+      }
+      // A los que se apunta uno por uno: que se vean; los ocultos o escondidos piden chequeo plano
+      if (inter.objetivos.tipo === 'uno' || inter.objetivos.tipo === 'varios') {
+        for (const t of alcance.tokens) {
+          if (t.id === token.id) continue;
+          const v = visibilidad(this.estado, token, t);
+          if (!v.efecto || !v.ve) return this.negar(ws, !v.efecto ? `Hay algo sólido entre tú y ${t.nombre}.` : `${t.nombre}: ${v.razon}.`);
+          if (v.plano) planos[t.id] = v.plano;
+        }
       }
     }
 
@@ -444,11 +489,16 @@ export class Sala extends DurableObject<Env> {
       await this.guardarYRepartir({ tipo: 'usar-preparacion', tokenId: token.id, aptitudId: a.id, nombre: a.nombre, ...(ultimo ? { ultimo } : {}) });
     }
 
+    if (a.id === 'basica:hide') return this.esconderse(token, p, observan);
+
     if (inter && alcance && !('motivo' in alcance)) {
       const numero = (miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
-      const acciones = resolverUso(this.estado, { autor: token, personaje: p, aptitud: a, interaccion: inter, objetivos: alcance.tokens, ...(alcance.casillas ? { casillas: alcance.casillas } : {}), numero }, AZAR);
+      const acciones = resolverUso(this.estado, { autor: token, personaje: p, aptitud: a, interaccion: inter, objetivos: alcance.tokens, ...(alcance.casillas ? { casillas: alcance.casillas } : {}), numero, planos }, AZAR);
       if ('motivo' in acciones) return this.negar(ws, acciones.motivo);
       for (const accion of acciones) await this.guardarYRepartir(accion);
+      // Lo que ataca o daña delata a quien estaba escondido
+      const hostil = inter.modo.tipo !== 'ninguna' || !!inter.dano || a.rasgos.includes('attack');
+      if (hostil && token.condiciones?.some((x) => x.clave === 'hidden')) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'hidden', valor: 0 });
       // Los ataques (y lo que tiene el rasgo attack, como Trip) suben la penalización del siguiente
       if (miTurno && (inter.modo.tipo === 'ataque' || a.rasgos.includes('attack'))) {
         await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: token.id, gastaAccion: false });
@@ -459,6 +509,27 @@ export class Sala extends DurableObject<Env> {
       const numero = (a.tirada.tipo === 'golpe' && miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
       await this.tirar(quien, { que: { tipo: 'aptitud', id: a.id, numero, ...(objetivo ? { objetivo: objetivo.id } : {}) } }, undefined, ws, true);
     }
+  }
+
+  // Hide: Stealth contra la Perception DC más alta de los enemigos que lo ven; con éxito queda Hidden
+  private async esconderse(token: Token, p: Personaje, observan: Token[]) {
+    const mod = calcular(p, token.condiciones ?? [], token.efectos ?? []).habilidades.stealth.total;
+    const d = dado(20);
+    const total = d + mod;
+    const cd = observan.length ? Math.max(...observan.map((t) => 10 + (modificadorDefensa(this.estado, t, 'percepcion') ?? 0))) : 0;
+    const grado = observan.length ? gradoDeExito(total, d, cd) : 'exito';
+    const logra = grado === 'exito' || grado === 'critico';
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: 'Esconderte (Stealth)', dados: [d], caras: 20, modificador: mod, total, cuando: Date.now(),
+        personajeId: p.id, autorTokenId: token.id,
+        objetivo: observan.length
+          ? { nombre: observan.length === 1 ? observan[0]!.nombre : `${observan.length} enemigos que te ven`, cd, grado }
+          : { nombre: 'nadie te ve' },
+        resultado: { nota: logra ? 'quedas Hidden: te atacan con chequeo plano CD 11' : 'te siguen viendo' },
+      },
+    });
+    if (logra) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'hidden', valor: 1 });
   }
 
   // Quien estaba siendo atacado responde: usa una reacción o la deja pasar. Después se tira el ataque.
@@ -532,29 +603,48 @@ export class Sala extends DurableObject<Env> {
   // solo lo suyo: la acción tal cual si no cambia lo que ve ni toca algo oculto; si no, su vista nueva.
   private async guardarYRepartir(accion: Accion) {
     await this.guardar(accion);
-    const activa = visionActiva(this.estado.mapa);
-    const mascara = activa ? explorar(this.estado) : null;
+    // Con el telón bajo, lo que ven los personajes no se explora (el GM está armando la escena)
+    const mascara = visionActiva(this.estado.mapa) && !this.estado.telon ? explorar(this.estado) : null;
     if (mascara) await this.guardar({ tipo: 'explorar', mascara });
-    const vista = activa ? vistaJugadores(this.estado) : null;
-    const cambio = (vista?.firma ?? null) !== this.firmaJugadores;
-    this.firmaJugadores = vista?.firma ?? null;
+    const vista = vistaDeJugador(this.estado);
+    const cambio = vista.firma !== this.firmaJugadores;
+    this.firmaJugadores = vista.firma;
     const ids = idsDe(accion);
-    const oculta = !!vista && ids.some((id) => this.estado.tokens[id] && !vista.estado.tokens[id]);
+    const oculta = ids.some((id) => this.estado.tokens[id] && !vista.estado.tokens[id]);
+    // Pasar de escena o mover el telón cambia todo lo que ve un jugador: le llega el estado entero
+    const todo = accion.tipo.endsWith('-escena') || accion.tipo === 'telon';
     for (const ws of this.ctx.getWebSockets()) {
       const { quien } = ws.deserializeAttachment() as Conexion;
       if (quien.rol === 'visitante') continue;
+      // Un susurro ajeno o una tirada secreta no le llegan
+      if (accion.tipo === 'chat' && !puedeVerMensaje(accion.mensaje, quien)) continue;
+      if (accion.tipo === 'registrar-tirada' && !puedeVerTirada(accion.tirada, quien)) continue;
       if (quien.rol === 'gm') {
         enviar(ws, { tipo: 'accion', accion });
         if (mascara) enviar(ws, { tipo: 'accion', accion: { tipo: 'explorar', mascara } });
-      } else if (!vista) {
-        // Se apagó la niebla: el estado entero de nuevo; si no, la acción
-        if (cambio) this.enviarEstado(ws); else enviar(ws, { tipo: 'accion', accion });
+      } else if (todo) {
+        this.enviarEstado(ws, accion);
       } else if (!cambio && !oculta) {
         enviar(ws, { tipo: 'accion', accion });
       } else {
         enviar(ws, { tipo: 'vista', ...(oculta ? {} : { accion }), tokens: vista.estado.tokens, mapa: vista.estado.mapa });
       }
     }
+  }
+
+  // El chat: la sala firma el mensaje con quién lo manda. Un susurro va al GM o a un personaje que exista.
+  private async decir(ws: WebSocket, quien: Sesion, m: Record<string, unknown>) {
+    if (quien.rol === 'visitante') return;
+    const texto = typeof m.texto === 'string' ? m.texto.trim().slice(0, 500) : '';
+    if (!texto) return;
+    const para = typeof m.para === 'string' ? m.para : undefined;
+    if (para && para !== 'gm' && !this.estado.personajes[para]) return this.negar(ws, 'A quien le susurras ya no está en la mesa.');
+    const mensaje = {
+      id: crypto.randomUUID(), quien: this.nombreDe(quien), rol: quien.rol, texto, cuando: Date.now(),
+      ...(quien.rol === 'jugador' ? { personajeId: quien.personajeId } : {}),
+      ...(para && !(quien.rol === 'gm' && para === 'gm') ? { para } : {}),
+    } as const;
+    await this.guardarYRepartir({ tipo: 'chat', mensaje });
   }
 
   // Abrir o cerrar una puerta. El GM, cualquiera (también las cerradas con llave); un jugador, la que tiene al lado,
@@ -589,11 +679,12 @@ export class Sala extends DurableObject<Env> {
     this.repartirPresentes(undefined, ws);
   }
 
-  // A un jugador con niebla le llega su vista; al GM, todo
-  private enviarEstado(ws: WebSocket) {
+  // A un jugador le llega su vista (sin escenas guardadas, con niebla y telón); al GM, todo.
+  // `por`: la acción que lo provocó, para que la pantalla avise (pasar de escena, el telón)
+  private enviarEstado(ws: WebSocket, por?: Accion) {
     const { idConexion, quien } = ws.deserializeAttachment() as Conexion;
-    const estado = quien.rol === 'jugador' && visionActiva(this.estado.mapa) ? vistaJugadores(this.estado).estado : this.estado;
-    enviar(ws, { tipo: 'estado', estado, presentes: this.presentes(), tuConexion: idConexion });
+    const estado = quien.rol === 'jugador' ? vistaDeJugador(this.estado, quien.personajeId).estado : this.estado;
+    enviar(ws, { tipo: 'estado', estado, presentes: this.presentes(), tuConexion: idConexion, ...(por ? { por } : {}) });
   }
 
   private enviarLobby(ws: WebSocket) {

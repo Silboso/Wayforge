@@ -68,9 +68,11 @@ function FilaTirada({ t, verCd }: { t: Tirada; verCd: boolean }) {
 export function TiradaLibre({ esGM, objetivo, onTirar }: {
   esGM: boolean;
   objetivo: { id: string; nombre: string } | null;
-  onTirar: (que: QueTirar) => void;
+  onTirar: (que: QueTirar, secreto?: boolean) => void;
 }) {
   const [expresion, setExpresion] = useState('1d20');
+  // Solo el GM: una tirada que nadie más ve (Recall Knowledge, Perception contra una trampa)
+  const [secreto, setSecreto] = useState(false);
   const [etiqueta, setEtiqueta] = useState('');
   const [error, setError] = useState('');
 
@@ -79,7 +81,7 @@ export function TiradaLibre({ esGM, objetivo, onTirar }: {
       setError('Escribe dados como 1d20+7 o 2d6+3');
       return;
     }
-    onTirar({ tipo: 'libre', expresion, ...(etiqueta.trim() ? { etiqueta: etiqueta.trim() } : {}), ...(objetivo ? { objetivo: objetivo.id } : {}) });
+    onTirar({ tipo: 'libre', expresion, ...(etiqueta.trim() ? { etiqueta: etiqueta.trim() } : {}), ...(objetivo ? { objetivo: objetivo.id } : {}) }, esGM && secreto);
   }
 
   return (
@@ -94,6 +96,12 @@ export function TiradaLibre({ esGM, objetivo, onTirar }: {
           placeholder={esGM ? 'Quién tira (Goblin arquero)' : 'Para qué es (opcional)'}
           onChange={(e) => setEtiqueta(e.target.value)} />
         {error && <p className="text-sm text-peligro">{error}</p>}
+        {esGM && (
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-acento" checked={secreto} onChange={(e) => setSecreto(e.target.checked)} />
+            En secreto: solo tú ves el resultado
+          </label>
+        )}
         <p className="text-xs text-texto-suave">
           {objetivo ? `Si es un d20, se compara con la CA de ${objetivo.nombre}.` : 'Toca un token en el tablero para tirar contra su CA.'}
         </p>

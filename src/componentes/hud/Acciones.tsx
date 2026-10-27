@@ -1,4 +1,8 @@
 import { CrosshairIcon, LightningIcon, XIcon } from '@phosphor-icons/react';
+import { ConFlotante } from './Flotante';
+import { IconoHabilidad } from './IconoHabilidad';
+import { TarjetaHabilidad } from './TarjetaHabilidad';
+import { TIPO_ARRASTRE } from './BarraHabilidades';
 import { GRUPOS, grupoDe, type Aptitud } from '../../../reglas/aptitudes';
 import { signo, type Valor } from '../../../reglas/pf2e';
 import { gradosTexto, interaccionDe, resumenInteraccion } from '../../../reglas/interacciones';
@@ -38,7 +42,7 @@ export function faltan(fila: Fila, libres: number | null): number {
 }
 
 // La lista de una sección, como renglones de cuaderno. La fila que probablemente toca va con marcatextos.
-export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null, onElegir, onAsomar }: {
+export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null, onElegir, onAsomar, alcance, arrastrable = false }: {
   seccion: Seccion;
   elegida: string | null;
   marcada: string | null;
@@ -48,6 +52,10 @@ export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null
   onElegir: (fila: Fila) => void;
   // Al pasar el cursor por una fila (para mostrar su alcance en el tablero)
   onAsomar?: (fila: Fila | null) => void;
+  // Hasta dónde llega cada una (para la tarjeta que se abre al pasar el cursor)
+  alcance?: (fila: Fila) => number | null;
+  // Se pueden arrastrar a la barra de habilidades
+  arrastrable?: boolean;
 }) {
   return (
     <ul className="flex flex-col" onMouseLeave={() => onAsomar?.(null)}>
@@ -57,19 +65,29 @@ export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null
         const abierta = elegida === fila.clave;
         return (
           <li key={fila.clave}>
+            <ConFlotante className="block" contenido={<TarjetaHabilidad fila={fila} alcance={alcance?.(fila) ?? null} {...(teclas?.[i] ? { tecla: teclas[i] } : {})} />}>
             <button
-              className={`group grid min-h-[44px] w-full items-center gap-2 border-b border-dashed border-borde px-1 py-1 text-left transition-colors hover:bg-acento/[0.06] pointer-fine:min-h-[34px] pointer-fine:py-0.5 ${teclas ? 'grid-cols-[52px_minmax(0,1fr)_auto_auto]' : 'grid-cols-[48px_minmax(0,1fr)_auto]'} ${abierta ? 'bg-acento/[0.08]' : ''}`}
+              className={`group grid min-h-[44px] w-full items-center gap-2 border-b border-dashed border-borde px-1 py-1 text-left transition-colors hover:bg-acento/[0.06] pointer-fine:min-h-[36px] pointer-fine:py-0.5 ${teclas ? 'grid-cols-[52px_minmax(0,1fr)_auto_auto]' : 'grid-cols-[48px_minmax(0,1fr)_auto]'} ${abierta ? 'bg-acento/[0.08]' : ''} ${arrastrable ? 'cursor-grab active:cursor-grabbing' : ''}`}
               aria-expanded={abierta}
               onClick={() => onElegir(fila)}
               onMouseEnter={() => onAsomar?.(fila)}
               onFocus={() => onAsomar?.(fila)}
+              draggable={arrastrable}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(TIPO_ARRASTRE, fila.clave);
+                e.dataTransfer.setData('text/plain', fila.nombre);
+                e.dataTransfer.effectAllowed = 'copyMove';
+              }}
             >
               <span className="flex justify-center">
-                {fila.tipo === 'golpe' ? <Rombo className="size-3.5" tachado={sinAcciones} lleno={!sinAcciones} /> : <CostoAccion costo={fila.aptitud.costo} tachado={sinAcciones} />}
+                <IconoHabilidad fila={fila} tamano={30} apagada={agotada} />
               </span>
               <span className={`min-w-0 pointer-fine:flex pointer-fine:items-baseline pointer-fine:gap-2 ${agotada ? 'opacity-55' : ''}`}>
                 <span className={`font-titulo text-[16px] font-semibold ${marcada === fila.clave ? 'marcatextos' : ''} ${agotada ? 'line-through decoration-texto decoration-2' : ''}`}>
                   {fila.nombre}
+                </span>
+                <span className="mx-1 inline-flex translate-y-[2px] pointer-fine:mx-0">
+                  {fila.tipo === 'golpe' ? <Rombo className="size-3" tachado={sinAcciones} lleno={!sinAcciones} /> : <CostoAccion costo={fila.aptitud.costo} tachado={sinAcciones} />}
                 </span>
                 <span className="block truncate text-[12.5px] text-texto-suave pointer-fine:min-w-0 pointer-fine:flex-1">
                   {fila.tipo === 'aptitud' && fila.aptitud.recuperacion.tipo !== 'siempre' ? `${fila.disp.texto}${fila.detalle ? ` · ${fila.detalle}` : ''}` : fila.detalle}
@@ -78,6 +96,7 @@ export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null
               <span className={`whitespace-nowrap font-titulo text-[19px] font-bold text-acento ${agotada ? 'opacity-55' : ''}`}>{fila.valor}</span>
               {teclas && <span className="w-6 text-right">{teclas[i] && <Tecla>{teclas[i]}</Tecla>}</span>}
             </button>
+            </ConFlotante>
           </li>
         );
       })}

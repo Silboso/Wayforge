@@ -2,7 +2,7 @@
 // De aquí salen los avisos ("te atacaron", "se movió a tu lado") y las animaciones del tablero.
 
 import type { Aspecto } from '../reglas/efectos';
-import { TAMANOS, tokenEnTurno, type Accion, type EstadoSala, type Tirada, type Token } from './sala';
+import { TAMANOS, tokenEnTurno, type Accion, type EstadoSala, type MensajeChat, type Tirada, type Token } from './sala';
 
 export type Evento =
   | { tipo: 'tirada'; tirada: Tirada }
@@ -19,6 +19,11 @@ export type Evento =
   | { tipo: 'preparativo'; tokenId: string; nombre: string; ultimo: boolean }
   // Todos los jugadores de la preparación avisaron que están listos
   | { tipo: 'todos-listos' }
+  // Se pasó a otra escena; el telón subió o bajó
+  | { tipo: 'escena'; nombre: string }
+  // Alguien habló en el chat (solo llega a quien lo puede ver)
+  | { tipo: 'chat'; mensaje: MensajeChat }
+  | { tipo: 'telon'; bajo: boolean }
   // Empezó el combate: el orden en que se juega, para mostrarlo a todos
   | { tipo: 'combate'; orden: { tokenId: string; iniciativa: number }[] };
 
@@ -56,6 +61,12 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
       };
       return todos(posterior) && !todos(anterior) ? [{ tipo: 'todos-listos' }] : [];
     }
+    case 'chat':
+      return [{ tipo: 'chat', mensaje: accion.mensaje }];
+    case 'cambiar-escena':
+      return posterior.escena && posterior.escena.id !== anterior.escena?.id ? [{ tipo: 'escena', nombre: posterior.escena.nombre }] : [];
+    case 'telon':
+      return !!anterior.telon !== accion.bajo ? [{ tipo: 'telon', bajo: accion.bajo }] : [];
     case 'usar-preparacion':
       return [{ tipo: 'preparativo', tokenId: accion.tokenId, nombre: accion.nombre, ultimo: !!accion.ultimo }];
     case 'avanzar-turno': {
