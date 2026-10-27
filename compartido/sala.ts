@@ -69,6 +69,8 @@ export interface Mapa {
   // Muros, puertas y ventanas (ver compartido/vision.ts) y la niebla de guerra (prendida salvo que el GM la apague)
   muros?: Muro[];
   niebla?: boolean;
+  // Cada jugador ve solo lo que ve su personaje (si no, el grupo comparte la vista). Lo explorado es de todos
+  visionPorPersonaje?: boolean;
   // Lo que el grupo ya exploró, como máscara de casillas; `visibles` solo viaja en la vista de un jugador
   exploradas?: string;
   visibles?: string;
@@ -1328,6 +1330,7 @@ function esMapaValido(m: Record<string, unknown>): boolean {
     && (m.terreno === undefined || TERRENOS_VALIDOS.includes(m.terreno as Terreno))
     && (m.muros === undefined || esMurosValido(m.muros))
     && (m.niebla === undefined || typeof m.niebla === 'boolean')
+    && (m.visionPorPersonaje === undefined || typeof m.visionPorPersonaje === 'boolean')
     && (m.exploradas === undefined || (typeof m.exploradas === 'string' && m.exploradas.length <= 20_000 && /^[0-9a-f]*$/.test(m.exploradas)))
     && (m.luz === undefined || m.luz === 'brillante' || m.luz === 'tenue' || m.luz === 'oscuridad')
     && (m.luces === undefined || esLucesValido(m.luces))

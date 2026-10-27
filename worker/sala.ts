@@ -47,7 +47,8 @@ export class Sala extends DurableObject<Env> {
   private codigos: Codigos | null = null;
   private fallos = new Map<string, { n: number; hasta: number }>();
   // Lo último que vieron los jugadores (para no mandarles la vista si no cambió)
-  private firmaJugadores: string | null = null;
+  // Lo último que vio cada jugador (con visión compartida, todos bajo la clave '')
+  private firmasJugadores = new Map<string, string>();
   // Quién usó Sneak y todavía no se movió (su próximo movimiento es a escondidas)
   private sigilo = new Set<string>();
 
@@ -678,11 +679,22 @@ export class Sala extends DurableObject<Env> {
     // Con el telón bajo, lo que ven los personajes no se explora (el GM está armando la escena)
     const mascara = visionActiva(this.estado.mapa) && !this.estado.telon ? explorar(this.estado) : null;
     if (mascara) await this.guardar({ tipo: 'explorar', mascara });
-    const vista = vistaDeJugador(this.estado);
-    const cambio = vista.firma !== this.firmaJugadores;
-    this.firmaJugadores = vista.firma;
+    // Con visión compartida todos ven lo mismo; con visión por personaje, una vista para cada uno
+    const porPersonaje = !!this.estado.mapa.visionPorPersonaje;
+    const vistas = new Map<string, { vista: ReturnType<typeof vistaDeJugador>; cambio: boolean; oculta: boolean }>();
     const ids = idsDe(accion);
-    const oculta = ids.some((id) => this.estado.tokens[id] && !vista.estado.tokens[id]);
+    const vistaPara = (personajeId: string) => {
+      const clave = porPersonaje ? personajeId : '';
+      let v = vistas.get(clave);
+      if (!v) {
+        const vista = vistaDeJugador(this.estado, porPersonaje ? personajeId : undefined);
+        const cambio = vista.firma !== this.firmasJugadores.get(clave);
+        this.firmasJugadores.set(clave, vista.firma);
+        v = { vista, cambio, oculta: ids.some((id) => this.estado.tokens[id] && !vista.estado.tokens[id]) };
+        vistas.set(clave, v);
+      }
+      return v;
+    };
     // Pasar de escena o mover el telón cambia todo lo que ve un jugador: le llega el estado entero
     // Los handouts también: así nunca viaja uno que no le mostraron
     const todo = accion.tipo.endsWith('-escena') || accion.tipo === 'telon' || accion.tipo.endsWith('-handout');
@@ -698,10 +710,13 @@ export class Sala extends DurableObject<Env> {
         if (mascara) enviar(ws, { tipo: 'accion', accion: { tipo: 'explorar', mascara } });
       } else if (todo) {
         this.enviarEstado(ws, accion);
-      } else if (!cambio && !oculta) {
-        if (!yaLaTiene) enviar(ws, { tipo: 'accion', accion });
       } else {
-        enviar(ws, { tipo: 'vista', ...(oculta || yaLaTiene ? {} : { accion }), tokens: vista.estado.tokens, mapa: vista.estado.mapa });
+        const { vista, cambio, oculta } = vistaPara(quien.personajeId);
+        if (!cambio && !oculta) {
+          if (!yaLaTiene) enviar(ws, { tipo: 'accion', accion });
+        } else {
+          enviar(ws, { tipo: 'vista', ...(oculta || yaLaTiene ? {} : { accion }), tokens: vista.estado.tokens, mapa: vista.estado.mapa });
+        }
       }
     }
   }

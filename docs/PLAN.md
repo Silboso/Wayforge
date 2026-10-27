@@ -174,7 +174,7 @@ levantado.
 3. Modo exploración: actividades (Search, Avoid Notice, Defend…) que deciden la iniciativa *(hecho: al preparar
    el combate la actividad propone sola la skill; el jugador la puede cambiar)*.
 
-### Fase 5 — Escenas, niebla y mesa
+### Fase 5 — Escenas, niebla y mesa *(hecha)*
 
 Ya hecho: el tablero nunca empieza vacío. Sin imagen de mapa trae un **terreno dibujado a tinta** (un claro
 del bosque con sendero, árboles y rocas; o una sala de mazmorra), que el GM cambia o quita desde Mesa ("Papel
@@ -208,15 +208,16 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    prepara, y al subirlo aparece el nombre de la escena. Las escenas guardadas nunca le llegan a un jugador).
 2. Niebla, luz y línea de vista: hechas. **Seek** tira Perception contra la Stealth DC de cada criatura escondida a
    30 ft que podría ver y la deja a la vista; **Sneak**, estando escondido, mueve hasta la mitad de la Velocidad y al
-   llegar tira Stealth contra los que miran (a plena luz sin nada detrás, te ven). *(Falta: visión por personaje en
-   vez de compartida y un pincel para revelar a mano en mapas con imagen.)*
+   llegar tira Stealth contra los que miran (a plena luz sin nada detrás, te ven). El GM elige si el grupo comparte
+   la vista o **cada jugador ve solo lo que ve su personaje** (lo explorado es de todos), y tiene un **pincel**
+   (Revelar / Cubrir) para destapar o tapar la niebla a mano en mapas con imagen.
 3. ~~Chat de la mesa~~ (hecho: mensajes y tiradas en el mismo registro; susurros al GM o a otro personaje que
    solo ven quien lo manda, quien lo recibe y el GM; tiradas en secreto del GM que no le llegan a nadie más).
 4. ~~Notas y handouts~~ (hecho: el GM prepara handouts con texto e imagen en Mesa → Handouts y los muestra a
    todos, a uno o a varios; a quien se lo muestran se le abre en la pantalla y queda en sus Notas para volver a
    verlo. Nadie recibe un handout que no le mostraron: la sala le manda su estado filtrado).
 
-### Fase 6 — Contenido y fichas
+### Fase 6 — Contenido y fichas *(hecha)*
 
 1. ~~Importar de Pathbuilder 2e~~ (hecho: `reglas/pathbuilder.ts`. Se pega el JSON de "Export JSON" o se sube el
    archivo; los números salen de Pathbuilder y las dotes, conjuros y objetos se buscan por nombre en el compendio.

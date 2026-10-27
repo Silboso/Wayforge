@@ -139,13 +139,13 @@ export function sentidoDe(estado: EstadoSala, t: Token): Sentido {
   return /darkvision/i.test(texto) ? 'darkvision' : /low-light/i.test(texto) ? 'low-light' : 'normal';
 }
 
-// Lo que ve el grupo junto. `penumbra`: lo que se ve pero nadie ve con claridad (luz tenue sin low-light, o
-// oscuridad vista con darkvision): para dibujarlo más apagado
-export function percepcionGrupo(estado: EstadoSala): { visibles: Set<string>; penumbra: Set<string> } {
+// Lo que ve el grupo junto (o un solo personaje, con `soloDe`). `penumbra`: lo que se ve pero nadie ve con
+// claridad (luz tenue sin low-light, o oscuridad vista con darkvision): para dibujarlo más apagado
+export function percepcionGrupo(estado: EstadoSala, soloDe?: string): { visibles: Set<string>; penumbra: Set<string> } {
   const { columnas, filas } = estado.mapa;
   const muros = (estado.mapa.muros ?? []).filter(frenaVista);
   const luz = iluminacion(estado);
-  const ojos = Object.values(estado.tokens).filter((t) => t.personajeId).map((t) => ({ ...centroDe(t), propias: casillasDe(t, ladoDe(t)), sentido: sentidoDe(estado, t) }));
+  const ojos = Object.values(estado.tokens).filter((t) => t.personajeId && (!soloDe || t.personajeId === soloDe)).map((t) => ({ ...centroDe(t), propias: casillasDe(t, ladoDe(t)), sentido: sentidoDe(estado, t) }));
   const visibles = new Set<string>();
   const penumbra = new Set<string>();
   for (let y = 0; y < filas; y++) {
@@ -266,9 +266,9 @@ export function murosConocidos(muros: Muro[], exploradas: Set<string>): Muro[] {
 // Lo que ve un jugador: los personajes siempre; las demás criaturas solo si el grupo las ve ahora; los muros que
 // ya conoce; y las máscaras de lo explorado y lo visible para dibujar la niebla. `firma` cambia cuando cambia algo
 // de eso, así la sala sabe cuándo hace falta mandarle la vista de nuevo.
-export function vistaJugadores(estado: EstadoSala): { estado: EstadoSala; firma: string } {
+export function vistaJugadores(estado: EstadoSala, soloDe?: string): { estado: EstadoSala; firma: string } {
   const { columnas, filas } = estado.mapa;
-  const { visibles, penumbra } = percepcionGrupo(estado);
+  const { visibles, penumbra } = percepcionGrupo(estado, soloDe);
   const exploradas = deMascara(estado.mapa.exploradas, columnas, filas);
   for (const k of visibles) exploradas.add(k);
   const dentro = (k: string) => {
@@ -316,7 +316,8 @@ export function vistaDeJugador(estado: EstadoSala, personajeId?: string): { esta
   if (!visionActiva(estado.mapa)) {
     return { estado: sinEscenas, firma: JSON.stringify([escena, Object.values(estado.tokens).filter((t) => !t.personajeId), estado.mapa]) };
   }
-  const v = vistaJugadores(sinEscenas);
+  // Con visión por personaje, cada uno ve con sus propios ojos
+  const v = vistaJugadores(sinEscenas, estado.mapa.visionPorPersonaje && personajeId ? personajeId : undefined);
   return { estado: v.estado, firma: JSON.stringify([escena, v.firma]) };
 }
 

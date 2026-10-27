@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { personajeNuevo } from '../reglas/pf2e';
 import {
   aMascara, alLadoDe, casillasVisibles, conCobertura, conLineaDeEfecto, cruzaMuro, deMascara, explorar, habitacion, iluminacion, percepcionGrupo, visibilidad,
-  vistaJugadores, type Muro,
+  vistaDeJugador, vistaJugadores, type Muro,
 } from './vision';
 import { aplicar, esAccionValida, estadoInicial, planMovimiento, type EstadoSala, type Token } from './sala';
 
@@ -176,5 +176,27 @@ describe('luz y sentidos', () => {
     const e = oscuro({ luz: 'brillante', muros: [{ id: 'm', a: { x: 2, y: 6 }, b: { x: 2, y: 7 }, tipo: 'muro' }] });
     expect(conCobertura(e, e.tokens.kyra!)).toBe(true);
     expect(conCobertura(e, e.tokens.goblin!)).toBe(false);
+  });
+});
+
+describe('visión por personaje', () => {
+  it('con la opción prendida, cada uno ve con sus ojos; lo explorado sigue siendo de todos', () => {
+    // Ezren entra a la habitación: él ve al goblin de adentro, Kyra (afuera, puerta cerrada) no
+    let e = aplicar(mesa(), { tipo: 'crear-personaje', personaje: { ...personajeNuevo('ezren'), nombre: 'Ezren' }, x: 10, y: 5 });
+    expect(Object.keys(vistaDeJugador(e, 'kyra').estado.tokens)).toContain('goblin');
+    e = aplicar(e, { tipo: 'editar-mapa', cambios: { visionPorPersonaje: true } });
+    expect(Object.keys(vistaDeJugador(e, 'kyra').estado.tokens)).not.toContain('goblin');
+    expect(Object.keys(vistaDeJugador(e, 'ezren').estado.tokens)).toContain('goblin');
+    expect(Object.keys(vistaDeJugador(e, 'ezren').estado.tokens)).not.toContain('afuera');
+  });
+
+  it('el pincel del GM: lo revelado queda explorado (la niebla se levanta) y se puede volver a cubrir', () => {
+    const e = mesa();
+    const { columnas, filas } = e.mapa;
+    const s = deMascara(e.mapa.exploradas, columnas, filas);
+    s.add('20,14');
+    expect(esAccionValida({ tipo: 'editar-mapa', cambios: { exploradas: aMascara(s, columnas, filas) } }, e)).toBe(true);
+    const e2 = aplicar(e, { tipo: 'editar-mapa', cambios: { exploradas: aMascara(s, columnas, filas) } });
+    expect(deMascara(vistaDeJugador(e2, 'kyra').estado.mapa.exploradas, columnas, filas).has('20,14')).toBe(true);
   });
 });

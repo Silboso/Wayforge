@@ -1,4 +1,4 @@
-import { FlameIcon, DoorIcon, EraserIcon, EyeIcon, LockIcon, SquareIcon, WallIcon, SquareSplitVerticalIcon, XIcon } from '@phosphor-icons/react';
+import { CloudIcon, PaintBrushIcon, FlameIcon, DoorIcon, EraserIcon, EyeIcon, LockIcon, SquareIcon, WallIcon, SquareSplitVerticalIcon, XIcon } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import type { Accion, EstadoSala } from '../../../compartido/sala';
 import { AMBIENTES, visionActiva, type LuzAmbiente } from '../../../compartido/vision';
@@ -14,6 +14,8 @@ export const HERRAMIENTAS: { clave: HerramientaMuros; nombre: string; ayuda: str
   { clave: 'luz', nombre: 'Brasero', ayuda: 'Toca una casilla para poner (o quitar) una luz: 20 ft brillante y 20 más tenue.', icono: <FlameIcon size={18} weight="bold" aria-hidden /> },
   { clave: 'llave', nombre: 'Llave', ayuda: 'Toca una puerta para cerrarla con llave (solo tú la abres).', icono: <LockIcon size={18} weight="bold" aria-hidden /> },
   { clave: 'borrar', nombre: 'Borrar', ayuda: 'Toca un muro, puerta, ventana o brasero para quitarlo.', icono: <EraserIcon size={18} weight="bold" aria-hidden /> },
+  { clave: 'revelar', nombre: 'Revelar', ayuda: 'Pinta (toca o arrastra) para quitar la niebla a mano: queda como explorado. Sirve en mapas con imagen sin muros.', icono: <PaintBrushIcon size={18} weight="bold" aria-hidden /> },
+  { clave: 'cubrir', nombre: 'Cubrir', ayuda: 'Pinta para volver a tapar con niebla lo explorado.', icono: <CloudIcon size={18} weight="bold" aria-hidden /> },
 ];
 
 // La sección de la mesa para muros y niebla: entrar al editor, prender la niebla, ver lo que ven los jugadores
@@ -32,7 +34,8 @@ export function SeccionMurosNiebla({ estado, enviar, onEditar, verNiebla, onVerN
     <Seccion titulo="Muros, luz y niebla de guerra">
       <p className="text-sm text-texto-suave">
         Los muros y las puertas cerradas tapan la vista y el paso; las ventanas dejan ver. Los jugadores ven lo que ve
-        cualquiera del grupo: lo demás queda bajo la niebla, y las criaturas de ahí ni les llegan.
+        {estado.mapa.visionPorPersonaje ? ' su propio personaje' : ' cualquiera del grupo'}: lo demás queda bajo la niebla, y las criaturas de ahí ni les
+        llegan. Con el pincel (Revelar / Cubrir) destapas o tapas a mano.
       </p>
       <button className={claseBotonPrincipal} onClick={onEditar}>
         <WallIcon size={18} aria-hidden /> Dibujar muros y puertas
@@ -60,6 +63,11 @@ export function SeccionMurosNiebla({ estado, enviar, onEditar, verNiebla, onVerN
       <label className={`flex cursor-pointer items-center gap-2 text-sm ${activa ? '' : 'opacity-50'}`}>
         <input type="checkbox" className="size-4 accent-acento" disabled={!activa} checked={verNiebla && activa} onChange={(e) => onVerNiebla(e.target.checked)} />
         <EyeIcon size={16} aria-hidden /> Ver lo que ven los jugadores
+      </label>
+      <label className={`flex cursor-pointer items-center gap-2 text-sm ${activa ? '' : 'opacity-50'}`} title="Si no, el grupo comparte lo que ve (lo explorado es siempre de todos)">
+        <input type="checkbox" className="size-4 accent-acento" disabled={!activa} checked={!!estado.mapa.visionPorPersonaje}
+          onChange={(e) => enviar({ tipo: 'editar-mapa', cambios: { visionPorPersonaje: e.target.checked } })} />
+        Cada jugador ve solo lo que ve su personaje
       </label>
       <div className="flex flex-wrap gap-2">
         <button className={claseBotonSecundario} disabled={!estado.mapa.exploradas}

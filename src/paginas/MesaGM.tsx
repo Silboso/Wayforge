@@ -30,7 +30,7 @@ import { OrdenRevelado } from '../componentes/Preparacion';
 import { PanelEscenas, TituloEscena } from '../componentes/Escenas';
 import { PanelChat } from '../componentes/Chat';
 import { BarraMuros, SeccionMurosNiebla } from '../componentes/gm/MurosNiebla';
-import { casillasVisibles, deMascara, iluminacion, visionActiva } from '../../compartido/vision';
+import { aMascara, casillasVisibles, deMascara, iluminacion, visionActiva } from '../../compartido/vision';
 import type { HerramientaMuros } from '../componentes/Tablero';
 import { Companeros } from '../componentes/hud/Companeros';
 
@@ -394,11 +394,18 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
               const hay = luces.find((l) => l.x === c.x && l.y === c.y);
               sala.enviar({ tipo: 'editar-mapa', cambios: { luces: hay ? luces.filter((l) => l !== hay) : [...luces, { id: crypto.randomUUID().slice(0, 12), x: c.x, y: c.y, brillante: 20, tenue: 20 }] } });
             },
+            onPintar: (casillas, revelar) => {
+              const { columnas, filas } = estado.mapa;
+              const exploradas = deMascara(estado.mapa.exploradas, columnas, filas);
+              for (const c of casillas) { if (revelar) exploradas.add(`${c.x},${c.y}`); else exploradas.delete(`${c.x},${c.y}`); }
+              sala.enviar({ tipo: 'editar-mapa', cambios: { exploradas: aMascara(exploradas, columnas, filas) } });
+            },
           } : null}
           oscuridad={oscuridadGM}
         />
         {herramientaMuros && (
-          <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-4">
+          // Empieza después de los botones del tablero (zoom, Centrar, Medir) para no taparlos
+          <div className="pointer-events-none absolute top-3 right-3 left-[350px] z-30 flex justify-center">
             <BarraMuros herramienta={herramientaMuros} onElegir={setHerramientaMuros} onListo={() => setHerramientaMuros(null)} />
           </div>
         )}

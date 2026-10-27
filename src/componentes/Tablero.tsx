@@ -76,12 +76,14 @@ interface Props {
     onBorrar: (id: string) => void;
     // Pone o quita un brasero en esa casilla
     onLuz: (c: Casilla) => void;
+    // El pincel de niebla: revela (o vuelve a cubrir) esas casillas como exploradas
+    onPintar?: (casillas: Casilla[], revelar: boolean) => void;
   } | null;
   // Cuánta oscuridad hay en cada casilla (0 nada, 1 negro): el GM ve la luz real; un jugador, lo que ve apagado
   oscuridad?: ((k: string) => number) | null;
 }
 
-export type HerramientaMuros = 'muro' | 'puerta' | 'ventana' | 'habitacion' | 'llave' | 'luz' | 'borrar';
+export type HerramientaMuros = 'muro' | 'puerta' | 'ventana' | 'habitacion' | 'llave' | 'luz' | 'borrar' | 'revelar' | 'cubrir';
 
 // Mantener presionado este tiempo (sin mover) lanza una señal
 const SENAL_MS = 450;
@@ -249,6 +251,20 @@ export function Tablero({
     y: ((py - vista.y) / vista.escala - origen.y) / celda,
   });
 
+  // El pincel de niebla (GM): mientras se aprieta, junta casillas de a 3×3; al soltar, se revelan o se cubren
+  const pincel = editorMuros?.herramienta === 'revelar' || editorMuros?.herramienta === 'cubrir';
+  const [pintadas, setPintadas] = useState<Set<string> | null>(null);
+  const pintarEn = (px: number, py: number) => {
+    const m = enCasillas(px, py);
+    const cx = Math.floor(m.x);
+    const cy = Math.floor(m.y);
+    setPintadas((antes) => {
+      const s = new Set(antes ?? []);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s.add(`${cx + dx},${cy + dy}`);
+      return s;
+    });
+  };
+
   // La regla para medir: con el botón queda puesta (cada arrastre mide); con Ctrl + arrastrar, mide una vez.
   // Lo medido queda a la vista hasta el próximo toque o Esc.
   const [modoRegla, setModoRegla] = useState(false);
@@ -267,6 +283,13 @@ export function Tablero({
   const senalHecha = useRef(false);
   function alPresionar(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
     soltarPresion();
+    if (pincel && !('button' in e.evt && e.evt.button !== 0)) {
+      const p = e.target.getStage()?.getPointerPosition();
+      if (!p) return;
+      e.target.getStage()?.stopDrag();
+      pintarEn(p.x, p.y);
+      return;
+    }
     const conCtrl = 'ctrlKey' in e.evt && (e.evt.ctrlKey || e.evt.metaKey);
     if ((modoRegla || conCtrl) && !('button' in e.evt && e.evt.button !== 0)) {
       const p = e.target.getStage()?.getPointerPosition();
@@ -298,6 +321,12 @@ export function Tablero({
   // Al soltar: la regla queda a la vista (si no se movió, se borra)
   function alSoltar() {
     soltarPresion();
+    if (pintadas) {
+      const casillas = [...pintadas].map((k) => { const [x, y] = k.split(',').map(Number) as [number, number]; return { x, y }; })
+        .filter((c) => c.x >= 0 && c.y >= 0 && c.x < mapa.columnas && c.y < mapa.filas);
+      editorMuros?.onPintar?.(casillas, editorMuros.herramienta === 'revelar');
+      setPintadas(null);
+    }
     if (!midiendo) return;
     setMidiendo(false);
     setRegla((r) => (r && (r.a.x !== r.b.x || r.a.y !== r.b.y) ? r : null));
@@ -342,6 +371,7 @@ export function Tablero({
     if (!editorMuros) return;
     const m = enCasillas(px, py);
     const h = editorMuros.herramienta;
+    if (h === 'revelar' || h === 'cubrir') return;
     const casilla = { x: Math.floor(m.x), y: Math.floor(m.y) };
     if (h === 'luz') return editorMuros.onLuz(casilla);
     if (h === 'borrar' && (mapa.luces ?? []).some((l) => l.x === casilla.x && l.y === casilla.y) && !muroCerca(m, 0.25)) return editorMuros.onLuz(casilla);
@@ -380,6 +410,7 @@ export function Tablero({
   function alMoverPuntero(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
     const p = e.target.getStage()?.getPointerPosition();
     if (!p) return;
+    if (pintadas) pintarEn(p.x, p.y);
     if (midiendo) {
       const c = casillaRegla(p.x, p.y);
       setRegla((r) => (r && (r.b.x !== c.x || r.b.y !== c.y) ? { ...r, b: c } : r));
@@ -475,7 +506,7 @@ export function Tablero({
           y={vista.y}
           scaleX={vista.escala}
           scaleY={vista.escala}
-          draggable={!modoRegla && !midiendo}
+          draggable={!modoRegla && !midiendo && !pincel}
           dragDistance={5}
           onWheel={alHacerZoom}
           onMouseMove={alMoverPuntero}
@@ -539,6 +570,12 @@ export function Tablero({
             {oscuridad && <CapaOscuridad sombra={oscuridad} columnas={mapa.columnas} filas={mapa.filas} celda={celda} origen={origen} />}
             {murosMapa.length > 0 && <DibujoMuros muros={murosMapa} celda={celda} origen={origen} escala={vista.escala} colores={colores} resaltado={resaltado} />}
             {(mapa.luces ?? []).length > 0 && <DibujoLuces luces={mapa.luces!} celda={celda} origen={origen} escala={vista.escala} colores={colores} />}
+            {/* Lo que va pintando el pincel de niebla */}
+            {pintadas && [...pintadas].map((k) => {
+              const [x, y] = k.split(',').map(Number) as [number, number];
+              return <Rect key={`pincel-${k}`} x={origen.x + x * celda} y={origen.y + y * celda} width={celda} height={celda} listening={false}
+                fill={editorMuros?.herramienta === 'revelar' ? colores.exito : colores.texto} opacity={0.22} />;
+            })}
             {niebla && (
               <CapaNiebla visibles={niebla.visibles} exploradas={niebla.exploradas} columnas={mapa.columnas} filas={mapa.filas}
                 celda={celda} origen={origen} colores={colores} opaca={niebla.opaca} />
