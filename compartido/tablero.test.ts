@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { aplicar, casillaLibre, dentroDelTablero, esAccionValida, estadoInicial, type Token } from './sala';
+import { aplicar, casillaLibre, dentroDelTablero, esAccionValida, estadoInicial, planMovimiento, type Token } from './sala';
+import { personajeNuevo } from '../reglas/pf2e';
 
 const token = (id: string, x: number, y: number): Token => ({ id, nombre: id, tipo: 'enemigo', tamano: 'Medium', x, y, color: '#c8392b' });
 
@@ -30,5 +31,14 @@ describe('el tablero', () => {
     expect(dentroDelTablero(mapa, { x: -1, y: 3 })).toBe(false);
     expect(dentroDelTablero(mapa, { x: 23, y: 15 }, 2)).toBe(false);
     expect(dentroDelTablero({ ...mapa, imagen: 'mapa.webp' }, { x: 90, y: 90 })).toBe(true);
+  });
+});
+
+describe('Sneak', () => {
+  it('se mueve hasta la mitad de su Velocidad sin gastar más acciones', () => {
+    const e = aplicar(estadoInicial(), { tipo: 'crear-personaje', personaje: { ...personajeNuevo('kyra'), nombre: 'Kyra', velocidad: 25 }, x: 2, y: 6 });
+    const t = e.tokens.kyra!;
+    expect(planMovimiento(e, t, { x: 4, y: 6 }, 2, true)).toMatchObject({ pies: 10, acciones: 0 });
+    expect(planMovimiento(e, t, { x: 5, y: 6 }, 2, true)).toEqual({ motivo: 'Con Sneak llegas hasta 10 ft (la mitad de tu Velocidad).' });
   });
 });

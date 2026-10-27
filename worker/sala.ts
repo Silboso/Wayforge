@@ -12,6 +12,7 @@ import { claveDe, interaccionDe, VAN_ULTIMO } from '../reglas/interacciones';
 import { momentoIniciativa } from '../reglas/disparadores';
 import { conDying, curarHeridas, NIVELES_CURAR, recuperacion } from '../reglas/muerte';
 import type { Condicion } from '../reglas/condiciones';
+import { distanciaEntre } from '../reglas/movimiento';
 import { alLadoDe, conCobertura, explorar, iluminacion, visibilidad, visionActiva, vistaDeJugador } from '../compartido/vision';
 
 // Los dados de la sala, para el motor de interacciones
@@ -47,6 +48,8 @@ export class Sala extends DurableObject<Env> {
   private fallos = new Map<string, { n: number; hasta: number }>();
   // Lo último que vieron los jugadores (para no mandarles la vista si no cambió)
   private firmaJugadores: string | null = null;
+  // Quién usó Sneak y todavía no se movió (su próximo movimiento es a escondidas)
+  private sigilo = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -409,7 +412,8 @@ export class Sala extends DurableObject<Env> {
       if (motivo) return this.negar(ws, motivo);
       libres = c!.acciones - c!.usadas;
     }
-    const plan = planMovimiento(this.estado, t, destino, libres);
+    const sigilo = this.sigilo.has(t.id);
+    const plan = planMovimiento(this.estado, t, destino, sigilo ? null : libres, sigilo);
     if ('motivo' in plan) {
       // El GM manda: si no hay camino libre, pone el token donde dice (salvo la criatura que está jugando su turno)
       if (quien.rol === 'gm' && !criaturaEnTurno) return this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: [{ x: t.x, y: t.y }, destino], acciones: 0 });
@@ -417,6 +421,13 @@ export class Sala extends DurableObject<Env> {
     }
     if (plan.camino.length < 2) return;
     await this.guardarYRepartir({ tipo: 'mover-turno', id: t.id, camino: plan.camino, acciones: plan.acciones });
+    if (sigilo) {
+      this.sigilo.delete(t.id);
+      const movido = this.estado.tokens[t.id];
+      const p = movido?.personajeId ? this.estado.personajes[movido.personajeId] : undefined;
+      if (movido && p) await this.alTerminarSneak(movido, p);
+      return;
+    }
     if (plan.acciones > 0 && t.condiciones?.some((c) => c.clave === 'hidden')) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: t.id, clave: 'hidden', valor: 0 });
   }
 
@@ -454,6 +465,9 @@ export class Sala extends DurableObject<Env> {
     const observan = a.id === 'basica:hide'
       ? Object.values(this.estado.tokens).filter((t) => !t.personajeId && t.tipo === 'enemigo' && visibilidad(this.estado, t, token).ve)
       : [];
+    if (a.id === 'basica:sneak' && !token.condiciones?.some((x) => x.clave === 'hidden')) {
+      return this.negar(ws, 'Para moverte sin ser visto primero tienes que estar escondido (Hide).');
+    }
     if (a.id === 'basica:hide' && observan.length && iluminacion(this.estado)(`${token.x},${token.y}`) === 2 && !conCobertura(this.estado, token)) {
       return this.negar(ws, 'Para esconderte necesitas sombra o algo detrás de qué cubrirte (una pared pegada a ti).');
     }
@@ -495,6 +509,11 @@ export class Sala extends DurableObject<Env> {
     }
 
     if (a.id === 'basica:hide') return this.esconderse(token, p, observan);
+    if (a.id === 'basica:seek') return this.buscar(token, p);
+    if (a.id === 'basica:sneak') {
+      this.sigilo.add(token.id);
+      return;
+    }
     if (a.id === 'basica:treat-wounds') return this.curarHeridas(ws, token, p, objetivo ?? token, m.nivel);
 
     if (inter && alcance && !('motivo' in alcance)) {
@@ -515,6 +534,50 @@ export class Sala extends DurableObject<Env> {
       const numero = (a.tirada.tipo === 'golpe' && miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
       await this.tirar(quien, { que: { tipo: 'aptitud', id: a.id, numero, ...(objetivo ? { objetivo: objetivo.id } : {}) } }, undefined, ws, true);
     }
+  }
+
+  // Seek: Perception contra la Stealth DC de cada criatura escondida a 30 ft que podría ver; la que no supera queda a la vista
+  private async buscar(token: Token, p: Personaje) {
+    const mod = calcular(p, token.condiciones ?? [], token.efectos ?? []).percepcion.total;
+    const d = dado(20);
+    const total = d + mod;
+    const escondidos = Object.values(this.estado.tokens).filter((t) => !t.personajeId && t.condiciones?.some((c) => c.clave === 'hidden')
+      && distanciaEntre({ x: token.x, y: token.y }, ladoDe(token), { x: t.x, y: t.y }, ladoDe(t)) <= 30 && visibilidad(this.estado, token, t).ve);
+    const hallados = escondidos.filter((t) => {
+      const grado = gradoDeExito(total, d, cdSigilo(t));
+      return grado === 'exito' || grado === 'critico';
+    });
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: 'Buscar (Perception)', dados: [d], caras: 20, modificador: mod, total, cuando: Date.now(),
+        personajeId: p.id, autorTokenId: token.id,
+        resultado: { nota: hallados.length ? `encuentras a ${hallados.map((t) => t.nombre).join(', ')}` : 'no encuentras a nadie escondido cerca' },
+      },
+    });
+    for (const t of hallados) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: t.id, clave: 'hidden', valor: 0 });
+  }
+
+  // Al terminar un Sneak: Stealth contra la Perception DC más alta de los enemigos que lo ven ahora.
+  // Si llega a plena luz sin nada detrás y alguien lo mira, lo ven sin tirar
+  private async alTerminarSneak(token: Token, p: Personaje) {
+    const observan = Object.values(this.estado.tokens).filter((t) => !t.personajeId && t.tipo === 'enemigo' && visibilidad(this.estado, t, token).ve);
+    if (!observan.length) return;
+    const expuesto = iluminacion(this.estado)(`${token.x},${token.y}`) === 2 && !conCobertura(this.estado, token);
+    const mod = calcular(p, token.condiciones ?? [], token.efectos ?? []).habilidades.stealth.total;
+    const d = dado(20);
+    const total = d + mod;
+    const cd = Math.max(...observan.map((t) => 10 + (modificadorDefensa(this.estado, t, 'percepcion') ?? 0)));
+    const grado = gradoDeExito(total, d, cd);
+    const sigue = !expuesto && (grado === 'exito' || grado === 'critico');
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: 'Moverte sin ser visto (Stealth)', dados: [d], caras: 20, modificador: mod, total, cuando: Date.now(),
+        personajeId: p.id, autorTokenId: token.id,
+        objetivo: { nombre: observan.length === 1 ? observan[0]!.nombre : `${observan.length} enemigos que miran`, cd, grado },
+        resultado: { nota: sigue ? 'sigues escondido' : expuesto ? 'quedas a la vista: no hay sombra ni nada detrás de qué cubrirte' : 'te vieron' },
+      },
+    });
+    if (!sigue) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'hidden', valor: 0 });
   }
 
   // Hide: Stealth contra la Perception DC más alta de los enemigos que lo ven; con éxito queda Hidden
@@ -896,4 +959,10 @@ function dado(caras: number): number {
   const buffer = new Uint32Array(1);
   do crypto.getRandomValues(buffer); while (buffer[0]! >= limite);
   return (buffer[0]! % caras) + 1;
+}
+
+// La Stealth DC de una criatura (10 + su Stealth; si no la tiene anotada, 10 + su Perception)
+function cdSigilo(t: Token): number {
+  const stealth = t.criatura?.habilidades.find((h) => /stealth/i.test(h.nombre))?.bono;
+  return 10 + (stealth ?? t.percepcion ?? 0);
 }

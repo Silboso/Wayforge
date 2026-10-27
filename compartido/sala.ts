@@ -1123,7 +1123,15 @@ export interface PlanMovimiento {
 }
 
 // Calcula si un token puede llegar a una casilla: en su turno, con un Stride por cada tramo de su Velocidad
-export function planMovimiento(estado: EstadoSala, t: Token, destino: Casilla, libres: number | null): PlanMovimiento | { motivo: string } {
+// `sigilo`: Sneak ya pagó su acción; se mueve hasta la mitad de su Velocidad, sin gastar más
+export function planMovimiento(estado: EstadoSala, t: Token, destino: Casilla, libres: number | null, sigilo = false): PlanMovimiento | { motivo: string } {
+  if (sigilo) {
+    const mitad = Math.max(5, Math.floor(velocidadDe(estado, t) / 10) * 5);
+    const mapa = alcanzables({ x: t.x, y: t.y }, mitad, opcionesMovimiento(estado, t));
+    const camino = caminoA(destino, mapa);
+    if (!camino) return { motivo: `Con Sneak llegas hasta ${mitad} ft (la mitad de tu Velocidad).` };
+    return { camino, pies: mapa.get(`${destino.x},${destino.y}`)!.pies, acciones: 0 };
+  }
   const velocidad = velocidadDe(estado, t);
   const tramos = libres === null ? 8 : Math.min(libres, 3);
   if (libres !== null && libres <= 0) return { motivo: 'No te quedan acciones para moverte este turno.' };

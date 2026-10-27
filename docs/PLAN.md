@@ -171,8 +171,8 @@ levantado.
 1. Dying / Wounded / Doomed automáticos al llegar a 0 PG; recuperación al inicio del turno con su
    tirada; Hero Points.
 2. Treat Wounds, Refocus y descanso largo con sus cuentas (Medicine contra CD, 10 minutos).
-3. Modo exploración: actividades (Search, Avoid Notice, Defend…) que deciden la iniciativa. *(La
-   preparación del combate ya deja elegir la skill a mano; falta que la actividad la proponga sola.)*
+3. Modo exploración: actividades (Search, Avoid Notice, Defend…) que deciden la iniciativa *(hecho: al preparar
+   el combate la actividad propone sola la skill; el jugador la puede cambiar)*.
 
 ### Fase 5 — Escenas, niebla y mesa
 
@@ -206,8 +206,10 @@ objetivo (−2 a su CA) y te delata; un Stride también.
 1. ~~Escenas~~ (hecho: cada escena guarda su mapa, muros, luz, criaturas y dónde quedó cada personaje; el GM
    crea, copia, renombra y pasa de una a otra; con el **telón** bajo los jugadores no ven el tablero mientras la
    prepara, y al subirlo aparece el nombre de la escena. Las escenas guardadas nunca le llegan a un jugador).
-2. Niebla, luz y línea de vista: hechas *(falta: visión por personaje en vez de compartida, Sneak y Seek
-   contra lo escondido, y un pincel para revelar a mano en mapas con imagen)*.
+2. Niebla, luz y línea de vista: hechas. **Seek** tira Perception contra la Stealth DC de cada criatura escondida a
+   30 ft que podría ver y la deja a la vista; **Sneak**, estando escondido, mueve hasta la mitad de la Velocidad y al
+   llegar tira Stealth contra los que miran (a plena luz sin nada detrás, te ven). *(Falta: visión por personaje en
+   vez de compartida y un pincel para revelar a mano en mapas con imagen.)*
 3. ~~Chat de la mesa~~ (hecho: mensajes y tiradas en el mismo registro; susurros al GM o a otro personaje que
    solo ven quien lo manda, quien lo recibe y el GM; tiradas en secreto del GM que no le llegan a nadie más).
 4. ~~Notas y handouts~~ (hecho: el GM prepara handouts con texto e imagen en Mesa → Handouts y los muestra a

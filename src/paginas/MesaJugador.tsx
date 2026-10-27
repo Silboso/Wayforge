@@ -182,6 +182,15 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     }
     const motivo = motivoParaActuar(estado, p.id, a.costo);
     if (motivo) return sala.negarLocal(motivo), false;
+    // Sneak: estando escondido, se paga la acción y después se arrastra el token (hasta la mitad de la Velocidad)
+    if (a.id === 'basica:sneak') {
+      if (!miToken?.condiciones?.some((c) => c.clave === 'hidden')) return sala.negarLocal('Para moverte sin ser visto primero tienes que estar escondido (Hide).'), false;
+      sala.usar(a.id);
+      setPestana('tablero');
+      setElegida(null);
+      agregarAviso({ id: crypto.randomUUID(), tono: 'nota', titulo: 'Arrastra tu token sin que te vean', cuerpo: `Hasta ${Math.max(5, Math.floor(p.velocidad / 10) * 5)} ft. Al llegar tiras Stealth contra los que miran: si fallas, o terminas a plena luz sin nada detrás, te ven.`, dura: 7000 });
+      return true;
+    }
     const disp = disponibilidad(p, a);
     if (!disp.puede) return sala.negarLocal(`${a.verbo || a.nombre}: ${disp.texto}.`), false;
     // Con interacción: sobre ti y las emanaciones salen ya; las áreas piden dónde, las de varios a quiénes
