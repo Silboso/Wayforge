@@ -248,7 +248,10 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    el teclado, las flechas mueven un cursor desde tu token (con la distancia a la vista) y Enter te lleva; las
    ventanas retienen el foco; los lectores de pantalla tienen el tablero en palabras (cada token y a cuántos pies
    está); el contraste del texto pasa AA en los dos temas).
-4. Tests de punta a punta de una ronda completa (los guiones de captura convertidos en pruebas).
+4. ~~Prueba de punta a punta~~ (hecho: `npm run e2e` arma una mesa en el servidor, entra como GM y dos jugadores
+   por el WebSocket de la app y juega una ronda entera: códigos, permisos, preparación e iniciativa, moverse, atacar,
+   daño confirmado por el GM, un conjuro y el ataque del goblin; sirve también contra producción:
+   `npm run e2e -- https://wayforge.convoca.workers.dev`).
 
 ## Decisiones de arquitectura que guían todo
 

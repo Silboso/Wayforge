@@ -13,6 +13,7 @@
     "cf-typegen": "wrangler types worker/worker-configuration.d.ts",
     "deploy": "npm run build && wrangler deploy",
     "demo": "node scripts/demo.mjs",
+    "e2e": "node scripts/e2e.mjs",
     "compendio": "node scripts/importar-pf2e.mjs"
   },
   "dependencies": {
