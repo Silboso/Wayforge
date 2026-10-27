@@ -773,6 +773,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         </div>
         {pestana === 'turno' && (
           <TurnoMovil contexto={contexto} condiciones={condiciones} lista={lista} elegida={elegida} marcada={marcada} libres={libres}
+            companeros={<Companeros horizontal estado={estado} presentes={sala.presentes} excluir={p.id} className="flex-wrap"
+              onEnfocar={(tokenId) => { setPestana('tablero'); setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 })); }} />}
             onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)}
             detalle={(f) => (
               <Detalle fila={f} ataquesHechos={ataquesHechos} libres={libres} objetivo={objetivo} enCombate={!!combate} antes={filasAlAtacar} onAbrir={setElegida}
@@ -1345,7 +1347,7 @@ function Descansos({ p, sala }: { p: Personaje; sala: Sala }) {
 
 // El turno en el teléfono: cabecera fija, secciones una debajo de otra, la acción abierta como tarjeta,
 // y la acción grande ("Terminar turno" o descansar) siempre a mano sobre la barra de pestañas
-function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, onElegir, detalle }: {
+function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, onElegir, detalle, companeros }: {
   contexto: Contexto;
   condiciones: Condicion[];
   lista: Seccion[];
@@ -1354,10 +1356,13 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
   libres: number | null;
   onElegir: (f: Fila) => void;
   detalle: (f: Fila) => ReactNode;
+  // Los retratos de los compañeros, arriba (tocar uno lleva al tablero, a su token)
+  companeros?: ReactNode;
 }) {
   const { p, ficha, combate, miTurno, miToken, sala, onEditar } = contexto;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {companeros && <div className="mx-3 mt-2">{companeros}</div>}
       <div className="hoja mx-3 mt-2 flex flex-col gap-2.5 px-4 pt-3.5 pb-3">
         <div className="flex items-center gap-3">
           <FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} tamano="size-[54px]" nombre={p.nombre} onEditar={onEditar} />

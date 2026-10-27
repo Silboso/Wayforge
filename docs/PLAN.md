@@ -234,7 +234,7 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    elegir (atributos, skill, dotes, conjuros) con sugerencias que dicen por qué (requisitos, su mejor
    skill, lo que combina con lo que ya usa, lo que al grupo le falta) y el antes → después de la ficha.
 
-### Fase 7 — Campañas y publicación
+### Fase 7 — Campañas y publicación *(hecha, salvo el dominio propio)*
 
 1. ~~Campañas~~ (hecho: cada navegador recuerda sus mesas, como GM o como jugador, y las muestra en el inicio
    para volver a abrirlas; el GM le pone nombre a la mesa y la **exporta** a un archivo con escenas, personajes,
@@ -252,6 +252,19 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    por el WebSocket de la app y juega una ronda entera: códigos, permisos, preparación e iniciativa, moverse, atacar,
    daño confirmado por el GM, un conjuro y el ataque del goblin; sirve también contra producción:
    `npm run e2e -- https://wayforge.convoca.workers.dev`).
+
+### Pendientes chicos cerrados al final
+
+- **Shield Block** deja un efecto: el próximo daño lo frena la Dureza del escudo y lo que sobra lo reciben el
+  personaje y el escudo. Restar daño a un personaje (jugador o GM) pasa siempre por la sala: PG temporales
+  primero y **Dying a 0 PG** (antes el botón "Restar" editaba los PG a mano y no dejaba Dying).
+- **Conjuros potenciados:** con espacios libres de varios rangos se elige en cuál lanzar, y el daño o la curación
+  suben según su "Heightened"; los trucos y los de foco suben solos con el nivel.
+- **Retratos de los compañeros en el teléfono**, arriba de la hoja; tocar uno lleva a su token.
+
+## Lo único que falta
+
+- **Dominio propio**: hay que elegirlo y comprarlo; después se conecta en Cloudflare (Workers → Dominios).
 
 ## Decisiones de arquitectura que guían todo
 
