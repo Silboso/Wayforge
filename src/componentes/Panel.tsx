@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
-import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type TipoToken, type Token } from '../../compartido/sala';
+import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
+import { TERRENOS } from './Terreno';
 import { subirImagen } from '../imagenes';
 import { EditorCondiciones } from './Condiciones';
 import {
@@ -262,6 +263,21 @@ function EditorMapa({ salaId, estado, enviar }: {
         onCambio={(desplazamientoY) => editar({ desplazamientoY })} />
       {!mapa.imagen && (
         <>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Terreno de fondo</span>
+            <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Terreno de fondo">
+              {(Object.keys(TERRENOS) as Terreno[]).map((t) => {
+                const activo = (mapa.terreno ?? 'claro') === t;
+                return (
+                  <button key={t} role="radio" aria-checked={activo} title={TERRENOS[t].ayuda} onClick={() => editar({ terreno: t })}
+                    className={`rounded-lg border-2 px-2 py-1.5 text-left text-xs transition ${activo ? 'border-acento bg-acento/10 font-semibold' : 'border-borde hover:bg-superficie-2'}`}>
+                    {TERRENOS[t].nombre}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-texto-suave">Es solo dibujo: no bloquea ni cuesta movimiento. Si subes una imagen de mapa, se usa la imagen.</p>
+          </div>
           <Deslizador etiqueta="Columnas" valor={mapa.columnas} min={4} max={80} onCambio={(columnas) => editar({ columnas })} />
           <Deslizador etiqueta="Filas" valor={mapa.filas} min={4} max={80} onCambio={(filas) => editar({ filas })} />
         </>

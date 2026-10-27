@@ -24,8 +24,9 @@ export type ModoTirada =
 export type Objetivos =
   | { tipo: 'uno'; aliados?: boolean }
   | { tipo: 'varios'; max: number; aliados?: boolean }
-  // Un área: a todos los que toque (o solo a los aliados, para lo que ayuda)
-  | { tipo: 'area'; area: Area; aliados?: boolean }
+  // Un área: a todos los que toque (o solo a los aliados, para lo que ayuda).
+  // `soloOtros`: "each ally" no te incluye (Oracular Warning); "you and your allies" sí (Bless)
+  | { tipo: 'area'; area: Area; aliados?: boolean; soloOtros?: boolean }
   | { tipo: 'yo' };
 
 export interface CondicionPuesta { clave: ClaveCondicion; valor: number }
@@ -52,6 +53,16 @@ export interface Interaccion {
   efecto?: PlantillaEfecto;
   // Rondas que el objetivo queda inmune a que se la vuelvan a hacer (Demoralize: 10 minutos = 100 rondas)
   inmunidad?: number;
+  // PG temporales para cada alcanzado (no se suman a los que ya tenga: queda el mayor)
+  temporales?: number | 'mitad-nivel' | 'nivel';
+}
+
+// Cuántos PG temporales da, según el nivel de quien la usa
+export function temporalesDe(t: Interaccion['temporales'], nivel: number): number {
+  if (t === undefined) return 0;
+  if (t === 'mitad-nivel') return Math.max(1, Math.floor(nivel / 2));
+  if (t === 'nivel') return nivel;
+  return t;
 }
 
 // Lo que pasa por defecto en cada grado
@@ -205,7 +216,36 @@ export const CATALOGO_INTERACCIONES: Record<string, Interaccion> = {
   'inside-ropes': {
     modo: { tipo: 'ataque' }, objetivos: { tipo: 'uno' }, dano: { formula: '2d4', tipo: 'bludgeoning' },
   },
+
+  // ---- Al empezar un combate: se usan en la preparación, antes de que la mesa tire la iniciativa ----
+  'oracular-warning': {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'area', area: { forma: 'emanacion', tamano: 20 }, aliados: true, soloOtros: true }, temporales: 'mitad-nivel',
+    efecto: efecto({ clave: 'oracular-warning', nombre: 'Oracular Warning', beneficioso: true, modificadores: [{ blanco: 'iniciativa', tipo: 'estado', valor: 2 }], rondas: 1, aspecto: 'bendicion' }),
+  },
+  'scout-s-warning': {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'area', area: { forma: 'emanacion', tamano: 60 }, aliados: true, soloOtros: true },
+    efecto: efecto({ clave: 'scout-s-warning', nombre: "Scout's Warning", beneficioso: true, modificadores: [{ blanco: 'iniciativa', tipo: 'circunstancia', valor: 1 }], rondas: 1, aspecto: 'marca' }),
+  },
+  'archaeologist-s-warning': {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'area', area: { forma: 'emanacion', tamano: 60 }, aliados: true, soloOtros: true },
+    efecto: efecto({ clave: 'archaeologist-s-warning', nombre: "Archaeologist's Warning", beneficioso: true, modificadores: [{ blanco: 'iniciativa', tipo: 'circunstancia', valor: 1 }], rondas: 1, aspecto: 'marca' }),
+  },
+  'swaggering-initiative': {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'yo' },
+    efecto: efecto({ clave: 'swaggering-initiative', nombre: 'Swaggering Initiative', beneficioso: true, modificadores: [{ blanco: 'iniciativa', tipo: 'circunstancia', valor: 2 }], rondas: 1, aspecto: 'marca' }),
+  },
+  'duelist-s-edge': {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'yo' },
+    efecto: efecto({ clave: 'duelist-s-edge', nombre: "Duelist's Edge", beneficioso: true, modificadores: [{ blanco: 'iniciativa', tipo: 'circunstancia', valor: 2 }], rondas: 1, aspecto: 'marca' }),
+  },
+  prescience: {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'yo' },
+    efecto: efecto({ clave: 'prescience', nombre: 'Prescience', beneficioso: true, modificadores: [{ blanco: 'ca', tipo: 'estado', valor: 1 }, { blanco: 'salvaciones', tipo: 'estado', valor: 1 }], rondas: 1, aspecto: 'bendicion' }),
+  },
 };
+
+// Las de la preparación que te dejan ir último en lugar de tirar (After You, Big Debut)
+export const VAN_ULTIMO = new Set(['after-you', 'big-debut']);
 
 // Nombres con los que también aparecen (en otros libros o antes del remaster)
 const SINONIMOS: Record<string, string> = {
@@ -255,6 +295,7 @@ export function resumenInteraccion(i: Interaccion): string[] {
   if (i.dano) partes.push(`${i.dano.formula}${i.dano.tipo ? ` ${i.dano.tipo}` : ''}`);
   if (i.curacion) partes.push(`cura ${i.curacion}`);
   if (i.efecto) partes.push(`${i.efecto.nombre}: ${i.efecto.modificadores.map(modificadorTexto).join(', ')}${i.efecto.rondas ? ` (${i.efecto.rondas} ${i.efecto.rondas === 1 ? 'ronda' : 'rondas'})` : ''}`);
+  if (i.temporales) partes.push(`PG temporales: ${i.temporales === 'mitad-nivel' ? 'mitad de tu nivel' : i.temporales === 'nivel' ? 'tu nivel' : i.temporales}`);
   return partes;
 }
 
@@ -302,7 +343,8 @@ export function esInteraccionValida(valor: unknown, esExpresion: (t: string) => 
     m.tipo === 'ataque' || m.tipo === 'ninguna'
     || (m.tipo === 'chequeo' && HABILIDADES.some((h) => h.clave === m.habilidad) && (SALVACIONES.includes(m.contra) || m.contra === 'percepcion'))
     || (m.tipo === 'salvacion' && SALVACIONES.includes(m.salvacion) && typeof m.basica === 'boolean' && (m.cd === undefined || m.cd === 'conjuro' || m.cd === 'clase')));
-  const objetivosValidos = obj(o) && (o.aliados === undefined || typeof o.aliados === 'boolean') && (
+  const objetivosValidos = obj(o) && (o.aliados === undefined || typeof o.aliados === 'boolean')
+    && (o.soloOtros === undefined || typeof o.soloOtros === 'boolean') && (
     o.tipo === 'uno' || o.tipo === 'yo'
     || (o.tipo === 'varios' && entero(o.max, 2, 10))
     || (o.tipo === 'area' && obj(area) && FORMAS.includes(area.forma) && entero(area.tamano, 5, 500)));
@@ -312,5 +354,6 @@ export function esInteraccionValida(valor: unknown, esExpresion: (t: string) => 
     && (valor.curacion === undefined || (typeof valor.curacion === 'string' && esExpresion(valor.curacion)))
     && (porGrado === undefined || (obj(porGrado) && Object.entries(porGrado).every(([g, r]) => g in GRADOS && esResultadoValido(r, esExpresion))))
     && (valor.efecto === undefined || esPlantillaValida(valor.efecto, esExpresion))
-    && (valor.inmunidad === undefined || entero(valor.inmunidad, 1, 1000));
+    && (valor.inmunidad === undefined || entero(valor.inmunidad, 1, 1000))
+    && (valor.temporales === undefined || valor.temporales === 'mitad-nivel' || valor.temporales === 'nivel' || entero(valor.temporales, 1, 999));
 }

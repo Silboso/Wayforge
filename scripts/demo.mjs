@@ -78,6 +78,29 @@ const personajes = [
       ],
     },
   },
+  {
+    codigo: '9012',
+    ficha: {
+      id: 'korakai', nombre: 'Korakai', ascendencia: 'Human', clase: 'Oracle', nivel: 3, pgTemporales: 0, velocidad: 25, notas: '',
+      atributos: { str: 0, dex: 1, con: 2, int: 0, wis: 2, cha: 4 }, pgAscendencia: 8, pgClase: 8, pgActual: 38, percepcion: 1,
+      salvaciones: { fortitude: 1, reflex: 1, will: 2 }, armadura: { nombre: 'Leather', rango: 1, bonoObjeto: 1, topeDex: 4 },
+      habilidades: skills({ religion: 2, diplomacy: 1, occultism: 1, medicine: 1 }),
+      golpes: [{ id: 'maza', nombre: 'Mace', atributo: 'str', rango: 1, bonoObjeto: 0, dados: '1d6', tipoDano: 'bludgeoning', sumarFuerza: true, agil: false }],
+      lanzador: { tradicion: 'divine', atributo: 'cha', rango: 1 },
+      recursos: { foco: { max: 1, actual: 1 }, espacios: [{ rango: 1, max: 3, usados: 0 }, { rango: 2, max: 2, usados: 0 }], usos: {} },
+      aptitudes: [
+        aptitud('oracular-warning', 'Oracular Warning', 'Aviso oracular', 'dote', 'libre', { tipo: 'siempre' },
+          'Trigger You are about to roll initiative.\n\n—\nUna premonición te avisa del peligro: cada aliado a 20 ft gana +2 de estado a su iniciativa y PG temporales iguales a la mitad de tu nivel.',
+          { disparadores: ['iniciativa'] }),
+        aptitud('heal', 'Heal', 'Curar', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
+          'Energía vital cura a un aliado que tocas o a 30 ft: 1d8+8 PG.', { distancia: 30 }),
+        aptitud('bless', 'Bless', 'Bendecir', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
+          'Tú y tus aliados a 15 ft: +1 de estado a los ataques por 1 minuto.'),
+        aptitud('daze', 'Daze', 'Aturdir', 'truco', 2, { tipo: 'siempre' },
+          'Nublas la mente de una criatura a 60 ft: salvación básica de Will contra 1d6 mental.', { distancia: 60 }),
+      ],
+    },
+  },
 ];
 
 for (const p of personajes) {
@@ -91,7 +114,7 @@ const criatura = (ataques) => ({
 });
 const dogslicer = { id: 'dogslicer', nombre: 'Dogslicer', bono: 8, dano: '1d6+2', tipoDano: 'slashing', agil: true, rasgos: ['agile', 'finesse'] };
 const shortbow = { id: 'shortbow', nombre: 'Shortbow', bono: 8, dano: '1d6', tipoDano: 'piercing', agil: false, rasgos: ['deadly d10'], distancia: 60 };
-for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 3, 2, [dogslicer, shortbow]], ['goblin-3', 'Goblin guerrero', 4, 3, [dogslicer]], ['goblin-2', 'Goblin arquero', 6, 1, [shortbow, dogslicer]]]) {
+for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 9, 7, [dogslicer, shortbow]], ['goblin-3', 'Goblin guerrero', 10, 8, [dogslicer]], ['goblin-2', 'Goblin arquero', 13, 5, [shortbow, dogslicer]]]) {
   enviar({ tipo: 'accion', accion: { tipo: 'crear-token', token: { id, nombre, tipo: 'enemigo', tamano: 'Small', x, y, color: '#c8392b', ca: 15, pg: { actual: 20, max: 20 }, percepcion: 5, criatura: criatura(ataques) } } });
   await esperar(150);
 }
@@ -106,7 +129,9 @@ Mesa de prueba lista
   Personajes:
     Kyra  (Human Fighter 3: Demoralize, Trip, Power Attack; lista para subir a nivel 4)   código 1234
     Ezren (Human Wizard 3: Electric Arc, Caustic Blast, Grease, Fear, Shield…)          código 5678
+    Korakai (Human Oracle 3: Oracular Warning al empezar el combate, Heal, Bless, Daze) código 9012
   Enemigos: tres goblins (CA 15, 20 PG, con dogslicer y arco; el compendio tiene 6.500 más)
-  Para ver el motor: Ezren lanza Caustic Blast entre los dos goblins juntos, o Kyra asusta con Demoralize.
+  Para ver la preparación: el GM abre Combate → Preparar combate; a cada jugador le llega su hoja
+  (Korakai puede usar Oracular Warning antes de tirar). Para ver el motor: Ezren lanza Caustic Blast entre el Goblin y el Goblin guerrero.
 
 Para jugar GM y jugador a la vez en la misma PC, abre al jugador en una ventana de incógnito.`);

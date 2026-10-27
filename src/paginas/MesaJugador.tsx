@@ -16,8 +16,11 @@ import type { EfectoActivo } from '../../reglas/efectos';
 const SIN_EFECTOS: EfectoActivo[] = [];
 import { ASPECTO_POR_DANO, tintaDe } from '../componentes/aspectos';
 import {
-  aptitudesPara, motivoAlcance, motivoParaActuar, reaccionesPara, tokenEnTurno, type Combate, type EstadoSala, type QueTirar, type Token,
+  aptitudesDePreparacion, aptitudesPara, motivoAlcance, motivoParaActuar, reaccionesPara, tokenEnTurno, type Combate, type EstadoSala, type QueTirar, type Token,
 } from '../../compartido/sala';
+import { pistaObjetivo, type Pista } from '../../compartido/interacciones';
+import { OrdenRevelado, PreparacionJugador } from '../componentes/Preparacion';
+import { Companeros } from '../componentes/hud/Companeros';
 import { MenuObjetivo } from '../componentes/hud/MenuObjetivo';
 import { aAlcance, type Evento } from '../../compartido/eventos';
 import { textoTirada } from '../../compartido/tiradas';
@@ -197,6 +200,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     if (!eligiendo) return;
     const fila = todasFilas.find((f) => f.clave === eligiendo.clave);
     if (!fila) return setEligiendo(null);
+    // Lo que no sirve (lejos, no es aliado, inmune) se dice ahí mismo y se sigue apuntando
+    const pista = pistas?.[tokenId];
+    if (pista && !pista.valido) return sala.negarLocal(`${estado.tokens[tokenId]?.nombre ?? 'Ese objetivo'}: ${pista.texto}.`);
     const inter = fila.tipo === 'aptitud' ? interaccionDe(fila.aptitud) : null;
     if (inter?.objetivos.tipo === 'varios') {
       const max = inter.objetivos.max;
@@ -243,6 +249,21 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         id: id(), tono: 'peligro', titulo: `${t.nombre} se mueve a tu lado`, cuerpo: 'Puedes castigarlo con tu reacción.', dura: 15000,
         botones: sirven.map((a, i) => ({ etiqueta: `Usar ${a.verbo || a.nombre}`, principal: i === 0, hacer: () => usarReaccion(a, t.id) })),
       }];
+    }
+    // Se viene un combate: qué elegir y qué se puede usar antes de tirar
+    if (e.tipo === 'preparacion') {
+      if (!miToken || !e.tokens.includes(miToken.id)) return [];
+      const antes = aptitudesDePreparacion(p).map((x) => x.aptitud);
+      return [{
+        id: id(), tono: 'peligro', titulo: '¡Se viene un combate!',
+        cuerpo: antes.length ? `Antes de tirar iniciativa puedes usar ${nombres(antes)}. Está en tu hoja de preparación.` : 'Elige con qué tiras la iniciativa y marca que estás listo.',
+        dura: 9000,
+      }];
+    }
+    if (e.tipo === 'preparativo') {
+      if (e.tokenId === miToken?.id) return [];
+      const quien = estado.tokens[e.tokenId]?.nombre ?? 'Alguien';
+      return [{ id: id(), tono: 'bueno', titulo: `${quien} usó ${e.nombre}`, cuerpo: e.ultimo ? 'Va último en lugar de tirar.' : 'Si te alcanza, lo que da ya cuenta en tu iniciativa.', dura: 6000 }];
     }
     // Lo que el motor me aplicó: daño, curación, un efecto
     if (e.tipo === 'dano' || e.tipo === 'curacion' || e.tipo === 'efecto') {
@@ -461,9 +482,23 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     ? {
       tokenId: miToken.id, area: objetivosEligiendo.area, etiqueta: aptitudEligiendo.verbo || aptitudEligiendo.nombre,
       ...(aptitudEligiendo.distancia ? { alcance: aptitudEligiendo.distancia } : {}),
+      ...(objetivosEligiendo.aliados ? { aliados: true } : {}), ...(objetivosEligiendo.soloOtros ? { soloOtros: true } : {}),
       color: tintaDe(interEligiendo?.dano ? ASPECTO_POR_DANO[interEligiendo.dano.tipo] : 'bendicion', interEligiendo?.dano?.tipo),
     }
     : null;
+  // Mientras se apunta a alguien (no a un área): sobre cada token, si sirve y qué se tira contra él
+  const pistas: Record<string, Pista> | null = (() => {
+    if (!eligiendo || !miToken || !filaEligiendo || objetivosEligiendo?.tipo === 'area') return null;
+    const distancia = filaEligiendo.tipo === 'golpe' ? filaEligiendo.golpe.distancia ?? 5 : alcanceDe(p, filaEligiendo)?.pies ?? undefined;
+    const inter = filaEligiendo.tipo === 'golpe' ? { modo: { tipo: 'ataque' as const }, objetivos: { tipo: 'uno' as const } } : interEligiendo;
+    const salen: Record<string, Pista> = {};
+    for (const t of Object.values(estado.tokens)) {
+      const pista = pistaObjetivo(estado, miToken, aptitudEligiendo, inter, t, distancia);
+      // Sobre uno mismo solo se dice algo si sirve (curarse, ayudarse)
+      if (t.id !== miToken.id || pista.valido) salen[t.id] = pista;
+    }
+    return salen;
+  })();
   const lanzarA = (punto?: { x: number; y: number }) => {
     if (!aptitudEligiendo) return;
     if (usarAptitud(aptitudEligiendo, undefined, punto ? { punto } : { objetivos: marcados })) { setEligiendo(null); setMarcados([]); }
@@ -509,6 +544,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       plantilla={plantilla}
       onPunto={(c) => lanzarA(c)}
       marcados={objetivosEligiendo?.tipo === 'varios' ? marcados : []}
+      pistas={pistas}
     />
   );
 
@@ -527,7 +563,10 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
         {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className={plegada ? 'bottom-[92px]' : 'bottom-[342px]'} />}
         {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} />}
-        <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} />
+        {/* Los compañeros en miniatura, a la izquierda; los botones de paneles se corren a su lado */}
+        <Companeros estado={estado} presentes={sala.presentes} excluir={p.id} className="absolute top-[100px] left-3 z-20"
+          onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
+        <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} corrida={Object.keys(estado.personajes).length > 1} />
 
         <section aria-label={`Página de ${p.nombre}`}
           className={`hoja absolute inset-x-5 bottom-5 z-10 transition-transform duration-300 ease-out ${plegada ? 'translate-y-[calc(100%-56px)]' : ''}`}>
@@ -670,6 +709,17 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
           onCerrar={() => setEligiendoAtajo(null)} />
       )}
 
+      {/* Se viene un combate: la hoja de preparación; al empezar, el orden de juego */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[78px] z-30 flex flex-col items-center gap-2 px-4 lg:bottom-auto lg:top-[64px]">
+        {miToken && (
+          <PreparacionJugador estado={estado} p={p} token={miToken} className="max-h-[calc(100dvh-170px)] overflow-y-auto"
+            onElegir={(clave) => sala.enviar({ tipo: 'elegir-iniciativa', tokenId: miToken.id, clave })}
+            onListo={(listo) => sala.enviar({ tipo: 'marcar-listo', tokenId: miToken.id, listo })}
+            onUsar={(a) => usarAptitud(a)} />
+        )}
+        <OrdenRevelado estado={estado} eventos={sala.eventos} miTokenId={miToken?.id} className="lg:mt-10" />
+      </div>
+
       <AvisoTirada tiradas={estado.tiradas} verCd={false} pendiente={sala.pendiente}
         lugar={`bottom-[156px] lg:inset-x-auto lg:right-6 ${plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[362px]'}`} />
 
@@ -735,7 +785,7 @@ function ListaAtajos({ seccion, elegida, marcada, libres, onElegir, onAsomar, on
 }
 
 // Los paneles de consulta, como pestañas de índice pegadas al borde izquierdo del tablero
-function Botonera({ actual, onAbrir }: { actual: Cajon | null; onAbrir: (c: Cajon) => void }) {
+function Botonera({ actual, onAbrir, corrida = false }: { actual: Cajon | null; onAbrir: (c: Cajon) => void; corrida?: boolean }) {
   const iconos: Record<Cajon, ReactNode> = {
     ficha: <NotebookIcon size={20} aria-hidden />,
     grupo: <UsersThreeIcon size={20} aria-hidden />,
@@ -746,7 +796,7 @@ function Botonera({ actual, onAbrir }: { actual: Cajon | null; onAbrir: (c: Cajo
     reglas: <BookOpenTextIcon size={20} aria-hidden />,
   };
   return (
-    <nav aria-label="Paneles" className="absolute top-[100px] left-3 z-10 flex flex-col gap-1.5">
+    <nav aria-label="Paneles" className={`absolute top-[100px] z-10 flex flex-col gap-1.5 ${corrida ? 'left-[84px]' : 'left-3'}`}>
       {CAJONES.map((c) => (
         <button key={c.clave} onClick={() => onAbrir(c.clave)} aria-pressed={actual === c.clave} title={`${c.nombre}${c.tecla ? ` (${c.tecla})` : ''}`}
           className={`group flex h-10 items-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition ${actual === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie text-texto hover:border-acento hover:text-acento'}`}>

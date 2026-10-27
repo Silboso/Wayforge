@@ -9,11 +9,14 @@ export type TipoModificador = 'estado' | 'circunstancia' | 'objeto' | 'sin-tipo'
 // A qué números toca: "chequeos" son todos los d20 (ataques, salvaciones, skills y Perception)
 export type Blanco =
   | 'ataque' | 'ca' | 'salvaciones' | 'fortitude' | 'reflex' | 'will'
-  | 'percepcion' | 'habilidades' | 'chequeos' | 'dano' | 'velocidad';
+  | 'percepcion' | 'habilidades' | 'chequeos' | 'dano' | 'velocidad'
+  // Solo la tirada de iniciativa (Oracular Warning, Scout's Warning)
+  | 'iniciativa';
 
 export const BLANCOS: Record<Blanco, string> = {
   ataque: 'ataques', ca: 'CA', salvaciones: 'salvaciones', fortitude: 'Fortitude', reflex: 'Reflex', will: 'Will',
   percepcion: 'Perception', habilidades: 'skills', chequeos: 'todos los chequeos', dano: 'daño', velocidad: 'Velocidad',
+  iniciativa: 'la iniciativa',
 };
 
 export const TIPOS_MODIFICADOR: Record<TipoModificador, string> = {

@@ -11,8 +11,9 @@ import {
   type ClaveCondicion, type Condicion,
 } from '../reglas/condiciones';
 import { descansar, disponibilidad, todasLasAptitudes, usar, type Aptitud, type Descanso } from '../reglas/aptitudes';
-import { tieneMomento, type Momento } from '../reglas/disparadores';
+import { momentoIniciativa, tieneMomento, type Momento, type MomentoIniciativa } from '../reglas/disparadores';
 import { alcanzables, caminoA, distanciaEntre, huella, type Casilla, type OpcionesMovimiento } from '../reglas/movimiento';
+import { esClaveIniciativa, type ClaveIniciativa } from './tiradas';
 
 export type TipoToken = 'personaje' | 'enemigo' | 'npc';
 
@@ -52,8 +53,13 @@ export interface Token {
   criatura?: Criatura;
 }
 
+// El fondo dibujado cuando no hay imagen de mapa; sin valor (salas viejas) es el claro del bosque
+export type Terreno = 'claro' | 'mazmorra' | 'ninguno';
+export const TERRENOS_VALIDOS: Terreno[] = ['claro', 'mazmorra', 'ninguno'];
+
 export interface Mapa {
   imagen?: string;
+  terreno?: Terreno;
   // Medidas de la cuadrícula sobre la imagen, en píxeles de la imagen
   tamanoCelda: number;
   desplazamientoX: number;
@@ -102,6 +108,21 @@ export const ESPERA_MS = 20_000;
 export interface Combatiente {
   tokenId: string;
   iniciativa: number;
+  // Para los empates (y cuando el GM mueve a alguien en el orden): mayor va antes
+  desempate?: number;
+}
+
+// Antes de pelear: el GM eligió quiénes entran y cada jugador dice con qué tira la iniciativa,
+// usa lo que sirve "al tirar iniciativa" (Oracular Warning, Scout's Warning) y avisa que está listo
+export interface Preparacion {
+  tokens: string[];
+  // Por token: Perception si no dice otra cosa
+  tiradas: Record<string, ClaveIniciativa>;
+  listos: string[];
+  // Lo ya usado en esta preparación: "tokenId:aptitudId"
+  usadas: string[];
+  // Los que eligieron ir últimos en lugar de tirar (After You)
+  ultimos: string[];
 }
 
 export interface Combate {
@@ -124,6 +145,8 @@ export interface EstadoSala {
   // Las últimas tiradas, la más nueva al final
   tiradas: Tirada[];
   combate: Combate | null;
+  // Entre "se viene un combate" y la tirada de iniciativa
+  preparacion?: Preparacion | null;
   esperas: Espera[];
 }
 
@@ -141,6 +164,13 @@ export type Accion =
   | { tipo: 'borrar-personaje'; id: string }
   | { tipo: 'poner-condicion'; tokenId: string; clave: ClaveCondicion; valor: number; hasta?: Condicion['hasta'] }
   | { tipo: 'terminar-combate' }
+  // La preparación: el GM la abre con quiénes pelean; cada uno elige su tirada y avisa que está listo
+  | { tipo: 'preparar-combate'; tokens: string[] }
+  | { tipo: 'cancelar-preparacion' }
+  | { tipo: 'elegir-iniciativa'; tokenId: string; clave: ClaveIniciativa }
+  | { tipo: 'marcar-listo'; tokenId: string; listo: boolean }
+  // El GM mueve a alguien en el orden (los empates los decide la mesa)
+  | { tipo: 'mover-en-orden'; tokenId: string; posicion: number }
   | { tipo: 'avanzar-turno' }
   | { tipo: 'fijar-iniciativa'; tokenId: string; valor: number }
   | { tipo: 'agregar-a-combate'; tokenId: string; iniciativa: number }
@@ -168,9 +198,16 @@ export type Accion =
   // Sustain: lo que mantiene ese token sigue una ronda más
   | { tipo: 'sostener'; tokenId: string }
   // Solo para verlo: las casillas que cubrió un área (no cambia el estado)
-  | { tipo: 'mostrar-area'; casillas: Casilla[]; aspecto?: Aspecto; tipoDano?: string; autorTokenId?: string };
+  | { tipo: 'mostrar-area'; casillas: Casilla[]; aspecto?: Aspecto; tipoDano?: string; autorTokenId?: string }
+  // PG temporales: no se suman a los que ya tenga, queda el mayor
+  | { tipo: 'dar-temporales'; tokenId: string; cantidad: number }
+  // Alguien usó una aptitud de "al tirar iniciativa" en la preparación; `ultimo`: va último en lugar de tirar
+  | { tipo: 'usar-preparacion'; tokenId: string; aptitudId: string; nombre: string; ultimo?: boolean };
 
-const SOLO_SALA: Accion['tipo'][] = ['registrar-tirada', 'iniciar-combate', 'contar-ataque', 'abrir-espera', 'cerrar-espera', 'mover-turno', 'sostener', 'mostrar-area'];
+const SOLO_SALA: Accion['tipo'][] = [
+  'registrar-tirada', 'iniciar-combate', 'contar-ataque', 'abrir-espera', 'cerrar-espera', 'mover-turno', 'sostener', 'mostrar-area',
+  'dar-temporales', 'usar-preparacion',
+];
 
 // Quién eres en la mesa. El visitante aún no entra: solo ve la lista de personajes.
 export type Sesion =
@@ -272,11 +309,13 @@ export function estadoInicial(): EstadoSala {
       columnas: 24,
       filas: 16,
       mostrarCuadricula: true,
+      terreno: 'claro',
     },
     tokens: {},
     personajes: {},
     tiradas: [],
     combate: null,
+    preparacion: null,
     esperas: [],
   };
 }
@@ -302,16 +341,37 @@ export function aptitudesPara(p: Personaje, momento: Momento): Aptitud[] {
   return todasLasAptitudes(p).filter((a) => a.costo !== 'reaccion' && tieneMomento(a, momento));
 }
 
+// Lo que sirve al empezar un combate (Oracular Warning, Scout's Warning, posturas): se ofrece en la preparación
+export function aptitudesDePreparacion(p: Personaje): { aptitud: Aptitud; momento: MomentoIniciativa }[] {
+  return todasLasAptitudes(p).flatMap((a) => {
+    const momento = momentoIniciativa(a);
+    return momento ? [{ aptitud: a, momento }] : [];
+  });
+}
+
 export function resumen(p: Personaje): ResumenPersonaje {
   return { id: p.id, nombre: p.nombre, clase: p.clase, ascendencia: p.ascendencia, nivel: p.nivel, retrato: p.retrato };
 }
 
-// Primera casilla libre de la fila de arriba, para poner un token nuevo
+// Dónde aparece un token nuevo: a la izquierda, a media altura (la entrada del sendero), en la primera casilla
+// libre bajando por columnas. Así no queda en la esquina, tapado por los botones del tablero.
 export function casillaLibre(estado: EstadoSala): { x: number; y: number } {
-  const ocupadas = new Set(Object.values(estado.tokens).map((t) => `${t.x},${t.y}`));
-  let x = 0;
-  while (ocupadas.has(`${x},0`)) x++;
-  return { x, y: 0 };
+  const ocupadas = new Set(Object.values(estado.tokens).flatMap((t) => huella(t, ladoDe(t))));
+  const { columnas, filas } = estado.mapa;
+  const y0 = Math.max(0, Math.floor(filas / 2) - 2);
+  for (let x = Math.min(2, columnas - 1); x < columnas; x++) {
+    for (let i = 0; i < filas; i++) {
+      const y = (y0 + i) % filas;
+      if (!ocupadas.has(`${x},${y}`)) return { x, y };
+    }
+  }
+  return { x: 0, y: 0 };
+}
+
+// ¿Cae dentro del tablero? Con imagen de mapa no hay límite (el mapa puede ser más grande que la cuadrícula)
+export function dentroDelTablero(mapa: Mapa, t: { x: number; y: number }, lado = 1): boolean {
+  if (mapa.imagen) return true;
+  return t.x >= 0 && t.y >= 0 && t.x + lado <= mapa.columnas && t.y + lado <= mapa.filas;
 }
 
 // La CA de un token con sus condiciones: la de la ficha si es un personaje, la que puso el GM si no
@@ -332,10 +392,39 @@ export function tokenEnTurno(estado: EstadoSala): Token | undefined {
   return id ? estado.tokens[id] : undefined;
 }
 
-// Orden de iniciativa: de mayor a menor. En un empate, los enemigos van antes que los personajes.
+// Orden de iniciativa: de mayor a menor. En un empate decide el desempate que puso el GM y, si no hay,
+// los enemigos van antes que los personajes (la regla de PF2e).
 export function ordenar(orden: Combatiente[], tokens: Record<string, Token>): Combatiente[] {
   const esPersonaje = (c: Combatiente) => (tokens[c.tokenId]?.personajeId ? 1 : 0);
-  return [...orden].sort((a, b) => b.iniciativa - a.iniciativa || esPersonaje(a) - esPersonaje(b));
+  return [...orden].sort((a, b) => b.iniciativa - a.iniciativa || (b.desempate ?? 0) - (a.desempate ?? 0) || esPersonaje(a) - esPersonaje(b));
+}
+
+// Pone a un combatiente en otra posición del orden. Si para quedar ahí tiene que cambiar su número,
+// toma el de su nuevo vecino; los desempates se rehacen para que el orden quede tal cual lo dejó el GM.
+export function moverEnOrden(orden: Combatiente[], tokenId: string, posicion: number): Combatiente[] {
+  const yo = orden.find((c) => c.tokenId === tokenId);
+  if (!yo) return orden;
+  const resto = orden.filter((c) => c.tokenId !== tokenId);
+  const i = Math.max(0, Math.min(resto.length, posicion));
+  const antes = resto[i - 1];
+  const despues = resto[i];
+  let iniciativa = yo.iniciativa;
+  if (antes && iniciativa > antes.iniciativa) iniciativa = antes.iniciativa;
+  if (despues && iniciativa < despues.iniciativa) iniciativa = despues.iniciativa;
+  const nuevo = [...resto.slice(0, i), { ...yo, iniciativa }, ...resto.slice(i)];
+  return nuevo.map((c, j) => ({ ...c, desempate: nuevo.length - j }));
+}
+
+// Lo que se ve de la preparación de un token
+export function preparacionDe(estado: EstadoSala, tokenId: string): { clave: ClaveIniciativa; listo: boolean; usadas: string[]; ultimo: boolean } | null {
+  const pr = estado.preparacion;
+  if (!pr || !pr.tokens.includes(tokenId)) return null;
+  return {
+    clave: pr.tiradas[tokenId] ?? 'percepcion',
+    listo: pr.listos.includes(tokenId),
+    usadas: pr.usadas.filter((u) => u.startsWith(`${tokenId}:`)).map((u) => u.slice(tokenId.length + 1)),
+    ultimo: pr.ultimos.includes(tokenId),
+  };
 }
 
 // Quita efectos de un token y las condiciones que traían (si ningún otro efecto que siga las trae)
@@ -480,10 +569,54 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     case 'iniciar-combate': {
       const orden = ordenar(accion.orden.filter((c) => estado.tokens[c.tokenId]), estado.tokens);
       if (orden.length === 0) return estado;
-      return empezarTurno(estado, { ronda: 1, turno: 0, orden, acciones: 3, usadas: 0, ataques: 0, reacciones: [] });
+      // Lo que solo daba bono a la iniciativa (Oracular Warning, Scout's Warning) ya se usó en esta tirada
+      const soloIniciativa = (e: EfectoActivo) => e.modificadores.length > 0 && e.modificadores.every((m) => m.blanco === 'iniciativa') && !e.condiciones?.length && !e.persistente;
+      const tokens = Object.fromEntries(Object.entries(estado.tokens).map(([id, t]) => [id, sinEfectos(t, (t.efectos ?? []).filter(soloIniciativa))]));
+      return empezarTurno({ ...estado, tokens, preparacion: null }, { ronda: 1, turno: 0, orden, acciones: 3, usadas: 0, ataques: 0, reacciones: [] });
     }
     case 'terminar-combate':
       return { ...estado, combate: null };
+    case 'preparar-combate': {
+      const tokens = [...new Set(accion.tokens)].filter((id) => estado.tokens[id]);
+      if (tokens.length === 0 || estado.combate) return estado;
+      return { ...estado, preparacion: { tokens, tiradas: {}, listos: [], usadas: [], ultimos: [] } };
+    }
+    case 'cancelar-preparacion':
+      return { ...estado, preparacion: null };
+    case 'elegir-iniciativa': {
+      const pr = estado.preparacion;
+      if (!pr?.tokens.includes(accion.tokenId)) return estado;
+      return { ...estado, preparacion: { ...pr, tiradas: { ...pr.tiradas, [accion.tokenId]: accion.clave } } };
+    }
+    case 'marcar-listo': {
+      const pr = estado.preparacion;
+      if (!pr?.tokens.includes(accion.tokenId)) return estado;
+      const listos = pr.listos.filter((x) => x !== accion.tokenId);
+      return { ...estado, preparacion: { ...pr, listos: accion.listo ? [...listos, accion.tokenId] : listos } };
+    }
+    case 'usar-preparacion': {
+      const pr = estado.preparacion;
+      if (!pr?.tokens.includes(accion.tokenId)) return estado;
+      const clave = `${accion.tokenId}:${accion.aptitudId}`;
+      return {
+        ...estado,
+        preparacion: {
+          ...pr, usadas: pr.usadas.includes(clave) ? pr.usadas : [...pr.usadas, clave],
+          ultimos: accion.ultimo && !pr.ultimos.includes(accion.tokenId) ? [...pr.ultimos, accion.tokenId] : pr.ultimos,
+        },
+      };
+    }
+    case 'mover-en-orden': {
+      const c = estado.combate;
+      if (!c || !c.orden.some((x) => x.tokenId === accion.tokenId)) return estado;
+      return { ...estado, combate: reordenar(c, moverEnOrden(c.orden, accion.tokenId, accion.posicion), estado.tokens) };
+    }
+    case 'dar-temporales': {
+      const token = estado.tokens[accion.tokenId];
+      const p = token?.personajeId ? estado.personajes[token.personajeId] : undefined;
+      if (!p || accion.cantidad <= p.pgTemporales) return estado;
+      return { ...estado, personajes: { ...estado.personajes, [p.id]: { ...p, pgTemporales: accion.cantidad } } };
+    }
     case 'avanzar-turno': {
       const c = estado.combate;
       if (!c || c.orden.length === 0) return estado;
@@ -639,6 +772,10 @@ export function puede(quien: Sesion, accion: Accion, estado: EstadoSala): boolea
     // Un jugador puede quitarse un efecto de encima (terminar un Shield, apagar lo que ya no aplica)
     case 'quitar-efecto':
       return esMio(accion.tokenId);
+    // En la preparación, cada jugador elige con qué tira y avisa que está listo
+    case 'elegir-iniciativa':
+    case 'marcar-listo':
+      return esMio(accion.tokenId);
     case 'avanzar-turno':
     case 'gastar-acciones':
       return tokenEnTurno(estado)?.personajeId === quien.personajeId;
@@ -773,7 +910,16 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
         && (a.hasta === undefined || a.hasta === 'inicio-turno');
     case 'terminar-combate':
     case 'avanzar-turno':
+    case 'cancelar-preparacion':
       return true;
+    case 'preparar-combate':
+      return Array.isArray(a.tokens) && a.tokens.length >= 1 && a.tokens.length <= 60 && a.tokens.every((t) => esTexto(t));
+    case 'elegir-iniciativa':
+      return esTexto(a.tokenId) && esClaveIniciativa(a.clave);
+    case 'marcar-listo':
+      return esTexto(a.tokenId) && typeof a.listo === 'boolean';
+    case 'mover-en-orden':
+      return esTexto(a.tokenId) && esEntero(a.posicion, 0, 200);
     case 'fijar-iniciativa':
       return esTexto(a.tokenId) && esEntero(a.valor, -20, 100);
     case 'agregar-a-combate':
@@ -845,5 +991,6 @@ function esMapaValido(m: Record<string, unknown>): boolean {
     && entre(m.tamanoCelda, 10, 500)
     && esNumero(m.desplazamientoX) && esNumero(m.desplazamientoY)
     && entre(m.columnas, 1, 200) && entre(m.filas, 1, 200)
-    && typeof m.mostrarCuadricula === 'boolean';
+    && typeof m.mostrarCuadricula === 'boolean'
+    && (m.terreno === undefined || TERRENOS_VALIDOS.includes(m.terreno as Terreno));
 }

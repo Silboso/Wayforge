@@ -1,6 +1,10 @@
 import { useState } from 'react';
-import { ArrowsClockwiseIcon, SwordIcon, TrashIcon } from '@phosphor-icons/react';
-import { tokenEnTurno, type Accion, type Combate, type EstadoSala, type Sesion, type Token } from '../../compartido/sala';
+import { ArrowsClockwiseIcon, CaretDownIcon, CaretUpIcon, CheckIcon, HourglassIcon, SwordIcon, TrashIcon } from '@phosphor-icons/react';
+import {
+  aptitudesDePreparacion, preparacionDe, tokenEnTurno, type Accion, type Combate, type EstadoSala, type Sesion, type Token,
+} from '../../compartido/sala';
+import { opcionesIniciativa, type ClaveIniciativa } from '../../compartido/tiradas';
+import { signo } from '../../reglas/pf2e';
 import { resumenCondiciones } from './Condiciones';
 import { useConfirmar } from './hud/Modal';
 import { claseBotonIcono, claseBotonPrincipal, claseBotonSecundario, claseEntrada, Seccion } from './ui';
@@ -83,6 +87,67 @@ function PanelTurno({ estado, combate, quien, enviar }: {
   );
 }
 
+// La preparación vista por el GM: con qué tira cada uno, quién está listo y qué usó antes de tirar.
+// El GM elige por sus criaturas (Stealth si estaban emboscadas) y tira cuando quiera, aunque falte alguien.
+function PreparacionGM({ estado, enviar, onIniciar }: {
+  estado: EstadoSala;
+  enviar: (accion: Accion) => void;
+  onIniciar: (tokens: string[]) => void;
+}) {
+  const pr = estado.preparacion!;
+  const tokens = pr.tokens.map((id) => estado.tokens[id]).filter((t): t is Token => !!t);
+  const jugadores = tokens.filter((t) => t.personajeId);
+  const listos = jugadores.filter((t) => pr.listos.includes(t.id)).length;
+  const faltan = jugadores.length - listos;
+  return (
+    <Seccion titulo="Preparando el combate">
+      <p className="text-sm text-texto-suave">
+        A cada jugador le llegó su hoja: elige con qué tira y usa lo que sirve antes de tirar. Tú eliges por tus criaturas.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {tokens.map((t) => {
+          const p = t.personajeId ? estado.personajes[t.personajeId] : undefined;
+          const prep = preparacionDe(estado, t.id)!;
+          const opciones = opcionesIniciativa(t, p);
+          const pendientes = p ? aptitudesDePreparacion(p).filter((x) => !prep.usadas.includes(x.aptitud.id)) : [];
+          const usadas = p ? aptitudesDePreparacion(p).filter((x) => prep.usadas.includes(x.aptitud.id)) : [];
+          return (
+            <li key={t.id} className="flex flex-col gap-1 rounded-lg border border-borde px-2 py-1.5">
+              <div className="flex items-center gap-2">
+                <Avatar token={t} />
+                <span className="min-w-0 flex-1 truncate">{t.nombre}</span>
+                {p ? (
+                  prep.listo
+                    ? <span className="flex items-center gap-1 text-xs font-semibold text-exito"><CheckIcon size={14} weight="bold" aria-hidden /> listo</span>
+                    : <span className="flex items-center gap-1 text-xs text-texto-suave"><HourglassIcon size={14} aria-hidden /> eligiendo</span>
+                ) : null}
+                <select className={`${claseEntrada} h-8! w-auto! px-2 text-xs`} aria-label={`Iniciativa de ${t.nombre}`}
+                  value={prep.clave} disabled={prep.ultimo}
+                  onChange={(e) => enviar({ tipo: 'elegir-iniciativa', tokenId: t.id, clave: e.target.value as ClaveIniciativa })}>
+                  {opciones.map((o) => <option key={o.clave} value={o.clave}>{o.nombre} {signo(o.modificador)}</option>)}
+                </select>
+              </div>
+              {(usadas.length > 0 || pendientes.length > 0 || prep.ultimo) && (
+                <p className="pl-9 text-xs text-texto-suave">
+                  {usadas.length > 0 && <span className="text-exito">Usó {usadas.map((x) => x.aptitud.nombre).join(', ')}. </span>}
+                  {prep.ultimo && <span className="text-acento">Va último (no tira). </span>}
+                  {pendientes.length > 0 && <span>Tiene sin usar: {pendientes.map((x) => x.aptitud.nombre).join(', ')}.</span>}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <button className={claseBotonPrincipal} onClick={() => onIniciar(pr.tokens)}>
+        <SwordIcon size={18} aria-hidden /> Tirar iniciativa{faltan > 0 ? ` (faltan ${faltan} por estar listos)` : ''}
+      </button>
+      <button className={claseBotonSecundario} onClick={() => enviar({ tipo: 'cancelar-preparacion' })}>
+        Cancelar: no hay combate
+      </button>
+    </Seccion>
+  );
+}
+
 // Controles del GM: empezar el combate eligiendo quién entra, ajustar el orden y terminarlo
 export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
   estado: EstadoSala;
@@ -97,11 +162,16 @@ export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
   const elegidos = tokens.filter((t) => !fuera.has(t.id));
   const combate = estado.combate;
 
+  if (!combate && estado.preparacion) {
+    return <PreparacionGM estado={estado} enviar={enviar} onIniciar={onIniciar} />;
+  }
+
   if (!combate) {
     return (
       <Seccion titulo="Empezar combate">
         <p className="text-sm text-texto-suave">
-          Marca quién pelea. La mesa tira la iniciativa de todos (Perception) y los ordena.
+          Marca quién pelea y prepara el combate: a cada jugador le llega una hoja para elegir con qué tira la iniciativa
+          y usar lo que sirve antes de tirar (Oracular Warning, Scout's Warning…). Después tiras y la mesa los ordena.
         </p>
         {tokens.length === 0 && <p className="text-sm text-texto-suave">Primero pon tokens en el tablero.</p>}
         <ul className="flex flex-col gap-1">
@@ -124,8 +194,12 @@ export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
           ))}
         </ul>
         <button className={claseBotonPrincipal} disabled={elegidos.length === 0}
+          onClick={() => enviar({ tipo: 'preparar-combate', tokens: elegidos.map((t) => t.id) })}>
+          <SwordIcon size={18} aria-hidden /> Preparar combate
+        </button>
+        <button className={claseBotonSecundario} disabled={elegidos.length === 0}
           onClick={() => onIniciar(elegidos.map((t) => t.id))}>
-          <SwordIcon size={18} aria-hidden /> Tirar iniciativa y empezar
+          Tirar ya, sin preparar (todos con Perception)
         </button>
       </Seccion>
     );
@@ -136,16 +210,27 @@ export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
     <div className="flex flex-col gap-4">
       <PanelTurno estado={estado} combate={combate} quien={quien} enviar={enviar} />
       <Seccion titulo="Orden de iniciativa">
-        <p className="text-sm text-texto-suave">Cambia un número para reordenar.</p>
+        <p className="text-sm text-texto-suave">Cambia un número o usa las flechas para reordenar. En un empate van primero los enemigos, salvo que muevas a alguien.</p>
         <ol className="flex flex-col gap-1">
           {combate.orden.map((c, i) => {
             const token = estado.tokens[c.tokenId];
             if (!token) return null;
+            const empate = combate.orden.some((x, j) => j !== i && x.iniciativa === c.iniciativa);
             return (
               <li key={c.tokenId} className={`flex items-center gap-2 rounded-lg px-2 py-1 ${i === combate.turno ? 'bg-superficie-2' : ''}`}>
+                <div className="flex flex-col">
+                  <button className="flex h-4 w-6 items-center justify-center rounded text-texto-suave hover:bg-superficie-2 disabled:opacity-30" disabled={i === 0}
+                    aria-label={`Subir a ${token.nombre} en el orden`} onClick={() => enviar({ tipo: 'mover-en-orden', tokenId: c.tokenId, posicion: i - 1 })}>
+                    <CaretUpIcon size={13} weight="bold" aria-hidden />
+                  </button>
+                  <button className="flex h-4 w-6 items-center justify-center rounded text-texto-suave hover:bg-superficie-2 disabled:opacity-30" disabled={i === combate.orden.length - 1}
+                    aria-label={`Bajar a ${token.nombre} en el orden`} onClick={() => enviar({ tipo: 'mover-en-orden', tokenId: c.tokenId, posicion: i + 1 })}>
+                    <CaretDownIcon size={13} weight="bold" aria-hidden />
+                  </button>
+                </div>
                 <Avatar token={token} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">{token.nombre}</div>
+                  <div className="truncate">{token.nombre}{empate && <span className="ml-1.5 text-xs text-texto-suave">empate</span>}</div>
                   {token.condiciones?.length ? <div className="truncate text-xs text-texto-suave">{resumenCondiciones(token.condiciones)}</div> : null}
                 </div>
                 <input

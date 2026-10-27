@@ -79,7 +79,10 @@ describe('eventosDe', () => {
     const mover = { tipo: 'mover-token', id: 'g1', x: 4, y: 0 } as const;
     expect(eventosDe(antes, mover, aplicar(antes, mover))).toEqual([{ tipo: 'movimiento', tokenId: 'g1', desde: { x: 1, y: 0 }, hasta: { x: 4, y: 0 } }]);
     const inicio: Accion = { tipo: 'iniciar-combate', orden: [{ tokenId: 'g1', iniciativa: 20 }] };
-    expect(eventosDe(antes, inicio, aplicar(antes, inicio))).toEqual([{ tipo: 'turno', tokenId: 'g1', ronda: 1 }]);
+    expect(eventosDe(antes, inicio, aplicar(antes, inicio))).toEqual([
+      { tipo: 'combate', orden: [{ tokenId: 'g1', iniciativa: 20 }] },
+      { tipo: 'turno', tokenId: 'g1', ronda: 1 },
+    ]);
     expect(eventosDe(antes, { tipo: 'editar-mapa', cambios: { filas: 9 } }, antes)).toEqual([]);
   });
 });

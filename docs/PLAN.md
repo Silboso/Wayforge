@@ -128,6 +128,20 @@ interacción armada con lo que dice el libro. En el tablero, las áreas siguen a
 tocan; al lanzar, las casillas se llenan con la tinta del elemento, cada objetivo recibe su sello ("A
 medias", "Falla") y su número, y los efectos se ven como halo y marquitas en el token.
 
+Al apuntar, cada token muestra si sirve como objetivo y qué se tira contra él ("contra su Will · 15 ft"),
+o por qué no ("a 40 ft · llega a 30", "no es tu aliado", "inmune por ahora"), sin enseñar los números de
+las criaturas; tocar uno que no sirve lo dice ahí mismo. Un área que daña marca aparte a los aliados que
+tocaría ("¡ojo! también a Korakai").
+
+**Preparación del combate:** el GM marca quién pelea y prepara el combate. A cada jugador le llega una hoja
+para elegir con qué tira la iniciativa (Perception, Stealth si venía escondido u otra skill) y usar lo que
+sirve "al tirar iniciativa": las dotes con ese Trigger se detectan solas (también las del compendio) y las
+más comunes están automatizadas (Oracular Warning, Scout's Warning, Swaggering Initiative, Prescience;
+After You y Big Debut te dejan ir último). El GM ve quién está listo y qué usó, elige por sus criaturas y
+tira cuando quiere. Los bonos a la iniciativa entran en la tirada y se gastan con ella. Al empezar, todos
+ven el orden de juego; el GM lo ajusta con flechas (los empates los resuelve la regla de PF2e: primero los
+enemigos, salvo que el GM mueva a alguien).
+
 1. **Salvaciones contra CD** con los cuatro grados y el resultado por grado (sin efecto, mitad, completo,
    doble) aplicado a cada objetivo.
 2. **Plantillas de área:** explosión (radio), cono, línea y emanación, con las reglas de PF2e para qué
@@ -145,9 +159,19 @@ registro claro.
 1. Dying / Wounded / Doomed automáticos al llegar a 0 PG; recuperación al inicio del turno con su
    tirada; Hero Points.
 2. Treat Wounds, Refocus y descanso largo con sus cuentas (Medicine contra CD, 10 minutos).
-3. Modo exploración: actividades (Search, Avoid Notice, Defend…) que deciden la iniciativa.
+3. Modo exploración: actividades (Search, Avoid Notice, Defend…) que deciden la iniciativa. *(La
+   preparación del combate ya deja elegir la skill a mano; falta que la actividad la proponga sola.)*
 
 ### Fase 5 — Escenas, niebla y mesa
+
+Ya hecho: el tablero nunca empieza vacío. Sin imagen de mapa trae un **terreno dibujado a tinta** (un claro
+del bosque con sendero, árboles y rocas; o una sala de mazmorra), que el GM cambia o quita desde Mesa ("Papel
+en blanco"). Es decoración: no bloquea ni cuesta movimiento. El tablero está **delimitado**: la cuadrícula
+queda dentro, afuera el papel se ve apagado y rayado, el borde va a tinta doble y nadie (ni el GM) puede soltar
+un token fuera. Los tokens nuevos aparecen a la izquierda, a media altura, y la vista encuadra el tablero a
+la derecha de los botones. A la izquierda, los **compañeros en miniatura**: retrato con anillo de vida (y de PG
+temporales), marquitas de efectos y condiciones, estrella si le toca, Dying en rojo; con el cursor se ve el
+detalle (PG, CA, condiciones, efectos con su duración) y tocar el retrato lleva la vista a su token.
 
 1. Escenas: varios mapas por mesa, la activa la ven todos, el GM prepara las demás.
 2. Niebla manual: el GM revela/oculta zonas con pincel o rectángulo.

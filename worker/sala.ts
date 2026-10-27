@@ -1,14 +1,15 @@
 import { DurableObject } from 'cloudflare:workers';
 import { calcular, gradoDeExito, leerExpresion } from '../reglas/pf2e';
 import {
-  aplicar, caDeToken, casillaLibre, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, puede,
+  aplicar, caDeToken, casillaLibre, dentroDelTablero, ladoDe, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, preparacionDe, puede,
   puedeMoverToken, reaccionesPara, resumen, tokenDePersonaje, tokenEnTurno,
   type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
 } from '../compartido/sala';
-import { queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
+import { iniciativaDe, queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
 import { motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Azar } from '../compartido/interacciones';
 import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
-import { interaccionDe } from '../reglas/interacciones';
+import { claveDe, interaccionDe, VAN_ULTIMO } from '../reglas/interacciones';
+import { momentoIniciativa } from '../reglas/disparadores';
 
 // Los dados de la sala, para el motor de interacciones
 const AZAR: Azar = { dado: (caras) => dado(caras), id: () => crypto.randomUUID(), ahora: () => Date.now() };
@@ -359,6 +360,7 @@ export class Sala extends DurableObject<Env> {
     if (!t || !Number.isInteger(x) || !Number.isInteger(y)) return;
     const destino = { x: x as number, y: y as number };
     if (quien.rol === 'visitante' || !puedeMoverToken(quien, t)) return this.negar(ws, 'Ese token no es tuyo.');
+    if (!dentroDelTablero(this.estado.mapa, destino, ladoDe(t))) return this.negar(ws, 'Eso queda fuera del tablero.');
     const c = this.estado.combate;
     const enCombate = !!c && c.orden.some((o) => o.tokenId === t.id);
     let libres: number | null = null;
@@ -394,6 +396,10 @@ export class Sala extends DurableObject<Env> {
 
     const motivo = motivoParaActuar(this.estado, p.id, a.costo);
     if (motivo) return this.negar(ws, motivo);
+    // En la preparación del combate, lo de "al tirar iniciativa" se usa una vez
+    const preparando = preparacionDe(this.estado, token.id);
+    const alEmpezar = preparando ? momentoIniciativa(a) : null;
+    if (preparando && alEmpezar && preparando.usadas.includes(a.id)) return this.negar(ws, `${a.verbo || a.nombre}: ya la usaste para este combate.`);
     const disp = disponibilidad(p, a);
     if (!disp.puede) return this.negar(ws, `${a.verbo || a.nombre}: ${disp.texto}.`);
     if (a.requiere && !(token.condiciones ?? []).some((c) => c.clave === a.requiere)) {
@@ -428,6 +434,10 @@ export class Sala extends DurableObject<Env> {
     if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
     if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });
     if (a.id === 'basica:sustain' && c) await this.guardarYRepartir({ tipo: 'sostener', tokenId: token.id });
+    if (alEmpezar) {
+      const ultimo = VAN_ULTIMO.has(claveDe(a.nombre));
+      await this.guardarYRepartir({ tipo: 'usar-preparacion', tokenId: token.id, aptitudId: a.id, nombre: a.nombre, ...(ultimo ? { ultimo } : {}) });
+    }
 
     if (inter && alcance && !('motivo' in alcance)) {
       const numero = (miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
@@ -481,26 +491,35 @@ export class Sala extends DurableObject<Env> {
     if (Number.isFinite(proxima)) await this.ctx.storage.setAlarm(proxima);
   }
 
-  // El GM empieza el combate: la sala tira la iniciativa (Perception) de cada uno
+  // El GM empieza el combate: la sala tira la iniciativa de cada uno con lo que eligió en la preparación
+  // (Perception si no eligió), sumando lo que le dieron las aptitudes de preparación (Oracular Warning).
+  // Quien eligió ir último (After You) no tira: queda detrás de todos.
   private async iniciarCombate(quien: Sesion, m: Record<string, unknown>) {
-    if (quien.rol !== 'gm' || !Array.isArray(m.tokens)) return;
+    if (quien.rol !== 'gm' || !Array.isArray(m.tokens) || this.estado.combate) return;
     const tokens = [...new Set(m.tokens)].map((id) => (typeof id === 'string' ? this.estado.tokens[id] : undefined)).filter((t) => !!t);
     if (tokens.length === 0) return;
+    const pr = this.estado.preparacion;
 
     const orden: Combatiente[] = [];
+    const ultimos: string[] = [];
     for (const token of tokens) {
+      if (pr?.ultimos.includes(token.id)) { ultimos.push(token.id); continue; }
       const personaje = token.personajeId ? this.estado.personajes[token.personajeId] : undefined;
-      const modificador = personaje ? calcular(personaje, token.condiciones ?? [], token.efectos ?? []).percepcion.total : token.percepcion ?? 0;
+      const { modificador, etiqueta, bono } = iniciativaDe(token, personaje, pr?.tiradas[token.id] ?? 'percepcion');
       const d = dado(20);
       orden.push({ tokenId: token.id, iniciativa: d + modificador });
       await this.guardarYRepartir({
         tipo: 'registrar-tirada',
         tirada: {
-          id: crypto.randomUUID(), quien: token.nombre, etiqueta: 'Iniciativa', dados: [d], caras: 20,
-          modificador, total: d + modificador, cuando: Date.now(),
+          id: crypto.randomUUID(), quien: token.nombre, etiqueta: bono ? `${etiqueta} · ${bono > 0 ? '+' : ''}${bono} de preparación` : etiqueta,
+          dados: [d], caras: 20, modificador, total: d + modificador, cuando: Date.now(),
+          ...(personaje ? { personajeId: personaje.id } : {}), autorTokenId: token.id,
         },
       });
     }
+    // Los que van últimos: detrás del más bajo, y entre ellos primero los enemigos (ordenar lo resuelve)
+    const piso = Math.min(...orden.map((c) => c.iniciativa), 1) - 1;
+    for (const id of ultimos) orden.push({ tokenId: id, iniciativa: piso, desempate: -1 });
     await this.guardarYRepartir({ tipo: 'iniciar-combate', orden });
   }
 

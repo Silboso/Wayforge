@@ -180,6 +180,8 @@ export function doteAAptitud(d: DoteCompendio): Aptitud | null {
   if (d.costo === null) return null;
   const [veces, per] = d.frecuencia.split('/');
   const periodo = per ? PERIODOS[per] : undefined;
+  // "Trigger You're about to roll initiative": la mesa la ofrece al preparar el combate
+  const alEmpezar = /Trigger\b[^\n—]*initiative/i.test(d.descripcion);
   return {
     id: `compendio:dote:${d.id}`.slice(0, 100),
     nombre: corto(d.nombre, 60),
@@ -189,6 +191,7 @@ export function doteAAptitud(d: DoteCompendio): Aptitud | null {
     recuperacion: periodo ? { tipo: 'frecuencia', veces: Math.min(10, Math.max(1, Number(veces) || 1)), periodo } : { tipo: 'siempre' },
     descripcion: corto(d.descripcion, 2000),
     rasgos: rasgosCortos(d.rasgos),
+    ...(alEmpezar ? { disparadores: ['iniciativa' as const] } : {}),
   };
 }
 

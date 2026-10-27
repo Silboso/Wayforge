@@ -17,7 +17,9 @@ export type Momento =
   // Un enemigo que estaba a tu alcance se mueve (Reactive Strike)
   | 'enemigo-se-mueve'
   | 'inicio-turno'
-  | 'fin-turno';
+  | 'fin-turno'
+  // Empieza un combate: antes de tirar iniciativa o al tirarla (Oracular Warning, Scout's Warning, posturas)
+  | 'iniciativa';
 
 export const MOMENTOS: Record<Momento, { titulo: string; ayuda: string }> = {
   'al-atacar': { titulo: 'Antes de atacar', ayuda: 'En tu turno, en lugar de un Strike normal.' },
@@ -29,12 +31,23 @@ export const MOMENTOS: Record<Momento, { titulo: string; ayuda: string }> = {
   'enemigo-se-mueve': { titulo: 'Cuando un enemigo se mueve a tu lado', ayuda: 'Un enemigo a tu alcance se mueve.' },
   'inicio-turno': { titulo: 'Al empezar tu turno', ayuda: 'Recordatorio al empezar tu turno.' },
   'fin-turno': { titulo: 'Al terminar tu turno', ayuda: 'Recordatorio al terminar tu turno.' },
+  iniciativa: { titulo: 'Al tirar iniciativa', ayuda: 'Empieza un combate: la mesa te deja usarla antes de que se tire la iniciativa.' },
 };
 
 export const MOMENTOS_VALIDOS = Object.keys(MOMENTOS) as Momento[];
 
 export function tieneMomento(a: Aptitud, m: Momento): boolean {
   return a.disparadores?.includes(m) ?? false;
+}
+
+// Las que se usan al empezar un combate. "antes": "You're about to roll initiative" (avisar, ir último);
+// "al-tirar": "You roll initiative" (entrar en postura, sacar el arma). Las del compendio lo dicen en su Trigger.
+export type MomentoIniciativa = 'antes' | 'al-tirar';
+
+export function momentoIniciativa(a: Aptitud): MomentoIniciativa | null {
+  const disparador = /Trigger\b([^\n—]*)/i.exec(a.descripcion)?.[1] ?? '';
+  if (/initiative/i.test(disparador)) return /about to roll/i.test(disparador) ? 'antes' : 'al-tirar';
+  return tieneMomento(a, 'iniciativa') ? 'antes' : null;
 }
 
 const dote = (id: string, nombre: string, verbo: string, costo: Aptitud['costo'], disparadores: Momento[], descripcion: string,

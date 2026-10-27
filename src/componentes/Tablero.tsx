@@ -18,6 +18,7 @@ import type { ColoresTablero } from '../tema';
 import type { Evento } from '../../compartido/eventos';
 import { EfectosTablero } from './Efectos';
 import { PresenciaTablero } from './Presencia';
+import { FondoTerreno } from './Terreno';
 import type { PunteroAjeno, Senal } from '../conexion';
 
 interface Props {
@@ -49,10 +50,13 @@ interface Props {
   // Centrar la vista en un token (cada pedido nuevo trae otro `n`)
   enfocar?: { tokenId: string; n: number } | null;
   // Un área por colocar (Fireball): sigue al puntero y marca a quién toca; tocar el tablero la lanza ahí
-  plantilla?: { tokenId: string; area: Area; alcance?: number; etiqueta: string; color?: string } | null;
+  // `aliados`: solo alcanza a los del bando de quien la lanza (y `soloOtros`: no a él mismo)
+  plantilla?: { tokenId: string; area: Area; alcance?: number; etiqueta: string; color?: string; aliados?: boolean; soloOtros?: boolean } | null;
   onPunto?: (punto: Casilla) => void;
   // Los ya elegidos para algo de varios objetivos (Electric Arc)
   marcados?: string[];
+  // Mientras se apunta: sobre cada token, si sirve como objetivo y qué se tira contra él (o por qué no)
+  pistas?: Record<string, { valido: boolean; texto: string }> | null;
 }
 
 // Mantener presionado este tiempo (sin mover) lanza una señal
@@ -65,7 +69,7 @@ const PASO_MS = 120;
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
   seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onSenal, enfocar = null,
-  plantilla = null, onPunto, marcados = [],
+  plantilla = null, onPunto, marcados = [], pistas = null,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [medida, setMedida] = useState({ ancho: 0, alto: 0 });
@@ -85,6 +89,8 @@ export function Tablero({
   const enTurno = tokenEnTurno(estado)?.id ?? null;
   const ancho = imagenMapa ? imagenMapa.width : mapa.columnas * celda;
   const alto = imagenMapa ? imagenMapa.height : mapa.filas * celda;
+  // El rectángulo del tablero: la imagen del mapa, o las columnas × filas de la cuadrícula
+  const borde = imagenMapa ? { x: 0, y: 0, w: ancho, h: alto } : { x: origen.x, y: origen.y, w: ancho, h: alto };
 
   // A dónde llega el token que se mueve, con el camino más corto a cada casilla (en combate: hasta 2 Strides)
   const tokenMovil = movimiento ? estado.tokens[movimiento.tokenId] : undefined;
@@ -116,10 +122,14 @@ export function Tablero({
     return () => observador.disconnect();
   }, []);
 
-  // Encuadra a los tokens (con aire alrededor) a un zoom legible; sin tokens, el mapa entero
+  // Encuadra el tablero entero si cabe a un zoom legible; si es muy grande, a los tokens (con aire alrededor)
   function centrar() {
     const visible = Math.max(120, medida.alto - margenInferior);
-    const tokens = Object.values(estado.tokens);
+    // En pantalla grande, a la izquierda van los retratos y los botones de paneles: se encuadra a su derecha
+    const izquierda = medida.ancho >= 1024 ? 240 : 0;
+    const libre = medida.ancho - izquierda;
+    const entero = Math.min(libre / ancho, visible / alto) * 0.92;
+    const tokens = entero >= 0.5 ? [] : Object.values(estado.tokens);
     const caja = tokens.length
       ? tokens.reduce((c, t) => {
         const lado = TAMANOS[t.tamano] * celda;
@@ -131,10 +141,10 @@ export function Tablero({
     const aire = tokens.length ? celda * 3 : 0;
     const w = caja.x1 - caja.x0 + aire * 2;
     const h = caja.y1 - caja.y0 + aire * 2;
-    const escala = Math.min(1.6, Math.min(medida.ancho / w, visible / h) * 0.92);
+    const escala = Math.min(1.6, Math.min(libre / w, visible / h) * 0.92);
     const cx = (caja.x0 + caja.x1) / 2;
     const cy = (caja.y0 + caja.y1) / 2;
-    setVista({ escala, x: medida.ancho / 2 - cx * escala, y: visible / 2 - cy * escala });
+    setVista({ escala, x: izquierda + libre / 2 - cx * escala, y: visible / 2 - cy * escala });
   }
 
   // Encuadra el tablero completo al entrar y cada vez que cambia el mapa
@@ -354,12 +364,14 @@ export function Tablero({
           onTap={alTocarFondo}
         >
           <Layer>
-            {/* Sin imagen, el tablero es el mismo papel: no hay caja, la cuadrícula sigue hasta el borde de la pantalla */}
-            {imagenMapa && (
+            {/* Sin imagen, el tablero lleva un terreno dibujado (el GM lo puede quitar); con imagen, el mapa */}
+            {imagenMapa ? (
               <>
                 <Rect name="fondo" width={ancho} height={alto} fill={colores.tablero} />
                 <ImagenKonva image={imagenMapa} listening={false} />
               </>
+            ) : (
+              <FondoTerreno terreno={mapa.terreno ?? 'claro'} columnas={mapa.columnas} filas={mapa.filas} celda={celda} x={borde.x} y={borde.y} colores={colores} />
             )}
             {mapa.mostrarCuadricula && (
               <Shape
@@ -367,11 +379,11 @@ export function Tablero({
                 stroke={colores.cuadricula}
                 strokeWidth={1 / vista.escala}
                 sceneFunc={(ctx, forma) => {
-                  // Con imagen, la cuadrícula se queda sobre el mapa; sin imagen, cubre todo lo visible
-                  const x0 = imagenMapa ? 0 : -vista.x / vista.escala;
-                  const y0 = imagenMapa ? 0 : -vista.y / vista.escala;
-                  const x1 = imagenMapa ? ancho : x0 + medida.ancho / vista.escala;
-                  const y1 = imagenMapa ? alto : y0 + medida.alto / vista.escala;
+                  // La cuadrícula se queda dentro del tablero
+                  const x0 = borde.x;
+                  const y0 = borde.y;
+                  const x1 = borde.x + borde.w;
+                  const y1 = borde.y + borde.h;
                   // Como el papel milimetrado: cada 5 casillas (25 ft) una línea más marcada
                   const primeraX = Math.ceil((x0 - origen.x) / celda);
                   const primeraY = Math.ceil((y0 - origen.y) / celda);
@@ -396,6 +408,47 @@ export function Tablero({
                 }}
               />
             )}
+            {/* Dónde termina el tablero: afuera, papel apagado y rayado; el borde, a tinta doble */}
+            <Shape
+              listening={false}
+              sceneFunc={(ctx) => {
+                const c = ctx._context;
+                const e = vista.escala;
+                const vx0 = -vista.x / e;
+                const vy0 = -vista.y / e;
+                const vx1 = vx0 + medida.ancho / e;
+                const vy1 = vy0 + medida.alto / e;
+                c.save();
+                c.beginPath();
+                c.rect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+                c.rect(borde.x, borde.y, borde.w, borde.h);
+                c.clip('evenodd');
+                c.globalAlpha = 0.07;
+                c.fillStyle = colores.texto;
+                c.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+                c.globalAlpha = 0.18;
+                c.strokeStyle = colores.textoSuave;
+                c.lineWidth = 1 / e;
+                const paso = 16 / e;
+                c.beginPath();
+                for (let d = Math.floor((vx0 + vy0) / paso) * paso; d < vx1 + vy1; d += paso) {
+                  c.moveTo(d - vy0, vy0);
+                  c.lineTo(d - vy1, vy1);
+                }
+                c.stroke();
+                c.restore();
+                c.save();
+                c.strokeStyle = colores.texto;
+                c.globalAlpha = 0.85;
+                c.lineWidth = 3 / e;
+                c.strokeRect(borde.x, borde.y, borde.w, borde.h);
+                c.globalAlpha = 0.4;
+                c.lineWidth = 1 / e;
+                const m = 5 / e;
+                c.strokeRect(borde.x + m, borde.y + m, borde.w - m * 2, borde.h - m * 2);
+                c.restore();
+              }}
+            />
             {zona && tokenMovil && arrastrando && (
               <ZonaYRuta zona={zona} token={tokenMovil} apuntada={apuntada} velocidad={velocidad} celda={celda}
                 origen={origen} escala={vista.escala} colores={colores} libres={movimiento?.libres ?? 0}
@@ -473,6 +526,32 @@ export function Tablero({
               />
             ))}
           </Layer>
+          {pistas && (
+            <Layer listening={false}>
+              {Object.entries(pistas).map(([id, pista]) => {
+                const t = estado.tokens[id];
+                if (!t) return null;
+                const r = (TAMANOS[t.tamano] * celda) / 2;
+                const cx = origen.x + t.x * celda + r;
+                const cy = origen.y + t.y * celda + r;
+                const letra = Math.max(celda * 0.16, 12 / vista.escala);
+                const tinta = pista.valido ? colores.acento : colores.textoSuave;
+                // Dos tokens pegados no se pisan las etiquetas: una casilla sí, una no, va un renglón más arriba
+                const renglon = (t.x + t.y) % 2 === 0 ? 0 : letra * 2;
+                return (
+                  <Group key={id}>
+                    {/* Lo que no sirve queda a lápiz, como borrado */}
+                    {!pista.valido && <Circle x={cx} y={cy} radius={r} fill={colores.superficie} opacity={0.6} />}
+                    <Label x={cx} y={cy - r - 3 / vista.escala - renglon}>
+                      <Tag fill={colores.superficie} stroke={tinta} strokeWidth={1.3 / vista.escala} cornerRadius={4 / vista.escala} opacity={0.96}
+                        pointerDirection="down" pointerWidth={8 / vista.escala} pointerHeight={5 / vista.escala} />
+                      <Text text={pista.texto} fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle={pista.valido ? 'bold' : 'normal'} fill={tinta} padding={letra * 0.32} />
+                    </Label>
+                  </Group>
+                );
+              })}
+            </Layer>
+          )}
         </Stage>
       )}
       <EfectosTablero eventos={eventos} estado={estado} vista={vista} celda={celda} />
@@ -615,7 +694,12 @@ function PlantillaArea({ estado, plantilla, punto, celda, origen, escala, colore
   if (plantilla.area.forma !== 'emanacion' && !punto) return null;
   const lejos = plantilla.area.forma === 'explosion' && punto && plantilla.alcance !== undefined && distanciaAEsquina(desde, punto) > plantilla.alcance;
   const tinta = lejos ? colores.textoSuave : plantilla.color ?? colores.peligro;
-  const tocadosAhora = tocados(casillas, Object.values(estado.tokens).map((x) => ({ ...x, lado: ladoDe(x) })));
+  // A quién alcanza de verdad (lo que ayuda, solo a los aliados); en un área que daña, los aliados van marcados aparte
+  const delBando = (x: Token) => (x.tipo === 'enemigo') === (t.tipo === 'enemigo');
+  const tocadosAhora = tocados(casillas, Object.values(estado.tokens).map((x) => ({ ...x, lado: ladoDe(x) })))
+    .filter((x) => !plantilla.aliados || (delBando(x) && !(plantilla.soloOtros && x.id === t.id)));
+  const amigos = plantilla.aliados ? [] : tocadosAhora.filter(delBando);
+  const aviso = amigos.length === 0 ? '' : ` · ¡ojo! también ${amigos.length === 1 ? (amigos[0]!.id === t.id ? 'a ti' : `a ${amigos[0]!.nombre}`) : `a ${amigos.length} aliados`}`;
   const letra = Math.max(celda * 0.2, 13 / escala);
   const arriba = Math.min(...casillas.map((c) => c.y));
   const centroX = casillas.reduce((s, c) => s + c.x + 0.5, 0) / Math.max(1, casillas.length);
@@ -651,13 +735,15 @@ function PlantillaArea({ estado, plantilla, punto, celda, origen, escala, colore
       )}
       {!lejos && tocadosAhora.map((x) => {
         const r = (TAMANOS[x.tamano] * celda) / 2;
-        return <Circle key={x.id} x={origen.x + x.x * celda + r} y={origen.y + x.y * celda + r} radius={r + 4} listening={false} stroke={tinta} strokeWidth={3.5 / escala} />;
+        const amigo = amigos.includes(x);
+        return <Circle key={x.id} x={origen.x + x.x * celda + r} y={origen.y + x.y * celda + r} radius={r + 4} listening={false}
+          stroke={amigo ? colores.peligro : tinta} strokeWidth={3.5 / escala} dash={amigo ? [6 / escala, 5 / escala] : undefined} />;
       })}
       {casillas.length > 0 && (
         <Label x={origen.x + centroX * celda} y={origen.y + arriba * celda - 4 / escala} listening={false}>
           <Tag fill={colores.superficie} stroke={tinta} strokeWidth={1.5 / escala} cornerRadius={4 / escala} pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
-          <Text text={lejos ? `Muy lejos: llega a ${plantilla.alcance} ft` : `${plantilla.etiqueta} · ${areaTexto(plantilla.area)} · ${tocadosAhora.length} ${tocadosAhora.length === 1 ? 'tocado' : 'tocados'}`}
-            fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={tinta} padding={letra * 0.35} />
+          <Text text={lejos ? `Muy lejos: llega a ${plantilla.alcance} ft` : `${plantilla.etiqueta} · ${areaTexto(plantilla.area)} · ${tocadosAhora.length} ${tocadosAhora.length === 1 ? 'tocado' : 'tocados'}${aviso}`}
+            fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={amigos.length && !lejos ? colores.peligro : tinta} padding={letra * 0.35} />
         </Label>
       )}
     </>

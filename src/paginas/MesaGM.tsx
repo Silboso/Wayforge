@@ -25,6 +25,8 @@ import { PanelBestiario } from '../componentes/gm/Bestiario';
 import { EditorCriatura } from '../componentes/gm/EditorCriatura';
 import { HojaCriatura, MenuCriatura } from '../componentes/gm/HojaCriatura';
 import { BandaElegir, Cabecera, OrdenEscrito } from './MesaJugador';
+import { OrdenRevelado } from '../componentes/Preparacion';
+import { Companeros } from '../componentes/hud/Companeros';
 
 type Tema = ReturnType<typeof useTema>;
 type CajonGM = 'mesa' | 'bestiario' | 'personajes' | 'combate' | 'tiradas' | 'reglas';
@@ -158,6 +160,18 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       const t = estado.tokens[e.tokenId];
       if (!t || t.personajeId) return [];
       return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
+    }
+    // La preparación del combate: lo que usan los jugadores y cuándo están todos listos
+    if (e.tipo === 'preparativo') {
+      const t = estado.tokens[e.tokenId];
+      return [{ id: id(), tono: 'nota', titulo: `${t?.nombre ?? 'Alguien'} usó ${e.nombre}`, cuerpo: e.ultimo ? 'Va último: no tira iniciativa.' : 'Ya cuenta para la tirada de iniciativa.', dura: 5000 }];
+    }
+    if (e.tipo === 'todos-listos') {
+      const tokens = estado.preparacion?.tokens ?? [];
+      return [{
+        id: id(), tono: 'turno', titulo: 'Todos listos', cuerpo: 'Los jugadores eligieron su tirada y usaron lo que querían.',
+        botones: tokens.length ? [{ etiqueta: 'Tirar iniciativa', principal: true, hacer: () => sala.iniciarCombate(tokens) }] : [],
+      }];
     }
     // Una criatura cae por lo que hizo el motor (un Fireball, el fuego persistente)
     if (e.tipo === 'dano' && e.cayo) {
@@ -329,7 +343,11 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           className={actor ? (plegada ? 'bottom-[92px]' : 'bottom-[322px]') : 'bottom-4'} />}
 
         {/* Los paneles del GM, como pestañas de índice a la izquierda */}
-        <nav aria-label="Paneles del GM" className="absolute top-[100px] left-3 z-10 hidden flex-col gap-1.5 lg:flex">
+        <div className="hidden lg:block">
+          <Companeros estado={estado} presentes={sala.presentes} className="absolute top-[100px] left-3 z-20"
+            onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
+        </div>
+        <nav aria-label="Paneles del GM" className={`absolute top-[100px] z-10 hidden flex-col gap-1.5 lg:flex ${Object.keys(estado.personajes).length ? 'left-[84px]' : 'left-3'}`}>
           {CAJONES.map((c) => (
             <button key={c.clave} onClick={() => setCajon(cajon === c.clave ? null : c.clave)} aria-pressed={cajon === c.clave} title={`${c.nombre} (${c.tecla})`}
               className={`flex h-10 items-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition ${cajon === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie hover:border-acento hover:text-acento'}`}>
@@ -401,6 +419,25 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         lugar={`top-[120px] lg:top-auto lg:inset-x-auto lg:right-6 ${actor ? (plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[340px]') : 'lg:bottom-6'}`} />
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
         className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[72px] lg:w-[340px] ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
+
+      {/* Preparando un combate: cuántos están listos y tirar sin abrir el panel; al empezar, el orden de juego */}
+      <div className="pointer-events-none fixed inset-x-0 top-[60px] z-30 flex flex-col items-center gap-2 px-4">
+        {estado.preparacion && !estado.combate && (() => {
+          const pr = estado.preparacion;
+          const jugadores = pr.tokens.filter((id) => estado.tokens[id]?.personajeId);
+          const listos = jugadores.filter((id) => pr.listos.includes(id)).length;
+          return (
+            <div className="tarjeta-cae tarjeta pointer-events-auto flex items-center gap-3 px-4 py-2" role="status">
+              <SwordIcon size={18} weight="bold" className="text-peligro" aria-hidden />
+              <p className="font-titulo text-[15px]">Preparando combate · {listos} de {jugadores.length} listos</p>
+              <button className="boli h-9 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10" onClick={() => sala.iniciarCombate(pr.tokens)}>
+                Tirar iniciativa
+              </button>
+            </div>
+          );
+        })()}
+        <OrdenRevelado estado={estado} eventos={sala.eventos} className="mt-10" />
+      </div>
 
       {/* Un jugador está decidiendo si reacciona: el GM lo ve y puede seguir sin esperar */}
       {estado.esperas.map((e) => (

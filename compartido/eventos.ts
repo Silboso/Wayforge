@@ -12,7 +12,15 @@ export type Evento =
   | { tipo: 'area'; casillas: { x: number; y: number }[]; aspecto?: Aspecto; tipoDano?: string; autorTokenId?: string }
   | { tipo: 'dano'; tokenId: string; cantidad: number; critico: boolean; cayo: boolean }
   | { tipo: 'curacion'; tokenId: string; cantidad: number }
-  | { tipo: 'efecto'; tokenId: string; nombre: string; beneficioso: boolean; aspecto?: Aspecto; quitado: boolean };
+  | { tipo: 'efecto'; tokenId: string; nombre: string; beneficioso: boolean; aspecto?: Aspecto; quitado: boolean }
+  // Se viene un combate: quiénes entran (cada jugador elige su tirada y lo que usa antes de tirar)
+  | { tipo: 'preparacion'; tokens: string[] }
+  // Alguien usó algo "al tirar iniciativa" en la preparación
+  | { tipo: 'preparativo'; tokenId: string; nombre: string; ultimo: boolean }
+  // Todos los jugadores de la preparación avisaron que están listos
+  | { tipo: 'todos-listos' }
+  // Empezó el combate: el orden en que se juega, para mostrarlo a todos
+  | { tipo: 'combate'; orden: { tokenId: string; iniciativa: number }[] };
 
 export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: EstadoSala): Evento[] {
   switch (accion.tipo) {
@@ -29,7 +37,27 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
       if (!antes || !fin) return [];
       return [{ tipo: 'movimiento', tokenId: accion.id, desde: { x: antes.x, y: antes.y }, hasta: fin, camino: accion.camino }];
     }
-    case 'iniciar-combate':
+    case 'iniciar-combate': {
+      const c = posterior.combate;
+      const t = tokenEnTurno(posterior);
+      if (!c || !t) return [];
+      return [
+        { tipo: 'combate', orden: c.orden.map((x) => ({ tokenId: x.tokenId, iniciativa: x.iniciativa })) },
+        { tipo: 'turno', tokenId: t.id, ronda: c.ronda },
+      ];
+    }
+    case 'preparar-combate':
+      return posterior.preparacion ? [{ tipo: 'preparacion', tokens: posterior.preparacion.tokens }] : [];
+    case 'marcar-listo': {
+      const todos = (e: EstadoSala) => {
+        const pr = e.preparacion;
+        const jugadores = pr?.tokens.filter((id) => e.tokens[id]?.personajeId) ?? [];
+        return jugadores.length > 0 && jugadores.every((id) => pr!.listos.includes(id));
+      };
+      return todos(posterior) && !todos(anterior) ? [{ tipo: 'todos-listos' }] : [];
+    }
+    case 'usar-preparacion':
+      return [{ tipo: 'preparativo', tokenId: accion.tokenId, nombre: accion.nombre, ultimo: !!accion.ultimo }];
     case 'avanzar-turno': {
       const t = tokenEnTurno(posterior);
       return t && posterior.combate ? [{ tipo: 'turno', tokenId: t.id, ronda: posterior.combate.ronda }] : [];

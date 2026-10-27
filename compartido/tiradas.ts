@@ -1,7 +1,7 @@
-import { bonoDeDano, calcular, HABILIDADES, leerDados, leerExpresion, SALVACIONES, signo, type Personaje } from '../reglas/pf2e';
+import { bonoDeDano, calcular, HABILIDADES, leerDados, leerExpresion, SALVACIONES, signo, type ClaveHabilidad, type Personaje } from '../reglas/pf2e';
 import { todasLasAptitudes } from '../reglas/aptitudes';
 import { penalizaciones, type Condicion, type Contexto } from '../reglas/condiciones';
-import type { EfectoActivo } from '../reglas/efectos';
+import { apilar, candidatosDe, type EfectoActivo } from '../reglas/efectos';
 import { penalizacionesAtaque } from '../reglas/criaturas';
 import type { QueTirar, Token } from './sala';
 
@@ -127,6 +127,45 @@ export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'p
     default:
       return null;
   }
+}
+
+// Con qué se tira la iniciativa: Perception casi siempre; Stealth si venía escondido (Avoid Notice),
+// u otra skill si el GM lo permite (Deception para engañar, Performance para un número de escenario)
+export type ClaveIniciativa = 'percepcion' | ClaveHabilidad;
+
+export const esClaveIniciativa = (v: unknown): v is ClaveIniciativa =>
+  v === 'percepcion' || HABILIDADES.some((h) => h.clave === v);
+
+export const nombreIniciativa = (clave: ClaveIniciativa) =>
+  clave === 'percepcion' ? 'Perception' : HABILIDADES.find((h) => h.clave === clave)?.nombre ?? clave;
+
+// El modificador de iniciativa de un token con la tirada elegida, más lo que den sus efectos (Oracular Warning).
+// Una criatura sin esa skill tira Perception.
+export function iniciativaDe(token: Pick<Token, 'nombre' | 'condiciones' | 'percepcion' | 'criatura' | 'efectos'>, p: Personaje | undefined, clave: ClaveIniciativa): { modificador: number; etiqueta: string; bono: number } {
+  const efectos = token.efectos ?? [];
+  const bono = apilar(candidatosDe(efectos, ['iniciativa'])).reduce((s, x) => s + x.valor, 0);
+  let base: number;
+  let usada = clave;
+  if (p) {
+    const f = calcular(p, token.condiciones ?? [], efectos);
+    base = clave === 'percepcion' ? f.percepcion.total : f.habilidades[clave].total;
+  } else {
+    const percepcion = queTiraCriatura(token, { tipo: 'chequeo-criatura', tokenId: '', clave: 'percepcion' })?.modificador ?? token.percepcion ?? 0;
+    const nombre = nombreIniciativa(clave).toLowerCase();
+    const skill = clave === 'percepcion' ? undefined : token.criatura?.habilidades.find((h) => h.nombre.toLowerCase() === nombre);
+    // Lo que quitan sus condiciones a Perception vale igual para la skill
+    base = skill ? skill.bono + (percepcion - (token.percepcion ?? 0)) : percepcion;
+    if (!skill) usada = 'percepcion';
+  }
+  return { modificador: base + bono, etiqueta: `Iniciativa (${nombreIniciativa(usada)})`, bono };
+}
+
+// Con qué puede tirar iniciativa y cuánto suma cada opción. Una criatura, Perception y las skills que tenga.
+export function opcionesIniciativa(token: Pick<Token, 'nombre' | 'condiciones' | 'percepcion' | 'criatura' | 'efectos'>, p: Personaje | undefined): { clave: ClaveIniciativa; nombre: string; modificador: number }[] {
+  const claves: ClaveIniciativa[] = p
+    ? ['percepcion', ...HABILIDADES.map((h) => h.clave)]
+    : ['percepcion', ...HABILIDADES.filter((h) => token.criatura?.habilidades.some((x) => x.nombre.toLowerCase() === h.nombre.toLowerCase())).map((h) => h.clave)];
+  return claves.map((clave) => ({ clave, nombre: nombreIniciativa(clave), modificador: iniciativaDe(token, p, clave).modificador }));
 }
 
 export function textoTirada(t: { dados: number[]; modificador: number; total: number; etiqueta?: string }): string {

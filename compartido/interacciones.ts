@@ -7,7 +7,8 @@ import type { Aptitud } from '../reglas/aptitudes';
 import { danoAjustado } from '../reglas/criaturas';
 import { ASPECTO_POR_DANO, crearEfecto, type Aspecto, type EfectoActivo } from '../reglas/efectos';
 import { casillasDeArea, distanciaAEsquina, tocados } from '../reglas/areas';
-import { claveDe, nombreSalvacion, resultadoPara, type Interaccion, type Salvacion } from '../reglas/interacciones';
+import { claveDe, nombreSalvacion, resultadoPara, temporalesDe, type Interaccion, type Salvacion } from '../reglas/interacciones';
+import { distanciaEntre } from '../reglas/movimiento';
 import type { Casilla } from '../reglas/movimiento';
 import { queTiraCriatura } from './tiradas';
 import { caDeToken, ladoDe, motivoAlcance, type Accion, type EstadoSala, type Tirada, type Token } from './sala';
@@ -61,6 +62,7 @@ export function objetivosDe(estado: EstadoSala, autor: Token, a: Aptitud, i: Int
   if (o.aliados) tokens = tokens.filter(aliado);
   // Una emanación que daña elige a los enemigos; las demás áreas alcanzan a todos menos a quien la lanza desde fuera
   else if (area.forma === 'emanacion') tokens = tokens.filter((t) => !aliado(t));
+  if (o.soloOtros) tokens = tokens.filter((t) => t.id !== autor.id);
   return { tokens, casillas };
 }
 
@@ -182,6 +184,11 @@ export function resolverUso(estado: EstadoSala, u: Uso, azar: Azar): Accion[] | 
       curado = curacion.total;
       despues.push({ tipo: 'curar', tokenId: t.id, cantidad: curado });
     }
+    const temporales = temporalesDe(i.temporales, u.personaje.nivel);
+    if (temporales > 0 && t.personajeId) {
+      despues.push({ tipo: 'dar-temporales', tokenId: t.id, cantidad: temporales });
+      nota = [nota, `+${temporales} PG temporales`].filter(Boolean).join(' · ');
+    }
     for (const c of r.condiciones ?? []) {
       const actual = t.condiciones?.find((x) => x.clave === c.clave)?.valor ?? 0;
       if (c.valor > actual) despues.push({ tipo: 'poner-condicion', tokenId: t.id, clave: c.clave, valor: c.valor });
@@ -208,6 +215,32 @@ export function resolverUso(estado: EstadoSala, u: Uso, azar: Azar): Accion[] | 
     salen.push(...despues);
   }
   return salen;
+}
+
+// Lo que se ve sobre cada token mientras se apunta: si sirve como objetivo y, si sirve, qué se tira contra él.
+// No dice números de las criaturas (el jugador no ve sus CD): "contra su Will · 15 ft".
+export interface Pista { valido: boolean; texto: string }
+
+export function pistaObjetivo(estado: EstadoSala, autor: Token, a: Aptitud | null, i: Interaccion | null, t: Token, distancia: number | undefined): Pista {
+  const o = i?.objetivos;
+  const propio = t.id === autor.id;
+  if (o?.tipo === 'yo') return propio ? { valido: true, texto: 'sobre ti' } : { valido: false, texto: 'solo sobre ti' };
+  if (o && 'aliados' in o && o.aliados && bando(t) !== bando(autor)) return { valido: false, texto: 'no es tu aliado' };
+  if (propio && !(o && 'aliados' in o && o.aliados)) return { valido: false, texto: 'eres tú' };
+  const pies = propio ? 0 : distanciaEntre(autor, ladoDe(autor), t, ladoDe(t));
+  if (distancia !== undefined && pies > distancia) return { valido: false, texto: `a ${pies} ft · llega a ${distancia}` };
+  if (a && i) {
+    const inmune = motivoInmune(a, i, autor, t);
+    if (inmune) return { valido: false, texto: 'inmune por ahora' };
+  }
+  const m = i?.modo;
+  const que = !m ? ''
+    : m.tipo === 'ataque' ? 'contra su CA'
+    : m.tipo === 'chequeo' ? `contra su ${m.contra === 'percepcion' ? 'Perception' : nombreSalvacion(m.contra)}`
+    : m.tipo === 'salvacion' ? `salva con ${nombreSalvacion(m.salvacion)}`
+    : i?.curacion ? 'lo curas' : i?.efecto ? i.efecto.nombre : i?.dano ? 'daño sin tirar' : '';
+  const lejos = pies > 0 ? `${pies} ft` : '';
+  return { valido: true, texto: [que, lejos].filter(Boolean).join(' · ') || 'sirve' };
 }
 
 // "demoralize:<token de quien asusta>": la marca que deja la inmunidad
