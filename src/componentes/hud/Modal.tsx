@@ -18,10 +18,22 @@ export function Modal({ titulo, subtitulo, onCerrar, children, ancho = 'max-w-lg
   cerrar.current = onCerrar;
   useEffect(() => {
     const alPulsar = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Con una ventana encima de otra, Esc cierra solo la de arriba
+      // Con una ventana encima de otra, solo cuenta la de arriba
       const abiertas = document.querySelectorAll('[aria-modal]');
       if (abiertas[abiertas.length - 1] !== caja.current) return;
+      // Tab no se escapa de la ventana: da la vuelta entre lo que se puede tocar
+      if (e.key === 'Tab' && caja.current) {
+        const tocables = [...caja.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+          .filter((x) => x.offsetParent !== null);
+        const primero = tocables[0];
+        const ultimo = tocables[tocables.length - 1];
+        if (!primero || !ultimo) return;
+        const dentro = caja.current.contains(document.activeElement);
+        if (e.shiftKey && (document.activeElement === primero || !dentro)) { e.preventDefault(); ultimo.focus(); }
+        else if (!e.shiftKey && (document.activeElement === ultimo || !dentro)) { e.preventDefault(); primero.focus(); }
+        return;
+      }
+      if (e.key !== 'Escape') return;
       e.stopPropagation();
       cerrar.current();
     };

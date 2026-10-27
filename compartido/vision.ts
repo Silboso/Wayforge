@@ -57,6 +57,73 @@ export function hayLineaDeVista(muros: Muro[], p: Punto, q: Punto): boolean {
   return !muros.some((m) => frenaVista(m) && cortan(p, q, m.a, m.b));
 }
 
+// ---------- Índice de muros (para mapas grandes) ----------
+// Los muros que frenan la vista, repartidos en cubetas de 4×4 casillas: un rayo solo prueba los muros de las cubetas
+// que cruza. Se arma una vez por cada lista de muros (abrir una puerta hace una lista nueva).
+const CUBETA = 4;
+interface IndiceMuros { cubetas: Map<number, Muro[]> }
+const indices = new WeakMap<Muro[], IndiceMuros>();
+const claveCubeta = (cx: number, cy: number) => (cx + 1024) * 4096 + (cy + 1024);
+
+function indiceDeVista(muros: Muro[]): IndiceMuros {
+  let indice = indices.get(muros);
+  if (indice) return indice;
+  const cubetas = new Map<number, Muro[]>();
+  const E = 0.001;
+  for (const m of muros) {
+    if (!frenaVista(m)) continue;
+    const x0 = Math.floor((Math.min(m.a.x, m.b.x) - E) / CUBETA);
+    const x1 = Math.floor((Math.max(m.a.x, m.b.x) + E) / CUBETA);
+    const y0 = Math.floor((Math.min(m.a.y, m.b.y) - E) / CUBETA);
+    const y1 = Math.floor((Math.max(m.a.y, m.b.y) + E) / CUBETA);
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+      const k = claveCubeta(cx, cy);
+      const lista = cubetas.get(k);
+      if (lista) lista.push(m); else cubetas.set(k, [m]);
+    }
+  }
+  indice = { cubetas };
+  indices.set(muros, indice);
+  return indice;
+}
+
+// ¿Llega la vista de p a q? Recorre las cubetas del segmento (Amanatides–Woo) y prueba solo esos muros
+function vistaLibre(indice: IndiceMuros, p: Punto, q: Punto): boolean {
+  if (indice.cubetas.size === 0) return true;
+  let cx = Math.floor(p.x / CUBETA);
+  let cy = Math.floor(p.y / CUBETA);
+  const fx = Math.floor(q.x / CUBETA);
+  const fy = Math.floor(q.y / CUBETA);
+  const dx = q.x - p.x;
+  const dy = q.y - p.y;
+  const pasoX = dx > 0 ? 1 : -1;
+  const pasoY = dy > 0 ? 1 : -1;
+  const deltaX = dx !== 0 ? Math.abs(CUBETA / dx) : Infinity;
+  const deltaY = dy !== 0 ? Math.abs(CUBETA / dy) : Infinity;
+  let tX = dx !== 0 ? ((dx > 0 ? (cx + 1) * CUBETA - p.x : p.x - cx * CUBETA) / Math.abs(dx)) : Infinity;
+  let tY = dy !== 0 ? ((dy > 0 ? (cy + 1) * CUBETA - p.y : p.y - cy * CUBETA) / Math.abs(dy)) : Infinity;
+  const vistos = new Set<Muro>();
+  for (let n = 0; n < 4096; n++) {
+    const lista = indice.cubetas.get(claveCubeta(cx, cy));
+    if (lista) {
+      for (const m of lista) {
+        if (vistos.has(m)) continue;
+        vistos.add(m);
+        if (cortan(p, q, m.a, m.b)) return false;
+      }
+    }
+    if (cx === fx && cy === fy) break;
+    if (tX < tY) { cx += pasoX; tX += deltaX; } else { cy += pasoY; tY += deltaY; }
+    if (tX > 1 + 1e-9 && tY > 1 + 1e-9 && !(cx === fx && cy === fy)) {
+      // Por redondeo se pasó del final: revisa la última cubeta y termina
+      const ultima = indice.cubetas.get(claveCubeta(fx, fy));
+      if (ultima) for (const m of ultima) if (!vistos.has(m) && cortan(p, q, m.a, m.b)) return false;
+      break;
+    }
+  }
+  return true;
+}
+
 const casillasDe = (t: Token, lado: number) => {
   const lista: Casilla[] = [];
   for (let dx = 0; dx < lado; dx++) for (let dy = 0; dy < lado; dy++) lista.push({ x: t.x + dx, y: t.y + dy });
@@ -106,7 +173,7 @@ function pies(desde: { x: number; y: number }, lado: number, c: Casilla): number
 export function iluminacion(estado: EstadoSala): (k: string) => NivelLuz {
   const base = NIVEL[estado.mapa.luz ?? 'brillante'];
   if (base === 2) return () => 2;
-  const muros = (estado.mapa.muros ?? []).filter(frenaVista);
+  const indice = indiceDeVista(estado.mapa.muros ?? SIN_MUROS);
   const fuentes = [
     ...(estado.mapa.luces ?? []).map((l) => ({ ...l, lado: 1, centro: { x: l.x + 0.5, y: l.y + 0.5 } })),
     ...Object.values(estado.tokens).filter((t) => t.luz && (t.luz.brillante + t.luz.tenue) > 0)
@@ -123,7 +190,7 @@ export function iluminacion(estado: EstadoSala): (k: string) => NivelLuz {
         const nivel: NivelLuz = d <= f.brillante ? 2 : 1;
         const k = `${x},${y}`;
         if ((niveles.get(k) ?? 0) >= nivel) continue;
-        if (puntosDe(x, y).some((p) => hayLineaDeVista(muros, f.centro, p))) niveles.set(k, nivel);
+        if (puntosDe(x, y).some((p) => vistaLibre(indice, f.centro, p))) niveles.set(k, nivel);
       }
     }
   }
@@ -141,9 +208,26 @@ export function sentidoDe(estado: EstadoSala, t: Token): Sentido {
 
 // Lo que ve el grupo junto (o un solo personaje, con `soloDe`). `penumbra`: lo que se ve pero nadie ve con
 // claridad (luz tenue sin low-light, o oscuridad vista con darkvision): para dibujarlo más apagado
+// Lo último calculado (en cada acción la sala lo pide varias veces con lo mismo: explorar y repartir)
+const recientes: { firma: string; muros: Muro[]; luces: unknown; resultado: { visibles: Set<string>; penumbra: Set<string> } }[] = [];
+const SIN_MUROS: Muro[] = [];
+
 export function percepcionGrupo(estado: EstadoSala, soloDe?: string): { visibles: Set<string>; penumbra: Set<string> } {
+  const muros = estado.mapa.muros ?? SIN_MUROS;
+  // Lo que cambia lo que se ve: los ojos (dónde, tamaño, sentidos), las luces que llevan los tokens y el lugar
+  const firma = JSON.stringify([soloDe ?? '', estado.mapa.columnas, estado.mapa.filas, estado.mapa.luz ?? '',
+    Object.values(estado.tokens).filter((t) => t.personajeId || t.luz).map((t) => [t.id, t.x, t.y, t.tamano, t.luz ?? 0, t.personajeId ? sentidoDe(estado, t) : 0])]);
+  const ya = recientes.find((r) => r.firma === firma && r.muros === muros && r.luces === estado.mapa.luces);
+  if (ya) return ya.resultado;
+  const resultado = calcularPercepcion(estado, soloDe);
+  recientes.unshift({ firma, muros, luces: estado.mapa.luces, resultado });
+  recientes.length = Math.min(recientes.length, 8);
+  return resultado;
+}
+
+function calcularPercepcion(estado: EstadoSala, soloDe?: string): { visibles: Set<string>; penumbra: Set<string> } {
   const { columnas, filas } = estado.mapa;
-  const muros = (estado.mapa.muros ?? []).filter(frenaVista);
+  const indice = indiceDeVista(estado.mapa.muros ?? SIN_MUROS);
   const luz = iluminacion(estado);
   const ojos = Object.values(estado.tokens).filter((t) => t.personajeId && (!soloDe || t.personajeId === soloDe)).map((t) => ({ ...centroDe(t), propias: casillasDe(t, ladoDe(t)), sentido: sentidoDe(estado, t) }));
   const visibles = new Set<string>();
@@ -156,7 +240,7 @@ export function percepcionGrupo(estado: EstadoSala, soloDe?: string): { visibles
       let claro = false;
       for (const o of ojos) {
         const propia = o.propias.some((c) => c.x === x && c.y === y);
-        if (!propia && !puntosDe(x, y).some((p) => hayLineaDeVista(muros, o, p))) continue;
+        if (!propia && !puntosDe(x, y).some((p) => vistaLibre(indice, o, p))) continue;
         // A oscuras sin darkvision no se ve (salvo la casilla propia, que se conoce)
         if (nivel === 0 && o.sentido !== 'darkvision' && !propia) continue;
         ve = true;

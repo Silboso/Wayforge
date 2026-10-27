@@ -240,8 +240,14 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    para volver a abrirlas; el GM le pone nombre a la mesa y la **exporta** a un archivo con escenas, personajes,
    handouts e imágenes adentro; **importarla** desde el inicio abre una mesa nueva con un código de GM nuevo y los
    personajes siguen entrando con sus códigos de siempre).
-2. Publicar en Cloudflare (`npm run deploy`) con dominio propio; límites de tamaño de imágenes.
-3. Rendimiento con mapas grandes y 20+ tokens; accesibilidad (teclado, lector de pantalla, contraste).
+2. Publicado en Cloudflare (`npm run deploy`, https://wayforge.convoca.workers.dev). **Imágenes:** el navegador
+   las achica antes de subirlas (retratos a 512 px, handouts a 2048, mapas a 5000, en WebP) y la sala no acepta más
+   de 15 MB. *(Falta: el dominio propio, que hay que elegir y comprar.)*
+3. ~~Rendimiento y accesibilidad~~ (hecho: la vista se calcula con un índice de muros por zonas y se recuerda
+   dentro de cada acción: un mapa de 120×80 con 360 muros y 35 tokens pasó de 360 ms a unos 15 ms por acción. Con
+   el teclado, las flechas mueven un cursor desde tu token (con la distancia a la vista) y Enter te lleva; las
+   ventanas retienen el foco; los lectores de pantalla tienen el tablero en palabras (cada token y a cuántos pies
+   está); el contraste del texto pasa AA en los dos temas).
 4. Tests de punta a punta de una ronda completa (los guiones de captura convertidos en pruebas).
 
 ## Decisiones de arquitectura que guían todo

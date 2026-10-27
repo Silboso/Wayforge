@@ -291,7 +291,7 @@ function EditorMapa({ salaId, estado, enviar }: {
     setSubiendo(true);
     setError('');
     try {
-      editar({ imagen: await subirImagen(salaId, archivo) });
+      editar({ imagen: await subirImagen(salaId, archivo, 'mapa') });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo subir la imagen');
     } finally {

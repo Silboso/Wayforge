@@ -265,6 +265,38 @@ export function Tablero({
     });
   };
 
+  // Con el teclado: las flechas mueven un cursor desde tu token (o el elegido), Enter lo lleva ahí, Esc lo quita.
+  // La regla muestra la distancia mientras tanto
+  const tokenTeclado = (quien.rol === 'jugador' ? Object.values(estado.tokens).find((t) => t.personajeId === quien.personajeId) : undefined)
+    ?? (seleccionado ? estado.tokens[seleccionado] : undefined);
+  const [cursor, setCursor] = useState<Casilla | null>(null);
+  useEffect(() => setCursor(null), [tokenTeclado?.id, tokenTeclado?.x, tokenTeclado?.y]);
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.ctrlKey || e.metaKey || e.altKey || !tokenTeclado) return;
+      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+      if (document.querySelector('[aria-modal]')) return;
+      const pasos: Record<string, [number, number]> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+      const paso = pasos[e.key];
+      if (paso) {
+        e.preventDefault();
+        setCursor((c) => {
+          const base = c ?? { x: tokenTeclado.x, y: tokenTeclado.y };
+          return { x: Math.max(0, Math.min(mapa.columnas - 1, base.x + paso[0])), y: Math.max(0, Math.min(mapa.filas - 1, base.y + paso[1])) };
+        });
+      } else if (e.key === 'Enter' && cursor) {
+        e.preventDefault();
+        if (puedeMoverToken(quien, tokenTeclado)) onMover(tokenTeclado.id, cursor.x, cursor.y);
+        setCursor(null);
+      } else if (e.key === 'Escape' && cursor) {
+        setCursor(null);
+      }
+    };
+    addEventListener('keydown', alPulsar);
+    return () => removeEventListener('keydown', alPulsar);
+  });
+
   // La regla para medir: con el botón queda puesta (cada arrastre mide); con Ctrl + arrastrar, mide una vez.
   // Lo medido queda a la vista hasta el próximo toque o Esc.
   const [modoRegla, setModoRegla] = useState(false);
@@ -758,6 +790,9 @@ export function Tablero({
           color={tintaDePresencia(p)} />
       ))}
       {regla && <DibujoRegla a={regla.a} b={regla.b} vista={vista} celda={celda} origen={origen} />}
+      {cursor && tokenTeclado && <DibujoRegla a={{ x: tokenTeclado.x, y: tokenTeclado.y }} b={cursor} vista={vista} celda={celda} origen={origen} nombre="Enter para ir" />}
+      {/* Para lectores de pantalla: quién está en el tablero y a qué distancia de tu token */}
+      <ResumenTablero estado={estado} desde={tokenTeclado ?? null} cursor={cursor} />
       {tokenMenu && menu && (() => {
         const p = enPantalla(tokenMenu);
         const izquierda = Math.round(Math.min(Math.max(8, p.x - 150), medida.ancho - 308));
@@ -1323,4 +1358,20 @@ function luminancia(hex: string): number {
   if (!m) return 1;
   const [r, g, b] = [m[1], m[2], m[3]].map((x) => parseInt(x!, 16) / 255);
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+// El tablero en palabras (solo lo leen los lectores de pantalla): cada token a la vista con su distancia, y el cursor
+function ResumenTablero({ estado, desde, cursor }: { estado: EstadoSala; desde: Token | null; cursor: Casilla | null }) {
+  const tokens = Object.values(estado.tokens);
+  const distancia = (t: Token) => (desde && t.id !== desde.id ? ` a ${distanciaEntre({ x: desde.x, y: desde.y }, ladoDe(desde), { x: t.x, y: t.y }, ladoDe(t))} ft` : '');
+  return (
+    <div className="sr-only">
+      <h2>Tablero</h2>
+      <p>Con las flechas mueves un cursor desde {desde ? desde.nombre : 'tu token'}; Enter lo lleva ahí y Esc lo quita.</p>
+      <ul>
+        {tokens.map((t) => <li key={t.id}>{t.nombre}{t.personajeId ? '' : t.tipo === 'enemigo' ? ', enemigo' : ''}{distancia(t)}</li>)}
+      </ul>
+      <p aria-live="polite">{cursor && desde ? `Cursor a ${distanciaEntre({ x: desde.x, y: desde.y }, 1, cursor, 1)} pies de ${desde.nombre}` : ''}</p>
+    </div>
+  );
 }

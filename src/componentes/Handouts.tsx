@@ -87,7 +87,7 @@ function EditorHandout({ salaId, inicial, onGuardar, onCerrar }: {
     if (!archivo) return;
     setSubiendo(true);
     setAviso('');
-    try { setImagen(await subirImagen(salaId, archivo)); } catch (e) { setAviso(e instanceof Error ? e.message : 'No se pudo subir la imagen'); } finally { setSubiendo(false); }
+    try { setImagen(await subirImagen(salaId, archivo, 'handout')); } catch (e) { setAviso(e instanceof Error ? e.message : 'No se pudo subir la imagen'); } finally { setSubiendo(false); }
   }
   return (
     <Modal titulo={inicial.titulo ? 'Editar handout' : 'Nuevo handout'} subtitulo="Nadie lo ve hasta que lo muestres." onCerrar={onCerrar} ancho="max-w-lg">
