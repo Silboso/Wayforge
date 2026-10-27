@@ -5,6 +5,8 @@ import { MAX_HEROICOS, NIVELES_CURAR } from '../../reglas/muerte';
 import { ACTIVIDADES, esActividad, type Actividad } from '../../reglas/exploracion';
 import { signo, type Personaje } from '../../reglas/pf2e';
 import { Modal } from './hud/Modal';
+import type { Aptitud } from '../../reglas/aptitudes';
+import { interaccionDe, potenciar, rangoDeLanzamiento } from '../../reglas/interacciones';
 import { claseBotonSecundario, claseEntrada, Seccion } from './ui';
 
 // Los Hero Points en la hoja: medallitas; si estás muriendo, el botón para gastarlos todos y no morir
@@ -123,5 +125,39 @@ export function ElegirActividad({ actual, onCambiar }: { actual?: string; onCamb
         {(Object.keys(ACTIVIDADES) as Actividad[]).map((a) => <option key={a} value={a}>{ACTIVIDADES[a].verbo} ({ACTIVIDADES[a].nombre})</option>)}
       </select>
     </label>
+  );
+}
+
+// Con qué espacio lanzar un conjuro: cada rango libre, cuántos quedan y lo que hace ahí (si sube con el rango)
+export function ElegirRango({ a, nivel, rangos, espacios, onElegir, onCerrar }: {
+  a: Aptitud;
+  nivel: number;
+  rangos: number[];
+  espacios: { rango: number; max: number; usados: number }[];
+  onElegir: (rango: number) => void;
+  onCerrar: () => void;
+}) {
+  const inter = interaccionDe(a);
+  return (
+    <Modal titulo={`¿En qué rango lanzas ${a.nombre}?`} subtitulo="Un espacio más alto lo potencia, si el conjuro sube con el rango." onCerrar={onCerrar} ancho="max-w-sm">
+      <ul className="flex flex-col gap-2">
+        {rangos.map((r) => {
+          const e = espacios.find((x) => x.rango === r)!;
+          const potenciada = inter ? potenciar(inter, a, rangoDeLanzamiento(a, nivel, r)) : null;
+          const efecto = potenciada?.dano ? `${potenciada.dano.formula}${potenciada.dano.tipo ? ` ${potenciada.dano.tipo}` : ''}` : potenciada?.curacion ? `cura ${potenciada.curacion}` : '';
+          return (
+            <li key={r}>
+              <button onClick={() => onElegir(r)} className="flex w-full items-center gap-3 rounded-lg border-2 border-borde px-3 py-2 text-left transition hover:border-acento">
+                <b className="font-titulo text-[22px] text-acento">{r}</b>
+                <span className="flex-1">
+                  <span className="block font-titulo text-[15px] font-semibold">Rango {r}{efecto ? ` · ${efecto}` : ''}</span>
+                  <span className="block text-[12.5px] text-texto-suave">Te quedan {e.max - e.usados} de {e.max}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Modal>
   );
 }

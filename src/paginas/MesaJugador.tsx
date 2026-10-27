@@ -25,7 +25,7 @@ import { BarraEstados } from '../componentes/hud/BarraEstados';
 import { Telon, TituloEscena } from '../componentes/Escenas';
 import { PanelChat } from '../componentes/Chat';
 import { HandoutRecibido, ListaHandouts } from '../componentes/Handouts';
-import { ElegirActividad, ElegirCurar, PuntosHeroicos } from '../componentes/Descanso';
+import { ElegirActividad, ElegirCurar, ElegirRango, PuntosHeroicos } from '../componentes/Descanso';
 import { deMascara, visionActiva } from '../../compartido/vision';
 import { ElegirLuz } from '../componentes/Luz';
 import { MenuObjetivo } from '../componentes/hud/MenuObjetivo';
@@ -119,6 +119,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const [subiendoNivel, setSubiendoNivel] = useState(false);
   // Treat Wounds esperando que se elija la dificultad (a quién)
   const [curando, setCurando] = useState<string | null>(null);
+  // Un conjuro esperando que se elija el rango del espacio (cuando hay libres de más de un rango)
+  const [lanzando, setLanzando] = useState<{ a: Aptitud; objetivo?: string; etiqueta?: string; mas?: Parameters<typeof sala.usar>[3] } | null>(null);
 
   useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
 
@@ -163,6 +165,14 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     setMenuAbierto(false);
     setPestana('tablero');
   };
+  // Lanzar de verdad: si es un conjuro con espacio y hay libres de varios rangos, primero se elige en cuál
+  const rangosLibres = (a: Aptitud) => a.recuperacion.tipo === 'espacio'
+    ? [...new Set(recursosDe(p).espacios.filter((e) => e.rango >= (a.recuperacion as { rango: number }).rango && e.usados < e.max).map((e) => e.rango))].sort((x, y) => x - y)
+    : [];
+  const lanzar = (a: Aptitud, objetivo?: string, etiqueta?: string, mas?: Parameters<typeof sala.usar>[3]) => {
+    if (!mas?.rango && rangosLibres(a).length > 1) return setLanzando({ a, ...(objetivo ? { objetivo } : {}), ...(etiqueta ? { etiqueta } : {}), ...(mas ? { mas } : {}) });
+    sala.usar(a.id, objetivo, etiqueta, mas);
+  };
   const usarAptitud = (a: Aptitud, objetivoId?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }): boolean => {
     // Treat Wounds: a quién (al lado, o a ti) y con qué dificultad
     if (a.id === 'basica:treat-wounds' && !mas?.nivel) {
@@ -200,7 +210,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       if (directo || mas?.punto || mas?.objetivos) {
         // La tarjeta de "tirando…" solo si de verdad hay dados (Shield o Bless no tiran nada)
         const tira = inter.modo.tipo !== 'ninguna' || !!inter.dano || !!inter.curacion;
-        sala.usar(a.id, objetivoId, tira ? a.verbo || a.nombre : undefined, mas);
+        lanzar(a, objetivoId, tira ? a.verbo || a.nombre : undefined, mas);
         setElegida(null);
         setMenuAbierto(false);
         return true;
@@ -219,7 +229,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     if (a.tirada?.tipo === 'golpe' && p.golpes[0]) { ultimoGolpe.current = p.golpes[0].id; ultimoConjuro.current = null; }
     if (a.tirada?.tipo === 'ataque-conjuro') ultimoConjuro.current = a;
     const apunta = inter || (a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') ? objetivoId : undefined;
-    sala.usar(a.id, apunta, a.tirada ? a.verbo || a.nombre : undefined);
+    lanzar(a, apunta, a.tirada ? a.verbo || a.nombre : undefined);
     setElegida(null);
     setMenuAbierto(false);
     return true;
@@ -825,6 +835,11 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         </Modal>
       )}
       {ayuda && <AyudaTeclas onCerrar={() => setAyuda(false)} />}
+      {lanzando && (
+        <ElegirRango a={lanzando.a} nivel={p.nivel} rangos={rangosLibres(lanzando.a)} espacios={recursosDe(p).espacios}
+          onCerrar={() => setLanzando(null)}
+          onElegir={(rango) => { sala.usar(lanzando.a.id, lanzando.objetivo, lanzando.etiqueta, { ...lanzando.mas, rango }); setLanzando(null); }} />
+      )}
       {curando && miToken && (
         <ElegirCurar p={p} medicina={ficha.habilidades.medicine.total} inicial={curando}
           candidatos={Object.values(estado.tokens)

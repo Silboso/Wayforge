@@ -7,8 +7,8 @@ import {
 } from '../compartido/sala';
 import { iniciativaDe, queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
 import { modificadorDefensa, motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Azar } from '../compartido/interacciones';
-import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
-import { claveDe, interaccionDe, VAN_ULTIMO } from '../reglas/interacciones';
+import { disponibilidad, recursosDe, todasLasAptitudes } from '../reglas/aptitudes';
+import { claveDe, interaccionDe, potenciar, rangoDeLanzamiento, VAN_ULTIMO } from '../reglas/interacciones';
 import { momentoIniciativa } from '../reglas/disparadores';
 import { conDying, curarHeridas, NIVELES_CURAR, recuperacion } from '../reglas/muerte';
 import type { Condicion } from '../reglas/condiciones';
@@ -482,7 +482,7 @@ export class Sala extends DurableObject<Env> {
     }
 
     // Contra alguien: que lo vea y que no haya nada sólido en medio
-    const inter = interaccionDe(a);
+    let inter = interaccionDe(a);
     const contra = objetivo && objetivo.id !== token.id && (a.tirada || inter) ? visibilidad(this.estado, token, objetivo) : null;
     if (contra && (!contra.efecto || !contra.ve)) return this.negar(ws, !contra.efecto ? `Hay algo sólido entre tú y ${objetivo!.nombre}.` : `${objetivo!.nombre}: ${contra.razon}.`);
     // Hide pide sombra o algo detrás de qué cubrirse, si alguien te está viendo
@@ -495,6 +495,14 @@ export class Sala extends DurableObject<Env> {
     if (a.id === 'basica:hide' && observan.length && iluminacion(this.estado)(`${token.x},${token.y}`) === 2 && !conCobertura(this.estado, token)) {
       return this.negar(ws, 'Para esconderte necesitas sombra o algo detrás de qué cubrirte (una pared pegada a ti).');
     }
+
+    // Con qué espacio se lanza (si eligió uno más alto, que tenga libre); lo potenciado suma daño o curación
+    const espacio = a.recuperacion.tipo === 'espacio' && Number.isInteger(m.rango) && (m.rango as number) > a.recuperacion.rango && (m.rango as number) <= 10
+      ? m.rango as number : undefined;
+    if (espacio !== undefined && !recursosDe(p).espacios.some((e) => e.rango === espacio && e.usados < e.max)) {
+      return this.negar(ws, `No te quedan espacios de rango ${espacio}.`);
+    }
+    if (inter) inter = potenciar(inter, a, rangoDeLanzamiento(a, p.nivel, espacio));
 
     // Con interacción (salvaciones, áreas, efectos): a quiénes alcanza, y que no estén inmunes, antes de gastar nada
     let alcance: ReturnType<typeof objetivosDe> | null = null;
@@ -522,7 +530,7 @@ export class Sala extends DurableObject<Env> {
 
     const c = this.estado.combate;
     const miTurno = !!c && tokenEnTurno(this.estado)?.id === token.id;
-    if (a.recuperacion.tipo !== 'siempre') await this.guardarYRepartir({ tipo: 'usar-aptitud', personajeId: p.id, aptitudId: a.id });
+    if (a.recuperacion.tipo !== 'siempre') await this.guardarYRepartir({ tipo: 'usar-aptitud', personajeId: p.id, aptitudId: a.id, ...(espacio ? { rango: espacio } : {}) });
     if (a.costo === 'reaccion' && c) await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: token.id, usada: true });
     if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
     if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });

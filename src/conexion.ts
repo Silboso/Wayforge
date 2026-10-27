@@ -283,11 +283,11 @@ export function useSala(salaId: string) {
 
   // Usar una aptitud: la sala revisa todo y tira si corresponde
   // `mas`: varios objetivos, o el punto de un área (la esquina de una explosión, hacia dónde va un cono)
-  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }) => {
+  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number; rango?: number }) => {
     if (etiqueta) setPendiente({ etiqueta, desde: Date.now() });
     mandar({
       tipo: 'usar', aptitudId, ...(objetivo ? { objetivo } : {}), ...(mas?.objetivos ? { objetivos: mas.objetivos } : {}), ...(mas?.punto ? { punto: mas.punto } : {}),
-      ...(mas?.nivel ? { nivel: mas.nivel } : {}),
+      ...(mas?.nivel ? { nivel: mas.nivel } : {}), ...(mas?.rango ? { rango: mas.rango } : {}),
     });
   }, [mandar]);
 

@@ -357,3 +357,36 @@ export function esInteraccionValida(valor: unknown, esExpresion: (t: string) => 
     && (valor.inmunidad === undefined || entero(valor.inmunidad, 1, 1000))
     && (valor.temporales === undefined || valor.temporales === 'mitad-nivel' || valor.temporales === 'nivel' || entero(valor.temporales, 1, 999));
 }
+
+// ---------- Conjuros potenciados ----------
+
+// El rango real al usarla: el espacio elegido, o para trucos y foco la mitad del nivel (hacia arriba)
+export function rangoDeLanzamiento(a: Aptitud, nivel: number, espacio?: number): number {
+  if (a.recuperacion.tipo === 'espacio') return Math.max(a.recuperacion.rango, espacio ?? a.recuperacion.rango);
+  return Math.max(1, Math.ceil(nivel / 2));
+}
+
+// Suma `veces` veces `mas` ("2d6" o "3") a una fórmula ("6d6+2"): si el dado es el mismo, suma dados; si no, lo agrega
+export function sumarAFormula(formula: string, mas: string, veces: number): string {
+  if (veces <= 0) return formula;
+  const dado = /^(\d+)d(\d+)$/.exec(mas);
+  if (!dado) {
+    const m = /^(.*?)([+-]\d+)?$/.exec(formula)!;
+    const total = Number(m[2] ?? 0) + Number(mas) * veces;
+    return `${m[1]}${total ? (total > 0 ? `+${total}` : total) : ''}`;
+  }
+  const [cantidad, caras] = [Number(dado[1]) * veces, dado[2]];
+  const mismo = new RegExp(`(\\d+)d${caras}(?!\\d)`);
+  return mismo.test(formula) ? formula.replace(mismo, (_x, n) => `${Number(n) + cantidad}d${caras}`) : `${formula}+${cantidad}d${caras}`;
+}
+
+// La interacción con lo que sube por el rango (daño o curación)
+export function potenciar(i: Interaccion, a: Aptitud, rango: number): Interaccion {
+  const p = a.potenciado;
+  if (!p) return i;
+  const veces = Math.floor((rango - Math.max(1, p.base)) / p.cada);
+  if (veces <= 0) return i;
+  if (i.dano) return { ...i, dano: { ...i.dano, formula: sumarAFormula(i.dano.formula, p.mas, veces) } };
+  if (i.curacion) return { ...i, curacion: sumarAFormula(i.curacion, p.mas, veces) };
+  return i;
+}

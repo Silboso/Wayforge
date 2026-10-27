@@ -377,7 +377,8 @@ export type MensajeCliente =
   // Usar una aptitud: la sala revisa turno, acciones, usos y alcance, y hace todo junto.
   // `objetivos` para las de varios; `punto` es la esquina de una explosión o hacia dónde va un cono o una línea;
   // `nivel`: la dificultad elegida (Treat Wounds: 1 Trained … 4 Legendary)
-  | { tipo: 'usar'; aptitudId: string; objetivo?: string; objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }
+  // `rango`: con qué espacio se lanza un conjuro (si no, el más bajo que sirva)
+  | { tipo: 'usar'; aptitudId: string; objetivo?: string; objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number; rango?: number }
   // Gastar Hero Points: todos para dejar de morir, o uno para repetir una tirada propia
   | { tipo: 'heroico'; uso: 'recuperar' | 'repetir'; tiradaId?: string }
   // Respuesta a un ataque en pausa: la reacción elegida, o null para dejarlo pasar

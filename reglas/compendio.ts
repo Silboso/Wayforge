@@ -145,7 +145,14 @@ export function conjuroAAptitud(c: ConjuroCompendio): Aptitud {
     ...(formula ? { dano: formula } : {}),
     ...(c.distancia !== null ? { distancia: Math.min(1000, Math.max(5, c.distancia)) } : {}),
     ...(() => { const i = interaccionDeConjuro(c); return i ? { interaccion: i } : {}; })(),
+    ...(() => { const p = potenciadoDe(c); return p ? { potenciado: p } : {}; })(),
   };
+}
+
+// "Cada rango más: +2d6 al daño", "Cada 2 rangos más: +1d6 y 1d4 al daño" (lo arma el importador): lo primero que suma
+export function potenciadoDe(c: ConjuroCompendio): { base: number; cada: number; mas: string } | null {
+  const m = /^Cada (?:(\d+) rangos|rango) más: \+(\d{1,2}d\d{1,2}|\d{1,3})/.exec(c.potenciado);
+  return m ? { base: Math.max(1, c.rango), cada: Number(m[1] ?? 1), mas: m[2]! } : null;
 }
 
 const NUMEROS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10 };

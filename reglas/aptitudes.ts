@@ -61,6 +61,9 @@ export interface Aptitud {
     // Te pone una condición hasta el inicio de tu próximo turno (Raise a Shield)
     aplica?: ClaveCondicion;
   };
+  // Conjuros que suben con el rango ("Heightened (+1): +2d6"): desde qué rango, cada cuántos y cuánto suma.
+  // Los trucos y los de foco suben solos con el nivel (la mitad, redondeando hacia arriba)
+  potenciado?: { base: number; cada: number; mas: string };
   // Qué hace al alcanzar a alguien: salvaciones, grados, áreas, efectos (ver reglas/interacciones.ts).
   // Sin valor, el motor la busca en su catálogo por el nombre o la lee de su texto.
   interaccion?: Interaccion;
@@ -284,13 +287,16 @@ export function esAptitudValida(valor: unknown, esClaveHabilidad: (c: unknown) =
   const disparadoresValidos = a.disparadores === undefined
     || (Array.isArray(a.disparadores) && a.disparadores.length <= 9 && a.disparadores.every((m) => MOMENTOS_VALIDOS.includes(m)));
   const requiereValido = a.requiere === undefined || (typeof a.requiere === 'string' && a.requiere in CONDICIONES);
+  const pot = a.potenciado as Record<string, unknown> | undefined;
+  const potenciadoValido = pot === undefined || (typeof pot === 'object' && pot !== null && entero(pot.base, 0, 10) && entero(pot.cada, 1, 10)
+    && typeof pot.mas === 'string' && /^(\d{1,2}d\d{1,2}|\d{1,3})$/.test(pot.mas));
   const tiradaValida = tirada === undefined || (
     (tirada.tipo === 'skill' && esClaveHabilidad(tirada.clave))
     || tirada.tipo === 'percepcion' || tirada.tipo === 'ataque-conjuro' || tirada.tipo === 'golpe'
     || (tirada.tipo === 'expresion' && typeof tirada.expresion === 'string' && esExpresion(tirada.expresion)));
   return texto(a.id, 100) && texto(a.nombre, 60) && (a.nombre as string).trim().length > 0 && texto(a.verbo, 60)
     && CATEGORIAS.includes(a.categoria) && COSTOS.includes(a.costo) && recValida && tiradaValida
-    && efectoValido && disparadoresValidos && requiereValido
+    && efectoValido && disparadoresValidos && requiereValido && potenciadoValido
     && (a.interaccion === undefined || esInteraccionValida(a.interaccion, esExpresion))
     && (a.dano === undefined || (typeof a.dano === 'string' && esExpresion(a.dano)))
     && (a.distancia === undefined || entero(a.distancia, 5, 1000))
