@@ -5,6 +5,7 @@
 import type { Atributo, ClaveHabilidad, Personaje, Rango } from './pf2e';
 import { CONDICIONES, type ClaveCondicion } from './condiciones';
 import { MOMENTOS_VALIDOS, type Momento } from './disparadores';
+import { esInteraccionValida, type Interaccion } from './interacciones';
 
 // ◆, ◆◆, ◆◆◆, reacción, acción libre, o una actividad que lleva minutos (fuera de combate)
 export type Costo = 1 | 2 | 3 | 'reaccion' | 'libre' | 'larga';
@@ -59,6 +60,9 @@ export interface Aptitud {
     // Te pone una condición hasta el inicio de tu próximo turno (Raise a Shield)
     aplica?: ClaveCondicion;
   };
+  // Qué hace al alcanzar a alguien: salvaciones, grados, áreas, efectos (ver reglas/interacciones.ts).
+  // Sin valor, el motor la busca en su catálogo por el nombre o la lee de su texto.
+  interaccion?: Interaccion;
 }
 
 export interface Lanzador {
@@ -288,6 +292,7 @@ export function esAptitudValida(valor: unknown, esClaveHabilidad: (c: unknown) =
   return texto(a.id, 100) && texto(a.nombre, 60) && (a.nombre as string).trim().length > 0 && texto(a.verbo, 60)
     && CATEGORIAS.includes(a.categoria) && COSTOS.includes(a.costo) && recValida && tiradaValida
     && efectoValido && disparadoresValidos && requiereValido
+    && (a.interaccion === undefined || esInteraccionValida(a.interaccion, esExpresion))
     && (a.dano === undefined || (typeof a.dano === 'string' && esExpresion(a.dano)))
     && (a.distancia === undefined || entero(a.distancia, 5, 1000))
     && texto(a.descripcion, 2000) && Array.isArray(a.rasgos) && a.rasgos.length <= 12 && a.rasgos.every((r) => texto(r, 30));

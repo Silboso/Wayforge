@@ -4,6 +4,8 @@ import {
 } from '../../../reglas/aptitudes';
 import { calcular, HABILIDADES, signo, type FichaCalculada, type Golpe, type Personaje, type Valor } from '../../../reglas/pf2e';
 import type { Condicion } from '../../../reglas/condiciones';
+import { interaccionDe } from '../../../reglas/interacciones';
+import type { EfectoActivo } from '../../../reglas/efectos';
 
 // Una fila de la lista de acciones: un arma o una aptitud
 export type Fila =
@@ -61,8 +63,8 @@ function filaAptitud(p: Personaje, a: Aptitud, ficha: FichaCalculada): Fila {
 
 // Arma la hoja de acciones: primero "Tu turno" (armas y lo más común), luego cada grupo según cómo se recupera.
 // `ataquesHechos` decide qué penalización por ataque múltiple se muestra (null fuera de su turno: el 1.º).
-export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos: number | null): Seccion[] {
-  const ficha = calcular(p, condiciones);
+export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos: number | null, efectos: EfectoActivo[] = []): Seccion[] {
+  const ficha = calcular(p, condiciones, efectos);
   const r = recursosDe(p);
   const n = Math.min(ataquesHechos ?? 0, 2);
   const ordinal = ['', ' · 2.º ataque', ' · 3.º ataque'][n];
@@ -137,6 +139,14 @@ export function alcanceDe(p: Personaje, fila: Fila): { pies: number | null } | n
   if (fila.tipo === 'golpe') return { pies: fila.golpe.distancia ?? 5 };
   const a = fila.aptitud;
   const t = a.tirada;
+  // Con interacción: hasta dónde llega contra alguien, dónde puede estallar un área o lo que cubre una emanación
+  const i = interaccionDe(a);
+  if (i && a.costo !== 'larga') {
+    const o = i.objetivos;
+    if (o.tipo === 'yo') return null;
+    if (o.tipo === 'area') return { pies: o.area.forma === 'explosion' ? a.distancia ?? null : o.area.tamano };
+    return { pies: t?.tipo === 'golpe' ? p.golpes[0]?.distancia ?? 5 : a.distancia ?? 5 };
+  }
   if (!t || a.costo === 'larga') return null;
   if (t.tipo === 'golpe') return { pies: p.golpes[0]?.distancia ?? 5 };
   if (t.tipo === 'ataque-conjuro') return { pies: a.distancia ?? null };

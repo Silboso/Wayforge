@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { TAMANOS, type EstadoSala } from '../../compartido/sala';
 import type { Evento } from '../../compartido/eventos';
 import type { Grado } from '../../reglas/pf2e';
+import type { Aspecto } from '../../reglas/efectos';
 import { Salpicadura, semillaDe, Subrayado } from './dados/Tinta';
+import { IconoAspecto, tintaDe } from './aspectos';
 
 interface Efecto {
   id: number;
@@ -13,6 +15,21 @@ interface Efecto {
   dano?: number;
   // Nota a lápiz junto al número: el tipo de daño, "×2 crítico"
   nota?: string;
+  // El grado es de una salvación del objetivo (se lee al revés: un éxito es que resistió)
+  salvacion?: boolean;
+  curacion?: number;
+  // Llega justo después del sello de la tirada
+  despues?: boolean;
+  // Un efecto que alguien recibe o pierde
+  etiqueta?: { nombre: string; beneficioso: boolean; aspecto?: Aspecto; quitado: boolean };
+  // Quedó a 0 PG
+  cayo?: boolean;
+}
+
+interface Estallido {
+  id: number;
+  casillas: { x: number; y: number }[];
+  tinta: string;
 }
 
 const DURA_MS = 2600;
@@ -28,6 +45,7 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
   const [efectos, setEfectos] = useState<Efecto[]>([]);
   const [sello, setSello] = useState<{ id: number; nombre: string; ronda: number } | null>(null);
   const [rastros, setRastros] = useState<{ id: number; camino: { x: number; y: number }[]; tokenId: string }[]>([]);
+  const [estallidos, setEstallidos] = useState<Estallido[]>([]);
   const visto = useRef(eventos.at(-1)?.id ?? 0);
 
   useEffect(() => {
@@ -49,8 +67,37 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
         setTimeout(() => setRastros((prev) => prev.filter((r) => r.id !== id)), 2200);
         continue;
       }
+      // Un área: sus casillas se llenan con la tinta del elemento
+      if (evento.tipo === 'area') {
+        const estallido = { id, casillas: evento.casillas, tinta: tintaDe(evento.aspecto, evento.tipoDano) };
+        setEstallidos((prev) => [...prev, estallido]);
+        setTimeout(() => setEstallidos((prev) => prev.filter((r) => r.id !== id)), 2000);
+        continue;
+      }
+      if (evento.tipo === 'dano') {
+        creados.push({ id, hasta: evento.tokenId, dano: evento.cantidad, despues: true, cayo: evento.cayo, ...(evento.critico ? { nota: '×2 crítico' } : {}) });
+        continue;
+      }
+      if (evento.tipo === 'curacion') {
+        creados.push({ id, hasta: evento.tokenId, curacion: evento.cantidad, despues: true });
+        continue;
+      }
+      if (evento.tipo === 'efecto') {
+        creados.push({ id, hasta: evento.tokenId, etiqueta: { nombre: evento.nombre, beneficioso: evento.beneficioso, quitado: evento.quitado, ...(evento.aspecto ? { aspecto: evento.aspecto } : {}) } });
+        continue;
+      }
       if (evento.tipo !== 'tirada' || !evento.tirada.objetivo?.tokenId) continue;
       const t = evento.tirada;
+      // Lo que resolvió el motor: el sello del grado y nada más (el número llega con el daño aplicado)
+      if (t.resultado) {
+        if (t.objetivo!.grado) {
+          creados.push({
+            id, hasta: t.objetivo!.tokenId!, grado: t.objetivo!.grado, ...(t.objetivo!.salvacion ? { salvacion: true } : {}),
+            ...(t.autorTokenId && !t.objetivo!.salvacion ? { desde: t.autorTokenId } : {}),
+          });
+        }
+        continue;
+      }
       const tipo = /\(([^)]+)\)/.exec(t.etiqueta)?.[1];
       const nota = [t.etiqueta.startsWith('Daño crítico') ? '×2 crítico' : null, tipo].filter(Boolean).join(' · ');
       creados.push({
@@ -93,7 +140,13 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
     return { x: (ox + c.x * celda + lado / 2) * vista.escala + vista.x, y: (oy + c.y * celda + lado / 2) * vista.escala + vista.y };
   };
 
-  if (efectos.length === 0 && !sello && rastros.length === 0) return null;
+  const esquina = (c: { x: number; y: number }) => {
+    const ox = estado.mapa.desplazamientoX % celda;
+    const oy = estado.mapa.desplazamientoY % celda;
+    return { x: (ox + c.x * celda) * vista.escala + vista.x, y: (oy + c.y * celda) * vista.escala + vista.y };
+  };
+
+  if (efectos.length === 0 && !sello && rastros.length === 0 && estallidos.length === 0) return null;
   return (
     <>
     {sello && (
@@ -105,6 +158,45 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
       </div>
     )}
     <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full overflow-visible" aria-hidden>
+      {estallidos.map((s) => {
+        const lado = celda * vista.escala;
+        // Centro del área, para que el estallido crezca desde ahí y las salpicaduras salgan hacia afuera
+        const cx = s.casillas.reduce((n, c) => n + c.x + 0.5, 0) / Math.max(1, s.casillas.length);
+        const cy = s.casillas.reduce((n, c) => n + c.y + 0.5, 0) / Math.max(1, s.casillas.length);
+        const centroArea = esquina({ x: cx, y: cy });
+        const radio = Math.sqrt(s.casillas.length) * lado * 0.6;
+        const semilla = semillaDe(String(s.id));
+        return (
+          <g key={s.id}>
+            <g className="area-tinta" style={{ transformOrigin: `${centroArea.x}px ${centroArea.y}px` }}>
+              {s.casillas.map((c) => {
+                const p = esquina(c);
+                return <rect key={`${c.x},${c.y}`} x={p.x + 1} y={p.y + 1} width={lado - 2} height={lado - 2} rx={lado * 0.18} fill={s.tinta} fillOpacity={0.45} stroke={s.tinta} strokeOpacity={0.7} strokeWidth={1.5} />;
+              })}
+            </g>
+            {Array.from({ length: 14 }, (_, i) => {
+              const ang = (i / 14) * Math.PI * 2 + (semilla % 7) * 0.2;
+              const lejos = radio * (0.9 + ((semilla >> i) % 5) * 0.12);
+              return (
+                <circle key={i} className="area-chispa" cx={centroArea.x} cy={centroArea.y} r={3 + (i % 3) * 2} fill={s.tinta}
+                  style={{ ['--dx' as string]: `${Math.cos(ang) * lejos}px`, ['--dy' as string]: `${Math.sin(ang) * lejos}px`, animationDelay: `${(i % 4) * 40}ms` }} />
+              );
+            })}
+          </g>
+        );
+      })}
+      {efectos.filter((e) => e.curacion !== undefined).map((e) => {
+        const b = centro(e.hasta);
+        if (!b) return null;
+        return (
+          <g key={`c${e.id}`}>
+            {Array.from({ length: 9 }, (_, i) => (
+              <path key={i} className="curacion-chispa" d="M0 -6 L1.6 -1.6 L6 0 L1.6 1.6 L0 6 L-1.6 1.6 L-6 0 L-1.6 -1.6 Z" fill="#3f9b52"
+                transform={`translate(${b.x + Math.cos(i * 0.7) * b.r * 0.9} ${b.y + Math.sin(i * 1.3) * b.r * 0.6})`} style={{ animationDelay: `${i * 70}ms` }} />
+            ))}
+          </g>
+        );
+      })}
       {rastros.map((r) => {
         const puntos = r.camino.map((c) => enCasilla(c, r.tokenId));
         return (
@@ -115,12 +207,13 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
           </g>
         );
       })}
-      {efectos.map((e) => {
+      {efectos.filter((e) => e.grado || e.dano !== undefined).map((e) => {
         const b = centro(e.hasta);
         if (!b) return null;
         const a = e.desde ? centro(e.desde) : null;
-        const acierta = e.grado === 'exito' || e.grado === 'critico';
-        const critico = e.grado === 'critico';
+        // En una salvación, "le diste" es que el objetivo falló
+        const acierta = e.salvacion ? e.grado === 'fallo' || e.grado === 'pifia' : e.grado === 'exito' || e.grado === 'critico';
+        const critico = e.salvacion ? e.grado === 'pifia' : e.grado === 'critico';
         const tinta = e.dano !== undefined || critico ? 'var(--peligro)' : acierta ? 'var(--acento)' : 'var(--texto-suave)';
         // El trazo para antes del borde del objetivo, como un tajo de pluma
         const fin = a ? acercar(a, b, b.r * 0.6) : null;
@@ -153,9 +246,41 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
       if (!b) return null;
       const acierta = e.grado === 'exito' || e.grado === 'critico';
       const giro = (semillaDe(String(e.id)) % 11) - 5;
+      if (e.etiqueta) {
+        const tinta = e.etiqueta.beneficioso ? tintaDe(e.etiqueta.aspecto ?? 'bendicion') : tintaDe(e.etiqueta.aspecto ?? 'marca');
+        return (
+          <div key={e.id} className="etiqueta-efecto pointer-events-none absolute z-[6] flex items-center gap-1 rounded-full border-[1.5px] bg-fondo/90 px-2 py-0.5 font-titulo text-[14px] font-bold whitespace-nowrap"
+            style={{ left: b.x, top: b.y + b.r + 4, borderColor: tinta, color: tinta }} aria-hidden>
+            <IconoAspecto aspecto={e.etiqueta.aspecto ?? (e.etiqueta.beneficioso ? 'bendicion' : 'marca')} size={14} />
+            <span className={e.etiqueta.quitado ? 'line-through decoration-2' : ''}>{e.etiqueta.nombre}</span>
+          </div>
+        );
+      }
+      if (e.curacion !== undefined) {
+        return (
+          <div key={e.id} className="nota-tinta despues pointer-events-none absolute z-[6] flex flex-col items-center"
+            style={{ left: b.x, top: b.y + 16, ['--giro' as string]: `${giro}deg` }} aria-hidden>
+            <b className="rounded-md bg-fondo/85 px-2 font-titulo text-[32px] leading-none text-[#2f8a44]">+{e.curacion}</b>
+          </div>
+        );
+      }
+      if (e.salvacion && e.grado) {
+        // Lo que se lee sobre quien salvó: resistió, a medias, falló
+        const texto = { critico: 'Resiste', exito: 'A medias', fallo: 'Falla', pifia: '¡Falla feo!' }[e.grado];
+        const malo = e.grado === 'fallo' || e.grado === 'pifia';
+        return (
+          <div key={e.id} className="nota-tinta pointer-events-none absolute z-[6] flex -translate-x-1/2 -translate-y-full flex-col items-center"
+            style={{ left: b.x, top: b.y - b.r - 4, ['--giro' as string]: `${giro}deg` }} aria-hidden>
+            <span className={`rounded-sm bg-fondo/80 px-1.5 font-titulo font-bold ${e.grado === 'pifia' ? 'text-[26px] text-peligro' : malo ? 'text-[22px] text-peligro' : e.grado === 'critico' ? 'text-[22px] text-exito' : 'text-[21px] text-texto-suave'}`}>
+              {texto}
+            </span>
+          </div>
+        );
+      }
       return (
-        <div key={e.id} className="nota-tinta pointer-events-none absolute z-[6] flex -translate-x-1/2 -translate-y-full flex-col items-center"
-          style={{ left: b.x, top: b.y - b.r - 4, ['--giro' as string]: `${giro}deg` }} aria-hidden>
+        // El daño aplicado cae sobre el token (la animación ya lo centra); el sello de la tirada queda arriba
+        <div key={e.id} className={`nota-tinta pointer-events-none absolute z-[6] flex flex-col items-center ${e.despues ? 'despues' : '-translate-x-1/2 -translate-y-full'}`}
+          style={{ left: b.x, top: e.despues ? b.y + 34 : b.y - b.r - 4, ['--giro' as string]: `${giro}deg` }} aria-hidden>
           {e.dano !== undefined ? (
             <>
               <span className="relative flex h-[62px] min-w-[74px] items-center justify-center px-3">
@@ -163,6 +288,7 @@ export function EfectosTablero({ eventos, estado, vista, celda }: {
                 <b className="relative font-titulo text-[32px] leading-none text-white">−{e.dano}</b>
               </span>
               {e.nota && <span className="mt-0.5 rounded-sm bg-fondo/85 px-1.5 font-titulo text-[13px] text-texto-suave italic">{e.nota}</span>}
+              {e.cayo && <span className="mt-0.5 rotate-[-4deg] rounded-sm border-2 border-peligro bg-fondo/90 px-1.5 font-titulo text-[17px] font-bold text-peligro">¡Cae!</span>}
             </>
           ) : (
             <span className={`flex flex-col items-center rounded-sm bg-fondo/80 px-1.5 font-titulo font-bold ${e.grado === 'critico' ? 'text-[28px] text-peligro' : acierta ? 'text-[24px] text-acento' : e.grado === 'pifia' ? 'text-[22px] text-peligro' : 'text-[21px] text-texto-suave'}`}>

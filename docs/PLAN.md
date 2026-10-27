@@ -112,7 +112,21 @@ ven a los enemigos como "ileso", "herido", "muy herido", "casi muerto" o "derrot
 
 **Listo cuando:** el GM corre un combate de 3 goblins contra 2 personajes sin usar la tirada libre.
 
-### Fase 3 — Conjuros y áreas
+### Fase 3 — Conjuros y áreas *(hecha, salvo la regla para medir)*
+
+Ya hecho: el **motor de interacciones** (`reglas/interacciones.ts`, `reglas/efectos.ts`, `reglas/areas.ts` y
+`compartido/interacciones.ts`). Cada aptitud puede decir quién tira (quien la usa contra una defensa, o cada
+objetivo su salvación contra la CD), a quiénes alcanza (uno, varios, un área, aliados, uno mismo), qué daño o
+curación lleva y qué deja en cada grado (condiciones, efectos con duración, daño persistente, inmunidad a
+repetirla). La sala tira todo con sus dados y lo aplica: resistencias, PG temporales, Dying al caer a 0.
+Los efectos traen bonos y penalizadores tipados que se apilan con las reglas de PF2e (del mismo tipo, el
+mejor bono y la peor penalización) y llegan a todas las tiradas, la CA y las CD. Las rondas se cuentan en el
+turno de quien lo lanzó; lo sostenido se va si no se mantiene; lo persistente quema al terminar el turno y
+se apaga con un 15. Hay un catálogo de 26 aptitudes ya automatizadas (Demoralize, Trip, Grapple, Fear,
+Electric Arc, Fireball, Grease, Bless, Heal, Shield…) y los 2.018 conjuros del compendio traen su
+interacción armada con lo que dice el libro. En el tablero, las áreas siguen al puntero y marcan a quién
+tocan; al lanzar, las casillas se llenan con la tinta del elemento, cada objetivo recibe su sello ("A
+medias", "Falla") y su número, y los efectos se ven como halo y marquitas en el token.
 
 1. **Salvaciones contra CD** con los cuatro grados y el resultado por grado (sin efecto, mitad, completo,
    doble) aplicado a cada objetivo.
@@ -145,7 +159,11 @@ registro claro.
 1. Importar personaje de Pathbuilder 2e (JSON exportado).
 2. Inventario: objetos, cantidad, Bulk, oro; consumibles conectados a "Objetos".
 3. ~~Compendio buscable~~ (hecho, con todo el contenido de Foundry; los textos quedan en inglés, como en los libros).
-4. Subida de nivel guiada (lo que cambia por nivel).
+4. ~~Subida de nivel guiada~~ (hecha: `reglas/nivel.ts`, `reglas/sugerencias.ts`, `src/componentes/nivel/`).
+   La progresión de cada clase sale de Foundry (niveles de dotes y de skills, rasgos de clase y las
+   competencias que suben, leídas de su texto). La ventana muestra lo que llega solo, pide lo que hay que
+   elegir (atributos, skill, dotes, conjuros) con sugerencias que dicen por qué (requisitos, su mejor
+   skill, lo que combina con lo que ya usa, lo que al grupo le falta) y el antes → después de la ficha.
 
 ### Fase 7 — Campañas y publicación
 

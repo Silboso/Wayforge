@@ -5,6 +5,9 @@ import useImage from 'use-image';
 import { CornersInIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import { calcular } from '../../reglas/pf2e';
 import { alcanzables, caminoA, clave, desdeClave, distanciaEntre, type Casilla, type Paso } from '../../reglas/movimiento';
+import { areaTexto, casillasDeArea, distanciaAEsquina, tocados, type Area } from '../../reglas/areas';
+import type { EfectoActivo } from '../../reglas/efectos';
+import { TINTA_ASPECTO } from './aspectos';
 import {
   COLORES_TOKEN, ladoDe, opcionesMovimiento, puedeMoverToken, TAMANOS, tokenEnTurno, velocidadDe,
   type EstadoSala, type Sesion, type Token,
@@ -45,6 +48,11 @@ interface Props {
   onSenal?: (x: number, y: number) => void;
   // Centrar la vista en un token (cada pedido nuevo trae otro `n`)
   enfocar?: { tokenId: string; n: number } | null;
+  // Un área por colocar (Fireball): sigue al puntero y marca a quién toca; tocar el tablero la lanza ahí
+  plantilla?: { tokenId: string; area: Area; alcance?: number; etiqueta: string; color?: string } | null;
+  onPunto?: (punto: Casilla) => void;
+  // Los ya elegidos para algo de varios objetivos (Electric Arc)
+  marcados?: string[];
 }
 
 // Mantener presionado este tiempo (sin mover) lanza una señal
@@ -57,6 +65,7 @@ const PASO_MS = 120;
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
   seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onSenal, enfocar = null,
+  plantilla = null, onPunto, marcados = [],
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [medida, setMedida] = useState({ ancho: 0, alto: 0 });
@@ -236,9 +245,28 @@ export function Tablero({
     return true;
   };
 
+  // El punto del área bajo el puntero: una esquina para la explosión, una casilla para el cono y la línea
+  const [puntoArea, setPuntoArea] = useState<Casilla | null>(null);
+  useEffect(() => setPuntoArea(null), [plantilla?.tokenId, plantilla?.area.forma, plantilla?.area.tamano]);
+  const puntoEn = (px: number, py: number): Casilla => {
+    const m = enCasillas(px, py);
+    return plantilla?.area.forma === 'explosion' ? { x: Math.round(m.x), y: Math.round(m.y) } : { x: Math.floor(m.x), y: Math.floor(m.y) };
+  };
+  // Con el mouse, tocar lanza; en el teléfono el primer toque coloca y el segundo (en el mismo lugar) lanza
+  function tocarConPlantilla(px: number, py: number, tactil: boolean) {
+    if (!plantilla || !onPunto) return;
+    const c = plantilla.area.forma === 'emanacion' ? { x: 0, y: 0 } : puntoEn(px, py);
+    if (tactil && plantilla.area.forma !== 'emanacion' && (!puntoArea || puntoArea.x !== c.x || puntoArea.y !== c.y)) return setPuntoArea(c);
+    onPunto(c);
+  }
+
   function alMoverPuntero(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
     const p = e.target.getStage()?.getPointerPosition();
     if (!p) return;
+    if (plantilla && e.evt.type === 'mousemove') {
+      const c = puntoEn(p.x, p.y);
+      if (!puntoArea || puntoArea.x !== c.x || puntoArea.y !== c.y) setPuntoArea(c);
+    }
     if (presion.current && Math.hypot(p.x - presion.current.x, p.y - presion.current.y) > 6) soltarPresion();
     if (onPuntero && e.evt.type === 'mousemove') {
       const m = enCasillas(p.x, p.y);
@@ -259,6 +287,11 @@ export function Tablero({
     if ('altKey' in e.evt && e.evt.altKey && onSenal) {
       const p = e.target.getStage()?.getPointerPosition();
       if (p) { const c = enCasillas(p.x, p.y); onSenal(c.x, c.y); }
+      return;
+    }
+    if (plantilla) {
+      const p = e.target.getStage()?.getPointerPosition();
+      if (p) tocarConPlantilla(p.x, p.y, e.type === 'tap');
       return;
     }
     if (e.target !== e.target.getStage() && e.target.name() !== 'fondo') return;
@@ -294,7 +327,7 @@ export function Tablero({
 
   return (
     // Absoluto: así el canvas no empuja el tamaño de su contenedor y el tablero se puede encoger
-    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango ? 'cursor-crosshair' : ''}`}
+    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango || plantilla ? 'cursor-crosshair' : ''}`}
       onMouseLeave={() => { onPuntero?.(null, null); soltarPresion(); }}>
       {medida.ancho > 0 && (
         <Stage
@@ -373,6 +406,15 @@ export function Tablero({
                 escala={vista.escala} colores={colores} />
             )}
             {apunta && <LineaObjetivo estado={estado} apunta={apunta} celda={celda} origen={origen} escala={vista.escala} colores={colores} />}
+            {plantilla && estado.tokens[plantilla.tokenId] && (
+              <PlantillaArea estado={estado} plantilla={plantilla} punto={puntoArea} celda={celda} origen={origen} escala={vista.escala} colores={colores} />
+            )}
+            {marcados.map((id) => {
+              const t = estado.tokens[id];
+              if (!t) return null;
+              const r = (TAMANOS[t.tamano] * celda) / 2;
+              return <Circle key={id} x={origen.x + t.x * celda + r} y={origen.y + t.y * celda + r} radius={r + 6} listening={false} stroke={colores.peligro} strokeWidth={4 / vista.escala} />;
+            })}
           </Layer>
           <Layer>
             {Object.values(estado.tokens).map((token) => (
@@ -391,7 +433,17 @@ export function Tablero({
                 enTurno={token.id === enTurno}
                 seleccionado={token.id === seleccionado}
                 pista={!!zona && token.id === tokenMovil?.id && !arrastrando && !yaArrastro}
-                onSeleccionar={() => !consumirSenal() && onSeleccionar(token.id)}
+                onSeleccionar={() => {
+                  if (consumirSenal()) return;
+                  // Con un área por colocar, tocar un token también la lanza (en el punto que se ve)
+                  if (plantilla) {
+                    if (plantilla.area.forma === 'emanacion' || puntoArea) return onPunto?.(puntoArea ?? { x: 0, y: 0 });
+                    const lado = TAMANOS[token.tamano];
+                    return setPuntoArea(plantilla.area.forma === 'explosion' ? { x: token.x + Math.ceil(lado / 2), y: token.y + Math.ceil(lado / 2) } : { x: token.x, y: token.y });
+                  }
+                  onSeleccionar(token.id);
+                }}
+                efectos={token.efectos ?? []}
                 onEmpezar={() => {
                   soltarPresion();
                   if (token.id !== tokenMovil?.id) return;
@@ -546,6 +598,72 @@ function Alcance({ token, pies, etiqueta, estado, celda, origen, escala, colores
   );
 }
 
+// Un área por colocar: sus casillas con la tinta del conjuro, un anillo en cada token que toca y su nombre encima.
+// Si la explosión queda más lejos que el alcance, se dibuja a lápiz y lo dice.
+function PlantillaArea({ estado, plantilla, punto, celda, origen, escala, colores }: {
+  estado: EstadoSala;
+  plantilla: NonNullable<Props['plantilla']>;
+  punto: Casilla | null;
+  celda: number;
+  origen: { x: number; y: number };
+  escala: number;
+  colores: ColoresTablero;
+}) {
+  const t = estado.tokens[plantilla.tokenId]!;
+  const desde = { x: t.x, y: t.y, lado: ladoDe(t) };
+  const casillas = useMemo(() => casillasDeArea(plantilla.area, desde, punto), [plantilla.area.forma, plantilla.area.tamano, desde.x, desde.y, desde.lado, punto?.x, punto?.y]);
+  if (plantilla.area.forma !== 'emanacion' && !punto) return null;
+  const lejos = plantilla.area.forma === 'explosion' && punto && plantilla.alcance !== undefined && distanciaAEsquina(desde, punto) > plantilla.alcance;
+  const tinta = lejos ? colores.textoSuave : plantilla.color ?? colores.peligro;
+  const tocadosAhora = tocados(casillas, Object.values(estado.tokens).map((x) => ({ ...x, lado: ladoDe(x) })));
+  const letra = Math.max(celda * 0.2, 13 / escala);
+  const arriba = Math.min(...casillas.map((c) => c.y));
+  const centroX = casillas.reduce((s, c) => s + c.x + 0.5, 0) / Math.max(1, casillas.length);
+  return (
+    <>
+      <Shape
+        listening={false}
+        sceneFunc={(ctx) => {
+          ctx.fillStyle = tinta;
+          ctx.globalAlpha = lejos ? 0.08 : 0.22;
+          for (const c of casillas) ctx.fillRect(origen.x + c.x * celda + 1, origen.y + c.y * celda + 1, celda - 2, celda - 2);
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = tinta;
+          ctx.lineWidth = 2 / escala;
+          ctx.setLineDash(lejos ? [4 / escala, 6 / escala] : []);
+          const dentro = new Set(casillas.map((c) => clave(c)));
+          ctx.beginPath();
+          for (const c of casillas) {
+            const x0 = origen.x + c.x * celda;
+            const y0 = origen.y + c.y * celda;
+            if (!dentro.has(clave({ x: c.x, y: c.y - 1 }))) { ctx.moveTo(x0, y0); ctx.lineTo(x0 + celda, y0); }
+            if (!dentro.has(clave({ x: c.x, y: c.y + 1 }))) { ctx.moveTo(x0, y0 + celda); ctx.lineTo(x0 + celda, y0 + celda); }
+            if (!dentro.has(clave({ x: c.x - 1, y: c.y }))) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + celda); }
+            if (!dentro.has(clave({ x: c.x + 1, y: c.y }))) { ctx.moveTo(x0 + celda, y0); ctx.lineTo(x0 + celda, y0 + celda); }
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }}
+      />
+      {plantilla.area.forma === 'explosion' && punto && (
+        <Circle x={origen.x + punto.x * celda} y={origen.y + punto.y * celda} radius={6 / escala} fill={tinta} listening={false} />
+      )}
+      {!lejos && tocadosAhora.map((x) => {
+        const r = (TAMANOS[x.tamano] * celda) / 2;
+        return <Circle key={x.id} x={origen.x + x.x * celda + r} y={origen.y + x.y * celda + r} radius={r + 4} listening={false} stroke={tinta} strokeWidth={3.5 / escala} />;
+      })}
+      {casillas.length > 0 && (
+        <Label x={origen.x + centroX * celda} y={origen.y + arriba * celda - 4 / escala} listening={false}>
+          <Tag fill={colores.superficie} stroke={tinta} strokeWidth={1.5 / escala} cornerRadius={4 / escala} pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
+          <Text text={lejos ? `Muy lejos: llega a ${plantilla.alcance} ft` : `${plantilla.etiqueta} · ${areaTexto(plantilla.area)} · ${tocadosAhora.length} ${tocadosAhora.length === 1 ? 'tocado' : 'tocados'}`}
+            fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={tinta} padding={letra * 0.35} />
+        </Label>
+      )}
+    </>
+  );
+}
+
 // Las casillas a las que llega en su turno (1 Stride más intenso, 2 Strides más suave) y la ruta hasta la apuntada
 function ZonaYRuta({ zona, token, apuntada, velocidad, celda, origen, escala, colores, libres, ocupada }: {
   zona: Map<string, Paso>;
@@ -651,13 +769,15 @@ interface PropsFicha {
   seleccionado: boolean;
   // Mostrar "arrástrame" sobre el token propio la primera vez
   pista: boolean;
+  // Lo que tiene puesto: un halo si algo lo ayuda, y una marquita por efecto
+  efectos: EfectoActivo[];
   onSeleccionar: () => void;
   onEmpezar: () => void;
   onArrastrar: (px: number, py: number) => void;
   onSoltar: (px: number, py: number) => void;
 }
 
-function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
+function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, efectos, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
   const [imagen] = useImage(token.imagen || '', 'anonymous');
   const nodo = useRef<Konva.Group>(null);
   const lado = TAMANOS[token.tamano] * celda;
@@ -745,6 +865,19 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
         <Shape listening={false} stroke={colores.acento} strokeWidth={grosor * 0.8} dash={[6, 5]}
           sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio + 7, semilla + 7); ctx.strokeShape(forma); }} />
       )}
+      {/* Algo lo ayuda (Bless, Shield): un halo de tinta dorada alrededor; algo lo quema: un halo del elemento */}
+      {(() => {
+        const visibles = efectos.filter((e) => !e.inmuneA);
+        const bueno = visibles.find((e) => e.beneficioso);
+        const malo = visibles.find((e) => !e.beneficioso && e.persistente);
+        const color = bueno ? TINTA_ASPECTO[bueno.aspecto ?? 'bendicion'] : malo ? TINTA_ASPECTO[malo.aspecto ?? 'fuego'] : null;
+        if (!color) return null;
+        return (
+          <Shape listening={false} stroke={color} strokeWidth={grosor * 1.3} opacity={0.75} shadowColor={color} shadowBlur={14} shadowOpacity={0.9}
+            dash={bueno ? [2, 7] : undefined} lineCap="round"
+            sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio + 4.5, semilla + 19, 0.08); ctx.strokeShape(forma); }} />
+        );
+      })()}
       <Group x={radio} y={radio} offsetX={radio} offsetY={radio} scaleX={levantada ? 1.08 : 1} scaleY={levantada ? 1.08 : 1} opacity={derrotado ? 0.5 : 1}>
         {/* La pieza de cartón: papel con sombra sobre la mesa (más sombra si está levantada) */}
         <Circle x={radio} y={radio} radius={radio - grosor * 0.5} fill={colores.superficie}
@@ -789,6 +922,19 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
             ctx.strokeShape(forma);
           }} />
       )}
+      {/* Una marquita por efecto, en el borde de arriba a la derecha: el color de su elemento y su inicial */}
+      {efectos.filter((e) => !e.inmuneA).slice(0, 4).map((e, i) => {
+        const ang = -Math.PI / 2 + 0.55 + i * 0.5;
+        const r = Math.max(celda * 0.11, 8 / escala);
+        const color = TINTA_ASPECTO[e.aspecto ?? (e.beneficioso ? 'bendicion' : 'marca')];
+        return (
+          <Group key={e.id} x={radio + Math.cos(ang) * (radio + r * 0.3)} y={radio + Math.sin(ang) * (radio + r * 0.3)} listening={false}>
+            <Circle radius={r} fill={colores.superficie} stroke={color} strokeWidth={Math.max(1.5, r * 0.22)} />
+            <Text text={e.nombre.slice(0, 1).toUpperCase()} width={r * 2} height={r * 2} offsetX={r} offsetY={r} align="center" verticalAlign="middle"
+              fontSize={r * 1.25} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={color} />
+          </Group>
+        );
+      })}
       {/* PG: barra rayada a lápiz justo debajo */}
       {pg && (
         <Shape x={radio - anchoBarra / 2} y={lado + 3} listening={false}

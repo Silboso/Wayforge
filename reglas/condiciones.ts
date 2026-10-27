@@ -2,6 +2,7 @@
 // Las penalizaciones del mismo tipo no se suman: de las de estado (status) cuenta la peor, igual con las de circunstancia.
 
 import type { Atributo, ClaveSalvacion, Parte } from './pf2e';
+import { apilar, candidatosDe, type Blanco, type Candidato, type EfectoActivo } from './efectos';
 
 export const CONDICIONES = {
   frightened: { nombre: 'Frightened', conValor: true, ayuda: 'Miedo: −X a todos tus chequeos y CDs. Baja 1 al final de cada turno tuyo.' },
@@ -38,7 +39,7 @@ export interface Condicion {
 
 // Para qué se está calculando el número
 export type Contexto =
-  | { tipo: 'chequeo'; atributo: Atributo; salvacion?: ClaveSalvacion }
+  | { tipo: 'chequeo'; atributo: Atributo; salvacion?: ClaveSalvacion; clase?: 'percepcion' | 'habilidad' }
   | { tipo: 'ataque'; atributo: Atributo }
   | { tipo: 'ca' }
   | { tipo: 'dano'; conFuerza: boolean };
@@ -49,12 +50,25 @@ function valorDe(condiciones: Condicion[], clave: ClaveCondicion): number {
   return condiciones.find((c) => c.clave === clave)?.valor ?? 0;
 }
 
-// Las penalizaciones que tocan a este número, ya resueltas (como mucho una de estado y una de circunstancia)
-export function penalizaciones(condiciones: Condicion[], contexto: Contexto): Parte[] {
-  const deEstado: Parte[] = [];
-  const deCircunstancia: Parte[] = [];
+// A qué blancos de los efectos corresponde cada número
+export function blancosDe(contexto: Contexto): Blanco[] {
+  switch (contexto.tipo) {
+    case 'chequeo':
+      return contexto.salvacion ? ['chequeos', 'salvaciones', contexto.salvacion]
+        : contexto.clase === 'percepcion' ? ['chequeos', 'percepcion']
+        : contexto.clase === 'habilidad' ? ['chequeos', 'habilidades'] : ['chequeos'];
+    case 'ataque': return ['chequeos', 'ataque'];
+    case 'ca': return ['ca'];
+    case 'dano': return ['dano'];
+  }
+}
+
+// Los bonos y penalizaciones que tocan a este número (condiciones y efectos), ya apilados según las reglas:
+// del mismo tipo, el mejor bono y la peor penalización; las penalizaciones sin tipo se suman
+export function penalizaciones(condiciones: Condicion[], contexto: Contexto, efectos: EfectoActivo[] = []): Parte[] {
+  const candidatos: Candidato[] = [];
   const estado = (clave: ClaveCondicion, valor: number) => {
-    if (valor > 0) deEstado.push({ etiqueta: `${CONDICIONES[clave].nombre}${CONDICIONES[clave].conValor ? ` ${valor}` : ''}`, valor: -valor });
+    if (valor > 0) candidatos.push({ etiqueta: `${CONDICIONES[clave].nombre}${CONDICIONES[clave].conValor ? ` ${valor}` : ''}`, tipo: 'estado', valor: -valor });
   };
   const atributo = contexto.tipo === 'chequeo' || contexto.tipo === 'ataque' ? contexto.atributo : contexto.tipo === 'ca' ? 'dex' : null;
 
@@ -68,17 +82,18 @@ export function penalizaciones(condiciones: Condicion[], contexto: Contexto): Pa
   if (atributo && MENTALES.includes(atributo) && contexto.tipo !== 'ataque') estado('stupefied', valorDe(condiciones, 'stupefied'));
   if (contexto.tipo === 'ca' || (contexto.tipo === 'chequeo' && contexto.salvacion)) estado('fatigued', valorDe(condiciones, 'fatigued'));
 
+  const circunstancia = (etiqueta: string, valor: number) => candidatos.push({ etiqueta, tipo: 'circunstancia', valor });
   if (contexto.tipo === 'ca') {
     const desprevenido = (['off-guard', 'prone', 'grabbed', 'restrained'] as const).find((c) => valorDe(condiciones, c));
-    if (desprevenido) deCircunstancia.push({ etiqueta: CONDICIONES[desprevenido].nombre, valor: -2 });
-    if (valorDe(condiciones, 'unconscious')) deCircunstancia.push({ etiqueta: 'Unconscious', valor: -4 });
+    if (desprevenido) circunstancia(CONDICIONES[desprevenido].nombre, -2);
+    if (valorDe(condiciones, 'unconscious')) circunstancia('Unconscious', -4);
+    // Los bonos no se cancelan con las penalizaciones: un escudo levantado suma aunque estés Off-guard
+    if (valorDe(condiciones, 'shield-raised')) circunstancia('Escudo levantado', 2);
   }
-  if (contexto.tipo === 'ataque' && valorDe(condiciones, 'prone')) deCircunstancia.push({ etiqueta: 'Prone', valor: -2 });
+  if (contexto.tipo === 'ataque' && valorDe(condiciones, 'prone')) circunstancia('Prone', -2);
 
-  const peor = (partes: Parte[]) => partes.reduce<Parte | null>((a, p) => (!a || p.valor < a.valor ? p : a), null);
-  // Los bonos no se cancelan con las penalizaciones: un escudo levantado suma aunque estés Off-guard
-  const bonos: Parte[] = contexto.tipo === 'ca' && valorDe(condiciones, 'shield-raised') ? [{ etiqueta: 'Escudo levantado', valor: 2 }] : [];
-  return [...bonos, peor(deEstado), peor(deCircunstancia)].filter((p): p is Parte => p !== null);
+  candidatos.push(...candidatosDe(efectos, blancosDe(contexto)));
+  return apilar(candidatos);
 }
 
 // Cuántas acciones tiene al empezar su turno, y cuánto Stunned le queda después de pagarlo

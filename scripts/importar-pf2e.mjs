@@ -256,6 +256,68 @@ function equipo(d) {
   return e;
 }
 
+// ---------- Subir de nivel: lo que da cada clase en cada nivel ----------
+// Los rasgos de clase, por nombre, para leer su texto ("Your proficiency rank for Will saves increases to master")
+const RASGOS_POR_NOMBRE = new Map(leerPaquete('class-features').map((d) => [d.name, d]));
+const RANGOS_TEXTO = { trained: 1, expert: 2, master: 3, legendary: 4 };
+
+// De qué habla una frase de competencias: "Fortitude saves", "simple and martial weapons", "spell DC"…
+function queSube(sujeto) {
+  const s = sujeto.toLowerCase();
+  const salen = [];
+  if (/perception/.test(s)) salen.push('percepcion');
+  if (/fortitude/.test(s)) salen.push('fortitude');
+  if (/reflex/.test(s)) salen.push('reflex');
+  if (/will/.test(s)) salen.push('will');
+  if (/all saving throws|all saves/.test(s)) salen.push('fortitude', 'reflex', 'will');
+  if (/weapon|unarmed attack/.test(s)) salen.push('armas');
+  if (/armor|unarmored defense/.test(s)) salen.push('armadura');
+  if (/spell attack|spell dc|spellcasting/.test(s)) salen.push('conjuros');
+  if (/class dc/.test(s)) salen.push('claseCD');
+  return [...new Set(salen)];
+}
+
+// Las competencias que sube un rasgo, leídas de su texto
+export function mejorasDeTexto(texto) {
+  const salen = new Map();
+  const frases = texto.split(/(?<=[.!?])\s+/);
+  for (const f of frases) {
+    // "Your proficiency rank for Will saves increases to master" / "you gain master proficiency with simple weapons"
+    const sube = /(?:proficiency ranks? (?:for|in|with) |your )([^.]*?)\s+(?:increases?|are increased|is increased) to (expert|master|legendary)/i.exec(f);
+    const gana = /(?:gain|become) (expert|master|legendary) (?:proficiency )?(?:in|with) ([^.]*)/i.exec(f);
+    const [sujeto, nombre] = sube ? [sube[1], sube[2]] : gana ? [gana[2], gana[1]] : [null, null];
+    if (!sujeto) continue;
+    const rango = RANGOS_TEXTO[nombre.toLowerCase()];
+    for (const q of queSube(sujeto)) salen.set(q, Math.max(salen.get(q) ?? 0, rango));
+  }
+  return [...salen].map(([que, rango]) => ({ que, rango }));
+}
+
+// Los que no lo dicen con esas palabras (su texto sale de una traducción de Foundry, o lo hace una regla)
+const MEJORAS_POR_NOMBRE = {
+  'Expert Spellcaster': [{ que: 'conjuros', rango: 2 }], 'Master Spellcaster': [{ que: 'conjuros', rango: 3 }],
+  'Legendary Spellcaster': [{ que: 'conjuros', rango: 4 }], 'Fighter Weapon Mastery': [{ que: 'armas', rango: 3 }],
+};
+
+function progresionDe(d) {
+  const s = d.system;
+  const niveles = (x) => (x?.value ?? []).filter((n) => Number.isInteger(n));
+  const rasgos = Object.values(s.items ?? {})
+    .map((it) => {
+      const r = RASGOS_POR_NOMBRE.get(it.name);
+      const texto = limpiar(r?.system?.description?.value ?? '');
+      const sube = mejorasDeTexto(texto);
+      return { nivel: it.level, nombre: it.name, texto: texto.length > 700 ? `${texto.slice(0, 699)}…` : texto, sube: sube.length ? sube : MEJORAS_POR_NOMBRE[it.name] ?? [] };
+    })
+    .filter((x) => Number.isInteger(x.nivel))
+    .sort((a, b) => a.nivel - b.nivel || a.nombre.localeCompare(b.nombre));
+  return {
+    dotes: { clase: niveles(s.classFeatLevels), skill: niveles(s.skillFeatLevels), general: niveles(s.generalFeatLevels), ascendencia: niveles(s.ancestryFeatLevels) },
+    mejorasSkill: niveles(s.skillIncreaseLevels),
+    rasgos,
+  };
+}
+
 // ---------- Lo demás, con sus datos útiles ----------
 const elegirMejoras = (b) => Object.values(b ?? {}).map((x) => (x?.value?.length === 6 ? 'libre' : (x?.value ?? []).join(' o '))).filter(Boolean);
 const genericos = {
@@ -273,6 +335,7 @@ const genericos = {
     pg: d.system.hp, atributoClave: d.system.keyAbility?.value ?? [], percepcion: d.system.perception,
     salvaciones: d.system.savingThrows, habilidades: d.system.trainedSkills?.value ?? [], habilidadesExtra: d.system.trainedSkills?.additional ?? 0,
     armas: d.system.attacks, defensas: d.system.defenses, cdClase: d.system.classDC,
+    progresion: progresionDe(d),
   } }),
   'rasgos-de-clase': (d) => ({ ...base(d), datos: { categoria: d.system.category ?? '' } }),
   deidades: (d) => ({ ...base(d), datos: {
@@ -296,7 +359,8 @@ const tipos = {
   criaturas: { paquetes: deCriaturas, tipos: ['npc'], convertir: criatura, resumen: (e) => `${e.tamano} · CA ${e.ca} · PG ${e.pg}` },
   peligros: { paquetes: deCriaturas, tipos: ['hazard'], convertir: genericos.peligros, resumen: (e) => (e.datos.complejo ? 'complejo' : 'simple') },
   conjuros: { paquetes: ['spells'], tipos: ['spell'], convertir: conjuro, resumen: (e) => [e.clase, e.tradiciones.join(', ')].filter(Boolean).join(' · ') },
-  dotes: { paquetes: ['feats'], tipos: ['feat'], convertir: dote, resumen: (e) => e.categoria },
+  // Los requisitos van también en el índice: subir de nivel filtra con ellos sin bajar cada dote
+  dotes: { paquetes: ['feats'], tipos: ['feat'], convertir: dote, resumen: (e) => e.categoria, extra: (e) => (e.prerrequisitos.length ? { requisitos: e.prerrequisitos.slice(0, 4) } : {}) },
   equipo: { paquetes: ['equipment'], tipos: null, convertir: equipo, resumen: (e) => e.clase },
   acciones: { paquetes: ['actions'], tipos: ['action'], convertir: accion, resumen: (e) => e.categoria },
   condiciones: { paquetes: ['conditions'], tipos: ['condition'], convertir: genericos.condiciones, resumen: () => '' },
@@ -336,7 +400,7 @@ for (const [tipo, def] of Object.entries(tipos)) {
     const parte = entradas.slice(i, i + POR_TROZO);
     writeFileSync(join(dir, `${trozo}.json`), JSON.stringify(Object.fromEntries(parte.map((e) => [e.id, e]))));
     for (const e of parte) {
-      indice.push({ id: e.id, nombre: e.nombre, nivel: e.nivel, rasgos: e.rasgos, rareza: e.rareza, fuente: e.fuente, resumen: def.resumen(e), trozo });
+      indice.push({ id: e.id, nombre: e.nombre, nivel: e.nivel, rasgos: e.rasgos, rareza: e.rareza, fuente: e.fuente, resumen: def.resumen(e), trozo, ...def.extra?.(e) });
     }
   }
   writeFileSync(join(dir, 'indice.json'), JSON.stringify(indice));
@@ -344,3 +408,28 @@ for (const [tipo, def] of Object.entries(tipos)) {
   console.log(`${tipo.padEnd(16)} ${String(entradas.length).padStart(6)}`);
 }
 writeFileSync(join(salida, 'version.json'), JSON.stringify({ generado: new Date().toISOString(), totales, origen: 'github.com/foundryvtt/pf2e (packs/pf2e) · ORC / OGL' }));
+
+// ---------- Íconos: solo los SVG de game-icons.net (CC BY 3.0) que trae el sistema ----------
+// Los demás íconos de Foundry (los .webp) son de Rexard y no se pueden redistribuir: no se copian.
+const estatico = join(fuente, '../../static/icons');
+if (existsSync(join(estatico, 'default-icons'))) {
+  const iconos = 'public/iconos';
+  rmSync(iconos, { recursive: true, force: true });
+  // Sin la sombra de Foundry: aquí se usan como máscara y toman el color de la tinta
+  const limpio = (svg) => svg.replace(/<\?xml[^>]*>\s*/, '').replace(/<filter[\s\S]*?<\/filter>\s*/g, '').replace(/\sfilter="[^"]*"/g, '');
+  let n = 0;
+  for (const [desde, hacia] of [['default-icons', 'tipos'], ['default-icons/alternatives/ancestries', 'ascendencias']]) {
+    const dir = join(estatico, desde);
+    mkdirSync(join(iconos, hacia), { recursive: true });
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.svg'))) {
+      writeFileSync(join(iconos, hacia, f), limpio(readFileSync(join(dir, f), 'utf8')));
+      n++;
+    }
+  }
+  writeFileSync(join(iconos, 'LICENCIA.txt'), [
+    'Íconos de Lorc, Delapouite y colaboradores (https://game-icons.net/), bajo Creative Commons Attribution 3.0',
+    '(http://creativecommons.org/licenses/by/3.0/). Tomados del sistema PF2e de Foundry (github.com/foundryvtt/pf2e,',
+    'static/icons), que modificó azarketi, grippli, halfling, ratfolk y shisk. Aquí se les quitó la sombra.',
+  ].join('\n'));
+  console.log(`iconos           ${String(n).padStart(6)}`);
+}

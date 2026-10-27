@@ -1,0 +1,3 @@
+Íconos de Lorc, Delapouite y colaboradores (https://game-icons.net/), bajo Creative Commons Attribution 3.0
+(http://creativecommons.org/licenses/by/3.0/). Tomados del sistema PF2e de Foundry (github.com/foundryvtt/pf2e,
+static/icons), que modificó azarketi, grippli, halfling, ratfolk y shisk. Aquí se les quitó la sombra.

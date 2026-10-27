@@ -6,7 +6,12 @@ import {
   type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada,
 } from '../compartido/sala';
 import { queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
+import { motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Azar } from '../compartido/interacciones';
 import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
+import { interaccionDe } from '../reglas/interacciones';
+
+// Los dados de la sala, para el motor de interacciones
+const AZAR: Azar = { dado: (caras) => dado(caras), id: () => crypto.randomUUID(), ahora: () => Date.now() };
 
 // Lo que la sala recuerda de cada conexión (sobrevive a la hibernación)
 interface Conexion {
@@ -197,6 +202,16 @@ export class Sala extends DurableObject<Env> {
       if (quien.rol !== 'visitante') this.enviarEstado(ws);
       return;
     }
+    // Al terminar un turno, lo persistente (fuego, ácido, sangrado) hace su daño antes de pasar al siguiente
+    if (accion.tipo === 'avanzar-turno') {
+      const termina = tokenEnTurno(this.estado);
+      if (termina?.efectos?.some((e) => e.persistente)) {
+        // Quien pasó el turno lo vio adelantado: primero se le corrige, después va todo en orden
+        this.enviarEstado(ws);
+        for (const a of persistenteAlTerminar(this.estado, termina, AZAR)) await this.guardarYRepartir(a);
+        return this.guardarYRepartir(accion);
+      }
+    }
     await this.guardar(accion);
     // Quien la mandó ya la aplicó en su pantalla (optimista); se reparte al resto
     this.repartir({ tipo: 'accion', accion }, ws);
@@ -278,7 +293,7 @@ export class Sala extends DurableObject<Env> {
     } else if (criatura) {
       plan = queTiraCriatura(criatura, que);
     } else {
-      plan = personaje ? queSeTira(personaje, que, tokenPropio?.condiciones ?? []) : null;
+      plan = personaje ? queSeTira(personaje, que, tokenPropio?.condiciones ?? [], tokenPropio?.efectos ?? []) : null;
     }
     if (!plan) return;
 
@@ -385,10 +400,25 @@ export class Sala extends DurableObject<Env> {
       return this.negar(ws, a.requiere === 'shield-raised' ? 'Primero tienes que levantar el escudo.' : `Necesitas ${a.requiere}.`);
     }
     const objetivo = typeof m.objetivo === 'string' ? this.estado.tokens[m.objetivo] : undefined;
+    const distancia = a.tirada?.tipo === 'golpe' ? (p.golpes[0]?.distancia ?? 5) : a.distancia;
     if (objetivo && a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') {
-      const distancia = a.tirada.tipo === 'golpe' ? (p.golpes[0]?.distancia ?? 5) : a.distancia;
       const lejos = distancia !== undefined ? motivoAlcance(token, objetivo, distancia) : null;
       if (lejos) return this.negar(ws, lejos);
+    }
+
+    // Con interacción (salvaciones, áreas, efectos): a quiénes alcanza, y que no estén inmunes, antes de gastar nada
+    const inter = interaccionDe(a);
+    let alcance: ReturnType<typeof objetivosDe> | null = null;
+    if (inter) {
+      const punto = typeof m.punto === 'object' && m.punto !== null && Number.isInteger((m.punto as { x: unknown }).x) && Number.isInteger((m.punto as { y: unknown }).y)
+        ? m.punto as { x: number; y: number } : undefined;
+      const objetivos = Array.isArray(m.objetivos) ? m.objetivos.filter((x): x is string => typeof x === 'string').slice(0, 10) : undefined;
+      alcance = objetivosDe(this.estado, token, a, inter, { ...(objetivo ? { objetivo: objetivo.id } : {}), ...(objetivos ? { objetivos } : {}), ...(punto ? { punto } : {}) }, distancia);
+      if ('motivo' in alcance) return this.negar(ws, alcance.motivo);
+      for (const t of alcance.tokens) {
+        const inmune = motivoInmune(a, inter, token, t);
+        if (inmune) return this.negar(ws, inmune);
+      }
     }
 
     const c = this.estado.combate;
@@ -397,6 +427,19 @@ export class Sala extends DurableObject<Env> {
     if (a.costo === 'reaccion' && c) await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: token.id, usada: true });
     if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
     if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });
+    if (a.id === 'basica:sustain' && c) await this.guardarYRepartir({ tipo: 'sostener', tokenId: token.id });
+
+    if (inter && alcance && !('motivo' in alcance)) {
+      const numero = (miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
+      const acciones = resolverUso(this.estado, { autor: token, personaje: p, aptitud: a, interaccion: inter, objetivos: alcance.tokens, ...(alcance.casillas ? { casillas: alcance.casillas } : {}), numero }, AZAR);
+      if ('motivo' in acciones) return this.negar(ws, acciones.motivo);
+      for (const accion of acciones) await this.guardarYRepartir(accion);
+      // Los ataques (y lo que tiene el rasgo attack, como Trip) suben la penalización del siguiente
+      if (miTurno && (inter.modo.tipo === 'ataque' || a.rasgos.includes('attack'))) {
+        await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: token.id, gastaAccion: false });
+      }
+      return;
+    }
     if (a.tirada) {
       const numero = (a.tirada.tipo === 'golpe' && miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
       await this.tirar(quien, { que: { tipo: 'aptitud', id: a.id, numero, ...(objetivo ? { objetivo: objetivo.id } : {}) } }, undefined, ws, true);
@@ -447,7 +490,7 @@ export class Sala extends DurableObject<Env> {
     const orden: Combatiente[] = [];
     for (const token of tokens) {
       const personaje = token.personajeId ? this.estado.personajes[token.personajeId] : undefined;
-      const modificador = personaje ? calcular(personaje, token.condiciones ?? []).percepcion.total : token.percepcion ?? 0;
+      const modificador = personaje ? calcular(personaje, token.condiciones ?? [], token.efectos ?? []).percepcion.total : token.percepcion ?? 0;
       const d = dado(20);
       orden.push({ tokenId: token.id, iniciativa: d + modificador });
       await this.guardarYRepartir({

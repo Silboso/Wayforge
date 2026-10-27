@@ -1,6 +1,32 @@
-import { CrosshairIcon, XIcon } from '@phosphor-icons/react';
-import { GRUPOS, grupoDe } from '../../../reglas/aptitudes';
+import { CrosshairIcon, LightningIcon, XIcon } from '@phosphor-icons/react';
+import { GRUPOS, grupoDe, type Aptitud } from '../../../reglas/aptitudes';
 import { signo, type Valor } from '../../../reglas/pf2e';
+import { gradosTexto, interaccionDe, resumenInteraccion } from '../../../reglas/interacciones';
+
+// Lo que hace al alcanzar a alguien, resuelto por la mesa: quién tira, a quiénes llega y qué pasa en cada grado
+function Interaccion({ aptitud }: { aptitud: Aptitud }) {
+  const i = interaccionDe(aptitud);
+  if (!i) return null;
+  const grados = gradosTexto(i);
+  return (
+    <div className="rounded-md border-[1.5px] border-acento/40 bg-acento/[0.05] px-3 py-2">
+      <p className="flex items-center gap-1.5 font-titulo text-[13.5px] font-bold text-acento">
+        <LightningIcon size={15} weight="fill" aria-hidden /> La mesa lo resuelve sola
+      </p>
+      <p className="mt-0.5 text-[13.5px] leading-snug">{resumenInteraccion(i).join(' · ')}</p>
+      {grados.length > 0 && (
+        <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[13px]">
+          {grados.map((g) => (
+            <div key={g.grado} className="contents">
+              <dt className={`font-titulo font-semibold ${g.grado === 'critico' ? 'text-exito' : g.grado === 'pifia' ? 'text-peligro' : 'text-texto-suave'}`}>{g.nombre}</dt>
+              <dd>{g.texto}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
 import { TECLAS, type Fila, type Seccion } from './secciones';
 import { CostoAccion, RayaAMano, Rombo, Tecla } from './piezas';
 
@@ -107,7 +133,9 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
   // No se ofrece lo que no alcanza a pagar en su turno
   const falta = faltan(fila, libres);
   const textoFalta = libres === 0 ? 'Sin acciones este turno' : `Te ${falta === 1 ? 'falta 1 acción' : `faltan ${falta} acciones`}`;
-  const apuntable = fila.tipo === 'golpe' || fila.aptitud.tirada?.tipo === 'ataque-conjuro' || fila.aptitud.tirada?.tipo === 'golpe' || (fila.aptitud.tirada?.tipo === 'skill' && !!fila.aptitud.distancia);
+  const inter = fila.tipo === 'aptitud' ? interaccionDe(fila.aptitud) : null;
+  const apuntable = inter ? inter.objetivos.tipo === 'uno' && !inter.objetivos.aliados
+    : fila.tipo === 'golpe' || fila.aptitud.tirada?.tipo === 'ataque-conjuro' || fila.aptitud.tirada?.tipo === 'golpe' || (fila.aptitud.tirada?.tipo === 'skill' && !!fila.aptitud.distancia);
 
   return (
     <div className="flex flex-col gap-3">
@@ -140,6 +168,7 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
               <span className="font-semibold">{fila.disp.texto}.</span> {GRUPOS[grupoDe(fila.aptitud)].ayuda}
             </p>
           )}
+          <Interaccion aptitud={fila.aptitud} />
         </>
       )}
 

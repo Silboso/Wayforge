@@ -8,11 +8,14 @@ import {
 } from '../../../compartido/sala';
 import { BarraPG, CostoAccion, FotoPegada, PostitCondicion, Rombo, Tecla } from '../hud/piezas';
 import { TECLAS } from '../hud/secciones';
+import { EfectosActivos } from '../EfectosActivos';
 
 type Chequeo = 'fortitude' | 'reflex' | 'will' | 'percepcion';
 
 // La hoja del token que maneja el GM, apoyada abajo como la del jugador: quién es, qué puede hacer y su estado
-export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onPG, onCondiciones, onEditar, onTerminar, onCerrar }: {
+export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onPG, onCondiciones, onEditar, onTerminar, onCerrar, onQuitarEfecto }: {
+  // Quitar un efecto que le dejó una aptitud (el GM manda)
+  onQuitarEfecto?: (efectoId: string) => void;
   estado: EstadoSala;
   actor: Token;
   plegada: boolean;
@@ -36,7 +39,7 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
   const suTurno = !!c && tokenEnTurno(estado)?.id === actor.id;
   const libres = suTurno ? c!.acciones - c!.usadas : null;
   const personaje = actor.personajeId ? estado.personajes[actor.personajeId] : undefined;
-  const ficha = personaje ? calcular(personaje, actor.condiciones ?? []) : null;
+  const ficha = personaje ? calcular(personaje, actor.condiciones ?? [], actor.efectos ?? []) : null;
   const cr = actor.criatura;
   const pg = personaje ? { actual: personaje.pgActual, max: ficha!.pgMax.total } : actor.pg;
   const ca = caDeToken(estado, actor)?.total ?? null;
@@ -175,6 +178,11 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
           <button className="flex items-center gap-1.5 self-start rounded-md px-1.5 py-1 font-titulo text-[13.5px] text-texto-suave hover:text-acento" onClick={onCondiciones}>
             <StickerIcon size={16} aria-hidden /> {condiciones.length ? 'Cambiar condiciones' : 'Pegar una condición'}
           </button>
+          {(actor.efectos?.length ?? 0) > 0 && (
+            <div className="max-h-[140px] overflow-y-auto pr-1">
+              <EfectosActivos efectos={actor.efectos ?? []} onQuitar={onQuitarEfecto} />
+            </div>
+          )}
           {!personaje && (
             <button className="flex items-center gap-1.5 self-start rounded-md px-1.5 py-1 font-titulo text-[13.5px] text-texto-suave hover:text-acento" onClick={onEditar}>
               <PencilSimpleIcon size={16} aria-hidden /> Editar sus números

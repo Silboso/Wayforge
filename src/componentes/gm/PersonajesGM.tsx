@@ -6,6 +6,8 @@ import { Ficha } from '../Ficha';
 import { claseBotonSecundario } from '../ui';
 import { FotoPegada } from '../hud/piezas';
 import { useConfirmar } from '../hud/Modal';
+import { SparkleIcon } from '@phosphor-icons/react';
+import { SubirNivel } from '../nivel/SubirNivel';
 
 // El GM ve y maneja todas las fichas
 export function PersonajesGM({ estado, sala, objetivo, onCrear, onEditar }: {
@@ -16,8 +18,10 @@ export function PersonajesGM({ estado, sala, objetivo, onCrear, onEditar }: {
   onEditar: (p: Personaje) => void;
 }) {
   const [abierto, setAbierto] = useState<string | null>(null);
+  const [subiendo, setSubiendo] = useState<string | null>(null);
   const confirmar = useConfirmar();
   const personajes = Object.values(estado.personajes);
+  const subiendoP = subiendo ? estado.personajes[subiendo] : undefined;
   const abiertoP = abierto ? estado.personajes[abierto] : undefined;
   const tokenAbierto = abiertoP ? tokenDe(estado, abiertoP.id) : undefined;
 
@@ -67,9 +71,19 @@ export function PersonajesGM({ estado, sala, objetivo, onCrear, onEditar }: {
             </div>
             <span className="text-sm tabular-nums text-texto-suave">{p.pgActual} PG</span>
           </button>
+          {p.nivel < 20 && (
+            <button className="flex size-10 shrink-0 items-center justify-center rounded-lg text-acento hover:bg-acento/10" onClick={() => setSubiendo(p.id)}
+              aria-label={`Subir a ${p.nombre} a nivel ${p.nivel + 1}`} title={`Subir a nivel ${p.nivel + 1}`}>
+              <SparkleIcon size={20} weight="fill" aria-hidden />
+            </button>
+          )}
         </div>
       ))}
       <button className={claseBotonSecundario} onClick={onCrear}>Crear un personaje para un jugador</button>
+      {subiendoP && (
+        <SubirNivel p={subiendoP} otros={personajes.filter((x) => x.id !== subiendoP.id)} onCerrar={() => setSubiendo(null)}
+          onSubir={(nuevo) => { const { id: _id, ...cambios } = nuevo; sala.enviar({ tipo: 'editar-personaje', id: subiendoP.id, cambios }); }} />
+      )}
     </div>
   );
 }

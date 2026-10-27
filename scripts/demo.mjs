@@ -60,9 +60,19 @@ const personajes = [
         aptitud('nimble-dodge', 'Nimble Dodge', 'Esquiva ágil', 'dote', 'reaccion', { tipo: 'siempre' },
           'Cuando un enemigo te ataca, te apartas: +2 a tu CA contra ese ataque.', { disparadores: ['te-apuntan'], efecto: { bonoCA: 2 } }),
         aptitud('ray', 'Ray of Frost', 'Rayo de escarcha', 'truco', 2, { tipo: 'siempre' },
-          'Un rayo helado: ataque de conjuro contra la CA, 2d4 de daño de frío.', { tirada: { tipo: 'ataque-conjuro' }, dano: '2d4', distancia: 120 }),
+          'Un rayo helado: ataque de conjuro contra la CA, 2d4 de daño de frío. Con crítico, −10 ft de Velocidad.', { tirada: { tipo: 'ataque-conjuro' }, dano: '2d4', distancia: 120 }),
+        aptitud('arc', 'Electric Arc', 'Arco eléctrico', 'truco', 2, { tipo: 'siempre' },
+          'Un arco de rayos salta a uno o dos enemigos: salvación básica de Reflex contra 2d4 de electricidad.', { distancia: 30 }),
+        aptitud('caustic', 'Caustic Blast', 'Estallido cáustico', 'truco', 2, { tipo: 'siempre' },
+          'Una bola de ácido revienta en una explosión de 5 ft: salvación básica de Reflex contra 2d8 de ácido.', { distancia: 30 }),
+        aptitud('shield', 'Shield', 'Escudo arcano', 'truco', 1, { tipo: 'siempre' },
+          'Un escudo de fuerza te cubre: +1 a tu CA hasta el inicio de tu próximo turno.'),
+        aptitud('grease', 'Grease', 'Grasa', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
+          'Cubres 4 casillas de grasa: quien falla su Reflex resbala y cae.', { distancia: 30 }),
+        aptitud('fear', 'Fear', 'Miedo', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
+          'Llenas de terror a una criatura: Frightened 1, 2 o 3 según su Will.', { distancia: 30 }),
         aptitud('barrage', 'Force Barrage', 'Proyectiles mágicos', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
-          'Proyectiles de fuerza que no fallan: 1d4+1 cada uno.', { tirada: { tipo: 'expresion', expresion: '2d4+2' } }),
+          'Proyectiles de fuerza que no fallan: 1d4+1 cada uno.', { tirada: { tipo: 'expresion', expresion: '2d4+2' }, distancia: 120 }),
         aptitud('bolt', 'Force Bolt', 'Rayo de fuerza', 'foco', 1, { tipo: 'foco' },
           'Un dardo de fuerza que siempre acierta: 2d4 de daño.', { tirada: { tipo: 'expresion', expresion: '2d4' } }),
       ],
@@ -81,7 +91,7 @@ const criatura = (ataques) => ({
 });
 const dogslicer = { id: 'dogslicer', nombre: 'Dogslicer', bono: 8, dano: '1d6+2', tipoDano: 'slashing', agil: true, rasgos: ['agile', 'finesse'] };
 const shortbow = { id: 'shortbow', nombre: 'Shortbow', bono: 8, dano: '1d6', tipoDano: 'piercing', agil: false, rasgos: ['deadly d10'], distancia: 60 };
-for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 3, 2, [dogslicer, shortbow]], ['goblin-2', 'Goblin arquero', 6, 1, [shortbow, dogslicer]]]) {
+for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 3, 2, [dogslicer, shortbow]], ['goblin-3', 'Goblin guerrero', 4, 3, [dogslicer]], ['goblin-2', 'Goblin arquero', 6, 1, [shortbow, dogslicer]]]) {
   enviar({ tipo: 'accion', accion: { tipo: 'crear-token', token: { id, nombre, tipo: 'enemigo', tamano: 'Small', x, y, color: '#c8392b', ca: 15, pg: { actual: 20, max: 20 }, percepcion: 5, criatura: criatura(ataques) } } });
   await esperar(150);
 }
@@ -94,8 +104,9 @@ Mesa de prueba lista
   Código de mesa:  ${codigo.toUpperCase()}
   Código de GM:    ${codigoGM}
   Personajes:
-    Kyra  (Human Fighter 3: Shield Block, Reactive Strike, Power Attack)  código 1234
-    Ezren (Human Wizard 3: Nimble Dodge, conjuros y foco)                 código 5678
-  Enemigos: Goblin y Goblin arquero (CA 15, 20 PG, con dogslicer y arco; el bestiario tiene más)
+    Kyra  (Human Fighter 3: Demoralize, Trip, Power Attack; lista para subir a nivel 4)   código 1234
+    Ezren (Human Wizard 3: Electric Arc, Caustic Blast, Grease, Fear, Shield…)          código 5678
+  Enemigos: tres goblins (CA 15, 20 PG, con dogslicer y arco; el compendio tiene 6.500 más)
+  Para ver el motor: Ezren lanza Caustic Blast entre los dos goblins juntos, o Kyra asusta con Demoralize.
 
 Para jugar GM y jugador a la vez en la misma PC, abre al jugador en una ventana de incógnito.`);

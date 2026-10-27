@@ -240,9 +240,10 @@ export function useSala(salaId: string) {
   }, [mandar]);
 
   // Usar una aptitud: la sala revisa todo y tira si corresponde
-  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string) => {
+  // `mas`: varios objetivos, o el punto de un área (la esquina de una explosión, hacia dónde va un cono)
+  const usar = useCallback((aptitudId: string, objetivo?: string, etiqueta?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number } }) => {
     if (etiqueta) setPendiente({ etiqueta, desde: Date.now() });
-    mandar({ tipo: 'usar', aptitudId, ...(objetivo ? { objetivo } : {}) });
+    mandar({ tipo: 'usar', aptitudId, ...(objetivo ? { objetivo } : {}), ...(mas?.objetivos ? { objetivos: mas.objetivos } : {}), ...(mas?.punto ? { punto: mas.punto } : {}) });
   }, [mandar]);
 
   // Avisos que nacen en la propia pantalla (antes de mandar algo que la sala va a rechazar)

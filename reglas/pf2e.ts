@@ -2,6 +2,7 @@
 // Cada número calculado trae su desglose (`partes`), para que la interfaz pueda explicar de dónde sale.
 
 import { penalizaciones, type Condicion, type Contexto } from './condiciones';
+import type { EfectoActivo } from './efectos';
 import { esAptitudValida, esRecursosValido, type Aptitud, type Lanzador, type Recursos } from './aptitudes';
 
 export type Atributo = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
@@ -112,6 +113,8 @@ export interface Personaje {
   escudo?: { nombre: string; ca: number; dureza: number; pg: number; pgActual: number };
   // Los atajos Q W E R T Y que eligió el jugador (claves de sus acciones; null = espacio vacío)
   atajos?: (string | null)[];
+  // Atributos de +4 o más con medio aumento anotado (el siguiente los sube uno)
+  parciales?: Atributo[];
 }
 
 export interface Parte {
@@ -156,11 +159,12 @@ function parteAtributo(p: Personaje, atributo: Atributo): Parte {
   return { etiqueta: ATRIBUTOS[atributo].abrev, valor: p.atributos[atributo] };
 }
 
-export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalculada {
-  const con = (contexto: Contexto) => penalizaciones(condiciones, contexto);
-  // Modificador de un chequeo: atributo + competencia + lo que quiten las condiciones
-  const chequeo = (atributo: Atributo, rango: Rango, salvacion?: ClaveSalvacion) =>
-    valor([parteAtributo(p, atributo), parteCompetencia(rango, p.nivel), ...con({ tipo: 'chequeo', atributo, salvacion })]);
+// `condiciones` y `efectos` son los del token del personaje: suman o restan con las reglas de apilamiento
+export function calcular(p: Personaje, condiciones: Condicion[] = [], efectos: EfectoActivo[] = []): FichaCalculada {
+  const con = (contexto: Contexto) => penalizaciones(condiciones, contexto, efectos);
+  // Modificador de un chequeo: atributo + competencia + lo que sumen o quiten condiciones y efectos
+  const chequeo = (atributo: Atributo, rango: Rango, salvacion?: ClaveSalvacion, clase?: 'percepcion' | 'habilidad') =>
+    valor([parteAtributo(p, atributo), parteCompetencia(rango, p.nivel), ...con({ tipo: 'chequeo', atributo, salvacion, clase })]);
 
   const dexEnCa = p.armadura.topeDex === null ? p.atributos.dex : Math.min(p.atributos.dex, p.armadura.topeDex);
   const ca = valor([
@@ -182,7 +186,7 @@ export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalc
   ) as Record<ClaveSalvacion, Valor>;
 
   const habilidades = Object.fromEntries(
-    HABILIDADES.map((h) => [h.clave, chequeo(h.atributo, p.habilidades[h.clave])]),
+    HABILIDADES.map((h) => [h.clave, chequeo(h.atributo, p.habilidades[h.clave], undefined, 'habilidad')]),
   ) as Record<ClaveHabilidad, Valor>;
 
   const golpes = p.golpes.map((g) => {
@@ -193,7 +197,7 @@ export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalc
       ...con({ tipo: 'ataque', atributo: g.atributo }),
     ]);
     const paso = g.agil ? 4 : 5;
-    const bonoDano = bonoDeDano(p, g, condiciones);
+    const bonoDano = bonoDeDano(p, g, condiciones, efectos);
     return {
       ataque,
       penalizaciones: [ataque.total, ataque.total - paso, ataque.total - paso * 2] as [number, number, number],
@@ -218,12 +222,12 @@ export function calcular(p: Personaje, condiciones: Condicion[] = []): FichaCalc
     ? valor([{ etiqueta: 'Base', valor: 10 }, parteAtributo(p, p.claseCD.atributo), parteCompetencia(p.claseCD.rango, p.nivel)])
     : null;
 
-  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion), salvaciones, habilidades, golpes, conjuros, claseCD };
+  return { pgMax, ca, percepcion: chequeo('wis', p.percepcion, undefined, 'percepcion'), salvaciones, habilidades, golpes, conjuros, claseCD };
 }
 
 // Lo que se suma a los dados de daño de un arma
-export function bonoDeDano(p: Personaje, g: Golpe, condiciones: Condicion[] = []): number {
-  const extra = penalizaciones(condiciones, { tipo: 'dano', conFuerza: g.sumarFuerza });
+export function bonoDeDano(p: Personaje, g: Golpe, condiciones: Condicion[] = [], efectos: EfectoActivo[] = []): number {
+  const extra = penalizaciones(condiciones, { tipo: 'dano', conFuerza: g.sumarFuerza }, efectos);
   return (g.sumarFuerza ? p.atributos.str : 0) + extra.reduce((s, x) => s + x.valor, 0);
 }
 
@@ -347,6 +351,7 @@ function esExtrasValidos(p: Record<string, unknown>): boolean {
       && (origen.herencia === null || esTexto(origen.herencia, 60)) && (origen.subclase === null || esTexto(origen.subclase, 60))))
     && lista(p.idiomas, 20, (x) => esTexto(x, 40))
     && lista(p.atajos, 8, (x) => x === null || esTexto(x, 120))
+    && lista(p.parciales, 6, (x) => typeof x === 'string' && x in ATRIBUTOS)
     && (p.sentidos === undefined || esTexto(p.sentidos, 100))
     && lista(p.saberes, 20, (x) => esTexto(x, 60))
     && lista(p.dotes, 60, (x) => obj(x) && esTexto(x.id, 80) && esTexto(x.nombre, 80) && esTexto(x.tipo, 20) && esEntero(x.nivel, 1, 20))

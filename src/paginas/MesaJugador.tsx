@@ -2,11 +2,19 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowsClockwiseIcon, BackpackIcon, BedIcon, BookOpenTextIcon, CaretDownIcon, CaretUpIcon, CoffeeIcon, CrosshairIcon, DiceFiveIcon,
   BooksIcon, DotsThreeOutlineIcon, MapTrifoldIcon, NotebookIcon, NotePencilIcon, PencilSimpleIcon, QuestionIcon, StickerIcon, SignOutIcon, SwordIcon, UsersIcon, UsersThreeIcon, XIcon,
+  SparkleIcon,
 } from '@phosphor-icons/react';
 import { calcular, leerDados, signo, type Personaje } from '../../reglas/pf2e';
 import { DESCANSOS, disponibilidad, recursosDe, todasLasAptitudes, type Aptitud, type Descanso } from '../../reglas/aptitudes';
 import { CONDICIONES, type Condicion } from '../../reglas/condiciones';
 import { tieneMomento } from '../../reglas/disparadores';
+import { interaccionDe } from '../../reglas/interacciones';
+import { EfectosActivos } from '../componentes/EfectosActivos';
+import { SubirNivel } from '../componentes/nivel/SubirNivel';
+import type { EfectoActivo } from '../../reglas/efectos';
+
+const SIN_EFECTOS: EfectoActivo[] = [];
+import { ASPECTO_POR_DANO, tintaDe } from '../componentes/aspectos';
 import {
   aptitudesPara, motivoAlcance, motivoParaActuar, reaccionesPara, tokenEnTurno, type Combate, type EstadoSala, type QueTirar, type Token,
 } from '../../compartido/sala';
@@ -76,6 +84,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const [asomada, setAsomada] = useState<string | null>(null);
   // Elegida una acción sin objetivo: el tablero espera a que toques a quién (con el alcance a la vista)
   const [eligiendo, setEligiendo] = useState<{ clave: string; numero: 0 | 1 | 2 } | null>(null);
+  // Los objetivos ya tocados de algo que alcanza a varios (Electric Arc)
+  const [marcados, setMarcados] = useState<string[]>([]);
+  const [subiendoNivel, setSubiendoNivel] = useState(false);
 
   useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
 
@@ -86,8 +97,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const miTurno = !!combate && !!miToken && enTurno?.id === miToken.id;
   const ataquesHechos = miTurno ? combate!.ataques : null;
   const libres = miTurno ? combate!.acciones - combate!.usadas : null;
-  const ficha = calcular(p, condiciones);
-  const lista = useMemo(() => secciones(p, condiciones, ataquesHechos), [p, condiciones, ataquesHechos]);
+  const efectos = miToken?.efectos ?? SIN_EFECTOS;
+  const ficha = calcular(p, condiciones, efectos);
+  const lista = useMemo(() => secciones(p, condiciones, ataquesHechos, efectos), [p, condiciones, ataquesHechos, efectos]);
   const objetivoToken = seleccionado && seleccionado !== miToken?.id ? estado.tokens[seleccionado] : undefined;
   const objetivo = objetivoToken ? { id: objetivoToken.id, nombre: objetivoToken.nombre } : null;
   const filaElegida = lista.flatMap((s) => s.filas).find((f) => f.clave === elegida) ?? null;
@@ -119,7 +131,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     setMenuAbierto(false);
     setPestana('tablero');
   };
-  const usarAptitud = (a: Aptitud, objetivoId?: string): boolean => {
+  const usarAptitud = (a: Aptitud, objetivoId?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number } }): boolean => {
     if (a.id === 'basica:stride' || a.id === 'basica:step') {
       setPestana('tablero');
       setElegida(null);
@@ -130,6 +142,24 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     if (motivo) return sala.negarLocal(motivo), false;
     const disp = disponibilidad(p, a);
     if (!disp.puede) return sala.negarLocal(`${a.verbo || a.nombre}: ${disp.texto}.`), false;
+    // Con interacción: sobre ti y las emanaciones salen ya; las áreas piden dónde, las de varios a quiénes
+    const inter = interaccionDe(a);
+    if (inter && miToken) {
+      const o = inter.objetivos;
+      const directo = o.tipo === 'yo' || (o.tipo === 'area' && o.area.forma === 'emanacion');
+      if (directo || mas?.punto || mas?.objetivos) {
+        // La tarjeta de "tirando…" solo si de verdad hay dados (Shield o Bless no tiran nada)
+        const tira = inter.modo.tipo !== 'ninguna' || !!inter.dano || !!inter.curacion;
+        sala.usar(a.id, objetivoId, tira ? a.verbo || a.nombre : undefined, mas);
+        setElegida(null);
+        setMenuAbierto(false);
+        return true;
+      }
+      if (o.tipo === 'area' || o.tipo === 'varios' || (o.tipo === 'uno' && o.aliados && !objetivoId)) {
+        setMarcados(o.tipo === 'varios' && objetivoId ? [objetivoId] : []);
+        return elegirObjetivo(a.id), false;
+      }
+    }
     const fila = todasFilas.find((f) => f.clave === a.id);
     const alcance = fila ? alcanceDe(p, fila) : null;
     if (alcance && !objetivoId && hayOtros && miToken) return elegirObjetivo(a.id), false;
@@ -138,7 +168,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     if (lejos) return sala.negarLocal(lejos), false;
     if (a.tirada?.tipo === 'golpe' && p.golpes[0]) { ultimoGolpe.current = p.golpes[0].id; ultimoConjuro.current = null; }
     if (a.tirada?.tipo === 'ataque-conjuro') ultimoConjuro.current = a;
-    const apunta = a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion' ? objetivoId : undefined;
+    const apunta = inter || (a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') ? objetivoId : undefined;
     sala.usar(a.id, apunta, a.tirada ? a.verbo || a.nombre : undefined);
     setElegida(null);
     setMenuAbierto(false);
@@ -161,11 +191,18 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     setMenuAbierto(false);
     return true;
   };
-  // En el modo de elegir objetivo: tocar a alguien hace la acción contra él (si no llega, se queda esperando otro)
+  // En el modo de elegir objetivo: tocar a alguien hace la acción contra él (si no llega, se queda esperando otro).
+  // Las de varios objetivos van juntando a los tocados hasta que se lanzan.
   const elegirA = (tokenId: string) => {
     if (!eligiendo) return;
     const fila = todasFilas.find((f) => f.clave === eligiendo.clave);
     if (!fila) return setEligiendo(null);
+    const inter = fila.tipo === 'aptitud' ? interaccionDe(fila.aptitud) : null;
+    if (inter?.objetivos.tipo === 'varios') {
+      const max = inter.objetivos.max;
+      return setMarcados((xs) => (xs.includes(tokenId) ? xs.filter((x) => x !== tokenId) : xs.length < max ? [...xs, tokenId] : xs));
+    }
+    if (inter?.objetivos.tipo === 'area') return;
     const hecho = fila.tipo === 'golpe' ? atacar(fila.golpe.id, eligiendo.numero, tokenId) : usarAptitud(fila.aptitud, tokenId);
     if (hecho) { setEligiendo(null); setSeleccionado(tokenId); }
   };
@@ -207,8 +244,28 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         botones: sirven.map((a, i) => ({ etiqueta: `Usar ${a.verbo || a.nombre}`, principal: i === 0, hacer: () => usarReaccion(a, t.id) })),
       }];
     }
+    // Lo que el motor me aplicó: daño, curación, un efecto
+    if (e.tipo === 'dano' || e.tipo === 'curacion' || e.tipo === 'efecto') {
+      if (!miToken || e.tokenId !== miToken.id) return [];
+      if (e.tipo === 'dano') {
+        return [{ id: id(), tono: 'peligro', titulo: e.cayo ? `Recibes ${e.cantidad} de daño y caes` : `Recibes ${e.cantidad} de daño`, cuerpo: e.cayo ? 'Quedas Dying e inconsciente: tus aliados pueden curarte.' : 'Ya está restado de tus PG.', dura: 6000 }];
+      }
+      if (e.tipo === 'curacion') return [{ id: id(), tono: 'bueno', titulo: `Te curan ${e.cantidad} PG`, cuerpo: 'Ya está sumado.', dura: 5000 }];
+      return [{ id: id(), tono: e.beneficioso ? 'bueno' : 'malo', titulo: e.quitado ? `Se te acabó ${e.nombre}` : `Ahora tienes ${e.nombre}`, cuerpo: e.quitado ? 'Ya no cuenta en tus tiradas.' : 'Ya cuenta en tus tiradas: míralo en tu ficha.', dura: 5000 }];
+    }
+    if (e.tipo !== 'tirada') return [];
     const t = e.tirada;
     const avisos: Aviso[] = [];
+    // Lo que resolvió el motor de interacciones ya está aplicado: solo se cuenta cómo salió
+    if (t.resultado) {
+      if (t.personajeId === p.id && t.objetivo?.grado) {
+        const r = t.resultado;
+        const que = [r.dano ? `${r.dano} de daño${r.tipo ? ` ${r.tipo}` : ''}` : null, r.curacion ? `cura ${r.curacion}` : null, r.nota].filter(Boolean).join(' · ');
+        const bien = t.objetivo.grado === 'critico' || t.objetivo.grado === 'exito';
+        avisos.push({ id: id(), tono: bien ? 'bueno' : 'malo', titulo: `${t.etiqueta} contra ${t.objetivo.nombre}`, cuerpo: que || (bien ? 'Funcionó.' : 'No funcionó.'), dura: 6000 });
+      }
+      return avisos;
+    }
     // Mi ataque: cómo salió y qué sigue
     if (t.personajeId === p.id && t.objetivo?.grado) {
       const golpe = ultimoGolpe.current;
@@ -395,6 +452,29 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     ),
   } : null;
   const apunta = miToken && objetivoToken ? { desde: miToken.id, hasta: objetivoToken.id } : null;
+  // Lo que se está por lanzar: su interacción decide si se elige un punto (área), varios o un aliado
+  const filaEligiendo = eligiendo ? todasFilas.find((f) => f.clave === eligiendo.clave) ?? null : null;
+  const aptitudEligiendo = filaEligiendo?.tipo === 'aptitud' ? filaEligiendo.aptitud : null;
+  const interEligiendo = aptitudEligiendo ? interaccionDe(aptitudEligiendo) : null;
+  const objetivosEligiendo = interEligiendo?.objetivos;
+  const plantilla = miToken && aptitudEligiendo && objetivosEligiendo?.tipo === 'area' && objetivosEligiendo.area.forma !== 'emanacion'
+    ? {
+      tokenId: miToken.id, area: objetivosEligiendo.area, etiqueta: aptitudEligiendo.verbo || aptitudEligiendo.nombre,
+      ...(aptitudEligiendo.distancia ? { alcance: aptitudEligiendo.distancia } : {}),
+      color: tintaDe(interEligiendo?.dano ? ASPECTO_POR_DANO[interEligiendo.dano.tipo] : 'bendicion', interEligiendo?.dano?.tipo),
+    }
+    : null;
+  const lanzarA = (punto?: { x: number; y: number }) => {
+    if (!aptitudEligiendo) return;
+    if (usarAptitud(aptitudEligiendo, undefined, punto ? { punto } : { objetivos: marcados })) { setEligiendo(null); setMarcados([]); }
+  };
+  const confirmar = objetivosEligiendo?.tipo === 'varios'
+    ? { etiqueta: marcados.length ? `Lanzar a ${marcados.length}` : 'Toca a quiénes', hacer: () => lanzarA(), deshabilitado: marcados.length === 0 }
+    : undefined;
+  const textoElegir = objetivosEligiendo?.tipo === 'area'
+    ? (plantilla?.area.forma === 'explosion' ? 'Mueve el área y toca dónde estalla.' : 'Apunta hacia dónde sale y toca para lanzarla.')
+    : objetivosEligiendo?.tipo === 'varios' ? `Toca hasta ${objetivosEligiendo.max} objetivos y lánzalo.`
+    : objetivosEligiendo?.tipo === 'uno' && objetivosEligiendo.aliados ? 'Toca a un aliado (o a ti).' : undefined;
   const tiradas = (
     <div className="flex flex-col gap-4">
       <TiradaLibre esGM={false} objetivo={objetivo} onTirar={tirar} />
@@ -420,15 +500,22 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       onNegar={sala.negarLocal}
       seleccionado={seleccionado}
       onSeleccionar={(id) => {
-        if (eligiendo) return id && id !== miToken?.id ? elegirA(id) : undefined;
+        const puedeASiMismo = objetivosEligiendo?.tipo !== 'area' && !!objetivosEligiendo && 'aliados' in objetivosEligiendo && !!objetivosEligiendo.aliados;
+        if (eligiendo) return id && (id !== miToken?.id || puedeASiMismo) ? elegirA(id) : undefined;
         setSeleccionado(id);
         setMenuAbierto(!!id && id !== miToken?.id);
       }}
       onMover={(id, x, y) => sala.mover(id, x, y)}
+      plantilla={plantilla}
+      onPunto={(c) => lanzarA(c)}
+      marcados={objetivosEligiendo?.tipo === 'varios' ? marcados : []}
     />
   );
 
-  const contexto: Contexto = { estado, combate, miToken, miTurno, enTurno, p, sala, ficha, onEditar: () => setEditando(true), onCondiciones: () => setViendoCondiciones(true) };
+  const contexto: Contexto = {
+    estado, combate, miToken, miTurno, enTurno, p, sala, ficha, onEditar: () => setEditando(true), onCondiciones: () => setViendoCondiciones(true),
+    onSubirNivel: () => setSubiendoNivel(true),
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -438,7 +525,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       <div className="relative hidden min-h-0 flex-1 lg:block">
         {tablero(plegada ? 70 : 320)}
         {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
-        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} onCancelar={() => setEligiendo(null)} className={plegada ? 'bottom-[92px]' : 'bottom-[342px]'} />}
+        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className={plegada ? 'bottom-[92px]' : 'bottom-[342px]'} />}
         {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} />}
         <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} />
 
@@ -508,7 +595,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         <div className={`relative min-h-0 flex-1 ${pestana === 'tablero' ? 'block' : 'hidden'}`}>
           {tablero(0)}
           {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
-          {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} onCancelar={() => { setEligiendo(null); setPestana('turno'); }} className="bottom-3" />}
+          {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); setPestana('turno'); }} className="bottom-3" />}
         </div>
         {pestana === 'turno' && (
           <TurnoMovil contexto={contexto} condiciones={condiciones} lista={lista} elegida={elegida} marcada={marcada} libres={libres}
@@ -597,6 +684,10 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         </div>
       )}
       {editando && <EditarPersonaje salaId={salaId} sala={sala} personaje={p} onCerrar={() => setEditando(false)} />}
+      {subiendoNivel && (
+        <SubirNivel p={p} otros={Object.values(estado.personajes).filter((x) => x.id !== p.id)} onCerrar={() => setSubiendoNivel(false)}
+          onSubir={(nuevo) => { const { id: _id, ...cambios } = nuevo; sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios }); }} />
+      )}
       {miEspera && (
         <PanelEspera espera={miEspera} aptitudes={todasLasAptitudes(p).filter((a) => miEspera.aptitudes.includes(a.id))}
           onResponder={(aptitudId) => sala.responder(miEspera.id, aptitudId)} />
@@ -669,17 +760,31 @@ function Botonera({ actual, onAbrir }: { actual: Cajon | null; onAbrir: (c: Cajo
 }
 
 // "Elige a quién": mientras una acción espera su objetivo, una banda sobre el tablero lo dice y deja cancelar
-export function BandaElegir({ fila, rango, onCancelar, className }: { fila: Pick<Fila, 'nombre'>; rango: { pies: number } | null; onCancelar: () => void; className: string }) {
+export function BandaElegir({ fila, rango, onCancelar, className, texto, confirmar }: {
+  fila: Pick<Fila, 'nombre'>;
+  rango: { pies: number } | null;
+  onCancelar: () => void;
+  className: string;
+  // Lo que se lee abajo, si no es "toca un token" (las áreas, los de varios objetivos)
+  texto?: string;
+  // Para lo de varios objetivos: lanzarlo a los ya tocados
+  confirmar?: { etiqueta: string; hacer: () => void; deshabilitado: boolean };
+}) {
   return (
     <div className={`pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3 ${className}`} role="status">
       <div className="tarjeta pointer-events-auto flex items-center gap-3 py-2 pr-2 pl-4">
         <CrosshairIcon size={22} weight="bold" className="shrink-0 text-peligro" aria-hidden />
         <p className="font-titulo text-[15px] leading-tight">
-          <b>Elige a quién</b> · {fila.nombre}
+          <b>{texto ? 'Elige' : 'Elige a quién'}</b> · {fila.nombre}
           <span className="block text-[13px] text-texto-suave">
-            {rango ? `Llegas a ${rango.pies <= 5 ? 'lo que está a tu lado' : `${rango.pies} ft`}: lo marcado con anillo.` : 'Toca un token.'}
+            {texto ?? (rango ? `Llegas a ${rango.pies <= 5 ? 'lo que está a tu lado' : `${rango.pies} ft`}: lo marcado con anillo.` : 'Toca un token.')}
           </span>
         </p>
+        {confirmar && (
+          <button className="boli h-9 bg-acento px-3 font-titulo text-[14px] font-bold text-sobre-acento disabled:opacity-45" disabled={confirmar.deshabilitado} onClick={confirmar.hacer}>
+            {confirmar.etiqueta}
+          </button>
+        )}
         <button className="boli h-9 border-[1.5px] border-borde px-3 font-titulo text-[14px] text-texto-suave hover:text-texto" onClick={onCancelar}>
           Cancelar
         </button>
@@ -701,6 +806,8 @@ interface Contexto {
   onEditar: () => void;
   // Abre la ventana para poner o quitar condiciones
   onCondiciones: () => void;
+  // Abre la ventana de subir de nivel
+  onSubirNivel: () => void;
 }
 
 export function Cabecera({ salaId, sala, tema, onAyuda, extra, textoSalir = 'Para volver vas a necesitar el código de tu personaje.' }: {
@@ -789,7 +896,9 @@ function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas:
               {t.objetivo && !t.objetivo.grado && <span>{' · a '}{t.objetivo.nombre}</span>}
               {t.objetivo?.grado && (
                 <span className={t.objetivo.grado === 'exito' || t.objetivo.grado === 'critico' ? 'font-semibold text-exito' : 'font-semibold text-peligro'}>
-                  {' · '}{t.objetivo.grado === 'critico' ? '¡crítico!' : t.objetivo.grado === 'exito' ? 'le diste' : t.objetivo.grado === 'pifia' ? 'pifia' : 'falló'}
+                  {' · '}{t.objetivo.salvacion
+                    ? ({ critico: 'resistió', exito: 'salvó a medias', fallo: 'no salvó', pifia: 'falló feo' } as const)[t.objetivo.grado]
+                    : t.objetivo.grado === 'critico' ? '¡crítico!' : t.objetivo.grado === 'exito' ? 'le diste' : t.objetivo.grado === 'pifia' ? 'pifia' : 'falló'}
                 </span>
               )}
             </small>
@@ -801,7 +910,7 @@ function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas:
   );
 }
 
-function ColumnaQuien({ contexto: { p, ficha, sala, onEditar }, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
+function ColumnaQuien({ contexto: { p, ficha, sala, onEditar, onSubirNivel, combate }, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
   const tirar = (que: QueTirar) => sala.tirar(p.id, que);
   return (
     <div className="flex flex-col gap-3 px-5 pt-4 pb-4">
@@ -810,6 +919,11 @@ function ColumnaQuien({ contexto: { p, ficha, sala, onEditar }, onAbrirFicha }: 
         <div className="min-w-0">
           <h2 className="truncate font-titulo text-[30px] leading-none font-bold text-acento">{p.nombre}</h2>
           <p className="mt-1 truncate font-titulo text-[14px] text-texto-suave">{[p.ascendencia, p.clase].filter(Boolean).join(' ')} · nivel {p.nivel}</p>
+          {p.nivel < 20 && !combate && (
+            <button className="mt-1 inline-flex items-center gap-1 rounded-md px-1 font-titulo text-[13.5px] font-semibold text-acento hover:bg-acento/10" onClick={onSubirNivel}>
+              <SparkleIcon size={14} weight="fill" aria-hidden /> Subir a nivel {p.nivel + 1}
+            </button>
+          )}
         </div>
       </div>
       <button className="text-left" onClick={onAbrirFicha} title="Abrir la ficha completa para curar o recibir daño">
@@ -910,6 +1024,11 @@ function ColumnaLado({ contexto, condiciones }: { contexto: Contexto; condicione
         onClick={contexto.onCondiciones}>
         <StickerIcon size={16} aria-hidden /> {condiciones.length ? 'Cambiar condiciones' : 'Pegar una condición'}
       </button>
+      {miToken && (miToken.efectos?.length ?? 0) > 0 && (
+        <div className="max-h-[150px] overflow-y-auto pr-1">
+          <EfectosActivos efectos={miToken.efectos ?? []} onQuitar={(efectoId) => sala.enviar({ tipo: 'quitar-efecto', tokenId: miToken.id, efectoId })} />
+        </div>
+      )}
       <div className="mt-auto flex flex-col gap-2">
         {combate && miToken && <BotonReaccion combate={combate} tokenId={miToken.id} sala={sala} />}
         {combate
@@ -985,6 +1104,12 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
               <b className="text-[18px] text-texto">{p.pgActual}</b> / {ficha.pgMax.total} PG · CA <b className="text-texto">{ficha.ca.total}</b>
             </p>
           </div>
+          {p.nivel < 20 && !combate && (
+            <button className="flex size-10 shrink-0 items-center justify-center rounded-lg text-acento hover:bg-acento/10" onClick={contexto.onSubirNivel}
+              aria-label={`Subir a nivel ${p.nivel + 1}`} title={`Subir a nivel ${p.nivel + 1}`}>
+              <SparkleIcon size={22} weight="fill" aria-hidden />
+            </button>
+          )}
         </div>
         <BarraPG actual={p.pgActual} max={ficha.pgMax.total} temporales={p.pgTemporales} alto="h-3" />
         <div className="flex flex-wrap items-center gap-2">
@@ -998,6 +1123,9 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
             <StickerIcon size={15} aria-hidden /> {condiciones.length ? 'cambiar' : 'condición'}
           </button>
         </div>
+        {contexto.miToken && (contexto.miToken.efectos?.length ?? 0) > 0 && (
+          <div className="mt-2"><EfectosActivos efectos={contexto.miToken.efectos ?? []} compacto /></div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">

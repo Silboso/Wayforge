@@ -159,8 +159,15 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       if (!t || t.personajeId) return [];
       return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
     }
+    // Una criatura cae por lo que hizo el motor (un Fireball, el fuego persistente)
+    if (e.tipo === 'dano' && e.cayo) {
+      const t = estado.tokens[e.tokenId];
+      return t ? [{ id: id(), tono: 'bueno', titulo: `${t.nombre} cae`, cuerpo: `Recibió ${e.cantidad} de daño y quedó a 0 PG.`, dura: 5000 }] : [];
+    }
     if (e.tipo !== 'tirada') return [];
     const t = e.tirada;
+    // Lo que resolvió el motor de interacciones ya está aplicado: no hay nada que restar a mano
+    if (t.resultado) return [];
     const objetivo = t.objetivo?.tokenId ? estado.tokens[t.objetivo.tokenId] : undefined;
     const autor = t.autorTokenId ? estado.tokens[t.autorTokenId] : undefined;
     const deCriatura = autor && !autor.personajeId;
@@ -354,6 +361,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         {actor && (
           <HojaCriatura estado={estado} actor={actor} plegada={plegada} onPlegar={() => setPlegada(!plegada)} numero={numero}
             onAtacar={(a) => atacar(a, objetivoId ?? undefined)} onAsomar={setAsomado}
+            onQuitarEfecto={(efectoId) => sala.enviar({ tipo: 'quitar-efecto', tokenId: actor.id, efectoId })}
             onDano={(a, critico) => tirarDano(actor.id, a, critico, objetivoId ?? undefined)}
             onChequeo={(clave) => {
               const p = actor.personajeId ? estado.personajes[actor.personajeId] : undefined;

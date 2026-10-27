@@ -15,6 +15,7 @@ import {
 } from '../../../reglas/creador';
 import type { Indice } from '../../../reglas/compendio';
 import { DelCompendio } from './DelCompendio';
+import { IconoJuego, rutaAscendencia } from '../Iconos';
 import { CostoAccion } from '../hud/piezas';
 import { claseEntrada } from '../ui';
 import { Chip, Cuenta, Opcion, TituloPaso } from './piezas';
@@ -36,7 +37,8 @@ export function PasoAscendencia({ e, cambiar }: PropsPaso) {
       <TituloPaso titulo="Ascendencia" ayuda="Tu pueblo de origen: decide tus PG base, tu tamaño, tu Velocidad y cómo ves en la oscuridad." />
       <div className={rejilla}>
         {ASCENDENCIAS.map((a) => (
-          <Opcion key={a.id} elegida={e.ascendencia === a.id} titulo={a.nombre} subtitulo={a.descripcion}
+          <Opcion key={a.id} elegida={e.ascendencia === a.id} subtitulo={a.descripcion}
+            titulo={<span className="flex items-center gap-2"><IconoJuego ruta={rutaAscendencia(a.id)} className="size-7 text-acento" />{a.nombre}</span>}
             onElegir={() => cambiar({ ascendencia: a.id, herencia: null, mejorasAscendencia: [], doteAscendencia: null, idiomas: [] })}
             chips={<>
               <Chip>PG {a.pg}</Chip><Chip>{a.tamano === 'small' ? 'Small' : 'Medium'}</Chip><Chip>Vel {a.velocidad} ft</Chip>

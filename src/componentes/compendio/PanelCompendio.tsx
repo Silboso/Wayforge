@@ -9,6 +9,7 @@ import {
 import { precioTexto } from '../../../reglas/datos/equipo';
 import { buscar, useEntrada, useIndice } from '../../compendio';
 import { CostoAccion } from '../hud/piezas';
+import { IconoJuego, rutaAscendencia, rutaTipo, type TipoIcono } from '../Iconos';
 
 // Lo que se puede hacer con una entrada desde la mesa (según quién mira)
 export interface AccionesCompendio {
@@ -62,17 +63,24 @@ export function PanelCompendio({ acciones = {}, tipoInicial = 'criaturas' }: { a
         {indice === null ? 'Abriendo el compendio…' : total === 0 ? 'Nada con eso.' : `${total.toLocaleString('es')} resultado${total === 1 ? '' : 's'}${total > resultados.length ? ` · se ven los primeros ${resultados.length}, afina la búsqueda` : ''}`}
       </p>
       <ul className="flex flex-col">
-        {resultados.map((x) => <Fila key={x.id} x={x} onAbrir={() => setAbierta(x.id)} />)}
+        {resultados.map((x) => <Fila key={x.id} x={x} tipo={tipo} onAbrir={() => setAbierta(x.id)} />)}
       </ul>
-      <p className="text-[11.5px] leading-snug text-texto-suave">Contenido de Pathfinder 2e de Paizo, importado del sistema PF2e de Foundry (licencias ORC y OGL). Los textos van en inglés, como en los libros.</p>
+      <p className="text-[11.5px] leading-snug text-texto-suave">Contenido de Pathfinder 2e de Paizo, importado del sistema PF2e de Foundry (licencias ORC y OGL). Los textos van en inglés, como en los libros. Íconos de Lorc, Delapouite y colaboradores en game-icons.net (CC BY 3.0).</p>
     </div>
   );
 }
 
-function Fila({ x, onAbrir }: { x: Indice; onAbrir: () => void }) {
+// El ícono de cada tipo de entrada (las ascendencias, el suyo propio)
+const ICONO_TIPO: Record<TipoCompendio, TipoIcono> = {
+  criaturas: 'npc', conjuros: 'spell', dotes: 'feat', equipo: 'equipment', acciones: 'action', condiciones: 'condition',
+  ascendencias: 'ancestry', herencias: 'heritage', trasfondos: 'background', clases: 'class', 'rasgos-de-clase': 'class', deidades: 'deity', peligros: 'hazard',
+};
+
+function Fila({ x, tipo, onAbrir }: { x: Indice; tipo: TipoCompendio; onAbrir: () => void }) {
   return (
     <li>
-      <button className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-dashed border-borde px-1 py-1.5 text-left transition hover:bg-acento/[0.06]" onClick={onAbrir}>
+      <button className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 border-b border-dashed border-borde px-1 py-1.5 text-left transition hover:bg-acento/[0.06]" onClick={onAbrir}>
+        <IconoJuego ruta={tipo === 'ascendencias' ? rutaAscendencia(x.id) : rutaTipo(ICONO_TIPO[tipo])} className="size-6 text-texto-suave" />
         <span className="min-w-0">
           <span className={`block truncate font-titulo text-[15.5px] font-semibold ${x.rareza === 'uncommon' ? 'text-[#b06d1a]' : x.rareza === 'rare' ? 'text-acento' : x.rareza === 'unique' ? 'text-[#8a4fd0]' : ''}`}>{x.nombre}</span>
           <span className="block truncate text-[12px] text-texto-suave">{[x.resumen, x.fuente].filter(Boolean).join(' · ')}</span>

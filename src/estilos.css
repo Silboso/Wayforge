@@ -276,6 +276,130 @@ textarea {
 .nota-tinta {
   animation: nota-tinta 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
+/* El número de daño llega un instante después del sello de la salvación */
+.nota-tinta.despues {
+  animation-delay: 0.35s;
+  opacity: 0;
+}
+
+/* Un área de conjuro: las casillas se llenan de golpe con la tinta del elemento y se desvanecen */
+@keyframes area-tinta {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  18% {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+  35% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+.area-tinta {
+  transform-box: view-box;
+  animation: area-tinta 1.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+/* Las salpicaduras del estallido salen volando hacia afuera */
+@keyframes area-chispa {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(1);
+  }
+}
+.area-chispa {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: area-chispa 1.3s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+}
+
+/* Curación: chispas que suben desde el token */
+@keyframes curacion-chispa {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.5);
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-46px) scale(1.1);
+  }
+}
+.curacion-chispa {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: curacion-chispa 1.6s ease-out forwards;
+}
+
+/* El nombre de un efecto que alguien recibe (o pierde): sube a lápiz desde el token */
+@keyframes etiqueta-efecto {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.85);
+  }
+  15%,
+  75% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -22px) scale(1);
+  }
+}
+.etiqueta-efecto {
+  animation: etiqueta-efecto 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Subir de nivel: el sello cae, rebota y quedan estrellitas de tinta alrededor */
+@keyframes nivel-sello {
+  0% {
+    opacity: 0;
+    transform: scale(2.4) rotate(-14deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(0.92) rotate(-4deg);
+  }
+  60%,
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(-6deg);
+  }
+}
+.nivel-sello {
+  animation: nivel-sello 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes nivel-estrella {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2) rotate(0deg);
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(1) rotate(160deg);
+  }
+}
+.nivel-estrella {
+  animation: nivel-estrella 1.6s cubic-bezier(0.1, 0.7, 0.3, 1) both;
+}
 
 /* El dado rueda un instante antes de mostrar el resultado */
 @keyframes dado-rueda {

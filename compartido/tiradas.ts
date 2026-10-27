@@ -1,6 +1,7 @@
 import { bonoDeDano, calcular, HABILIDADES, leerDados, leerExpresion, SALVACIONES, signo, type Personaje } from '../reglas/pf2e';
 import { todasLasAptitudes } from '../reglas/aptitudes';
 import { penalizaciones, type Condicion, type Contexto } from '../reglas/condiciones';
+import type { EfectoActivo } from '../reglas/efectos';
 import { penalizacionesAtaque } from '../reglas/criaturas';
 import type { QueTirar, Token } from './sala';
 
@@ -16,8 +17,8 @@ export interface QueSeTira {
 
 // Traduce "tirar Athletics" a dados y modificador usando la ficha y sus condiciones.
 // La sala lo usa para tirar de verdad; las tiradas libres no pasan por aquí.
-export function queSeTira(p: Personaje, que: QueTirar, condiciones: Condicion[] = []): QueSeTira | null {
-  const ficha = calcular(p, condiciones);
+export function queSeTira(p: Personaje, que: QueTirar, condiciones: Condicion[] = [], efectos: EfectoActivo[] = []): QueSeTira | null {
+  const ficha = calcular(p, condiciones, efectos);
   const d20 = (etiqueta: string, modificador: number, esAtaque = false): QueSeTira =>
     ({ etiqueta, dados: [{ cantidad: 1, caras: 20 }], modificador, multiplicador: 1, esAtaque });
   switch (que.tipo) {
@@ -46,7 +47,7 @@ export function queSeTira(p: Personaje, que: QueTirar, condiciones: Condicion[] 
       return {
         etiqueta: `${que.critico ? 'Daño crítico' : 'Daño'} de ${golpe.nombre}${golpe.tipoDano ? ` (${golpe.tipoDano})` : ''}`,
         dados: [dados],
-        modificador: bonoDeDano(p, golpe, condiciones),
+        modificador: bonoDeDano(p, golpe, condiciones, efectos),
         multiplicador: que.critico ? 2 : 1,
         esAtaque: false,
       };
@@ -91,11 +92,11 @@ export function queSeTira(p: Personaje, que: QueTirar, condiciones: Condicion[] 
 
 // Lo que tira una criatura del GM. Sus números ya vienen sumados; se agregan la penalización por ataque
 // múltiple y lo que quiten sus condiciones (Frightened, Sickened…), igual que a un personaje.
-export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'percepcion' | 'criatura'>, que: QueTirar): QueSeTira | null {
+export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'percepcion' | 'criatura' | 'efectos'>, que: QueTirar): QueSeTira | null {
   const cr = token.criatura;
   if (!cr) return null;
   const condiciones = token.condiciones ?? [];
-  const resta = (contexto: Contexto) => penalizaciones(condiciones, contexto).reduce((s, x) => s + x.valor, 0);
+  const resta = (contexto: Contexto) => penalizaciones(condiciones, contexto, token.efectos ?? []).reduce((s, x) => s + x.valor, 0);
   const d20 = (etiqueta: string, modificador: number, esAtaque = false): QueSeTira =>
     ({ etiqueta, dados: [{ cantidad: 1, caras: 20 }], modificador, multiplicador: 1, esAtaque });
   switch (que.tipo) {
@@ -119,7 +120,7 @@ export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'p
       };
     }
     case 'chequeo-criatura': {
-      if (que.clave === 'percepcion') return d20('Perception', (token.percepcion ?? 0) + resta({ tipo: 'chequeo', atributo: 'wis' }));
+      if (que.clave === 'percepcion') return d20('Perception', (token.percepcion ?? 0) + resta({ tipo: 'chequeo', atributo: 'wis', clase: 'percepcion' }));
       const s = SALVACIONES.find((x) => x.clave === que.clave);
       return s ? d20(s.nombre, cr.salvaciones[s.clave] + resta({ tipo: 'chequeo', atributo: s.atributo, salvacion: s.clave })) : null;
     }

@@ -1,12 +1,18 @@
 // Eventos: lo que acaba de pasar en la mesa, sacado de comparar el estado antes y después de una acción.
 // De aquí salen los avisos ("te atacaron", "se movió a tu lado") y las animaciones del tablero.
 
+import type { Aspecto } from '../reglas/efectos';
 import { TAMANOS, tokenEnTurno, type Accion, type EstadoSala, type Tirada, type Token } from './sala';
 
 export type Evento =
   | { tipo: 'tirada'; tirada: Tirada }
   | { tipo: 'movimiento'; tokenId: string; desde: { x: number; y: number }; hasta: { x: number; y: number }; camino?: { x: number; y: number }[] }
-  | { tipo: 'turno'; tokenId: string; ronda: number };
+  | { tipo: 'turno'; tokenId: string; ronda: number }
+  // Lo que deja el motor de interacciones, para verlo en el tablero
+  | { tipo: 'area'; casillas: { x: number; y: number }[]; aspecto?: Aspecto; tipoDano?: string; autorTokenId?: string }
+  | { tipo: 'dano'; tokenId: string; cantidad: number; critico: boolean; cayo: boolean }
+  | { tipo: 'curacion'; tokenId: string; cantidad: number }
+  | { tipo: 'efecto'; tokenId: string; nombre: string; beneficioso: boolean; aspecto?: Aspecto; quitado: boolean };
 
 export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: EstadoSala): Evento[] {
   switch (accion.tipo) {
@@ -27,6 +33,29 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
     case 'avanzar-turno': {
       const t = tokenEnTurno(posterior);
       return t && posterior.combate ? [{ tipo: 'turno', tokenId: t.id, ronda: posterior.combate.ronda }] : [];
+    }
+    case 'mostrar-area':
+      return [{ tipo: 'area', casillas: accion.casillas, ...(accion.aspecto ? { aspecto: accion.aspecto } : {}), ...(accion.tipoDano ? { tipoDano: accion.tipoDano } : {}), ...(accion.autorTokenId ? { autorTokenId: accion.autorTokenId } : {}) }];
+    case 'danar': {
+      const antes = anterior.tokens[accion.tokenId];
+      if (!antes || accion.cantidad <= 0) return [];
+      const vida = (e: EstadoSala) => {
+        const t = e.tokens[accion.tokenId];
+        return t?.personajeId ? e.personajes[t.personajeId]?.pgActual ?? 0 : t?.pg?.actual ?? 0;
+      };
+      return [{ tipo: 'dano', tokenId: accion.tokenId, cantidad: accion.cantidad, critico: !!accion.critico, cayo: vida(anterior) > 0 && vida(posterior) <= 0 }];
+    }
+    case 'curar':
+      return anterior.tokens[accion.tokenId] && accion.cantidad > 0 ? [{ tipo: 'curacion', tokenId: accion.tokenId, cantidad: accion.cantidad }] : [];
+    case 'poner-efecto': {
+      const e = accion.efecto;
+      // La inmunidad no se anuncia: es solo una marca
+      if (e.inmuneA || !anterior.tokens[accion.tokenId]) return [];
+      return [{ tipo: 'efecto', tokenId: accion.tokenId, nombre: e.nombre, beneficioso: e.beneficioso, ...(e.aspecto ? { aspecto: e.aspecto } : {}), quitado: false }];
+    }
+    case 'quitar-efecto': {
+      const e = anterior.tokens[accion.tokenId]?.efectos?.find((x) => x.id === accion.efectoId);
+      return e && !e.inmuneA ? [{ tipo: 'efecto', tokenId: accion.tokenId, nombre: e.nombre, beneficioso: e.beneficioso, ...(e.aspecto ? { aspecto: e.aspecto } : {}), quitado: true }] : [];
     }
     default:
       return [];

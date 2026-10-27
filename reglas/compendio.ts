@@ -5,6 +5,8 @@
 import type { Aptitud, Costo } from './aptitudes';
 import type { AtaqueCriatura, Criatura, Defensas } from './criaturas';
 import { leerExpresion } from './pf2e';
+import { leerArea } from './areas';
+import { CATALOGO_INTERACCIONES, claveDe, type Interaccion, type Objetivos } from './interacciones';
 
 export type TipoCompendio =
   | 'criaturas' | 'conjuros' | 'dotes' | 'equipo' | 'acciones' | 'condiciones'
@@ -39,6 +41,8 @@ export interface Indice {
   resumen: string;
   // En qué trozo está el detalle
   trozo: number;
+  // Solo las dotes: sus requisitos ("trained in Athletics", "Power Attack")
+  requisitos?: string[];
 }
 
 interface Base {
@@ -140,7 +144,33 @@ export function conjuroAAptitud(c: ConjuroCompendio): Aptitud {
     ...(c.defensa === 'ataque' ? { tirada: { tipo: 'ataque-conjuro' as const } } : formula ? { tirada: { tipo: 'expresion' as const, expresion: formula } } : {}),
     ...(formula ? { dano: formula } : {}),
     ...(c.distancia !== null ? { distancia: Math.min(1000, Math.max(5, c.distancia)) } : {}),
+    ...(() => { const i = interaccionDeConjuro(c); return i ? { interaccion: i } : {}; })(),
   };
+}
+
+const NUMEROS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10 };
+
+// Lo que el motor de interacciones necesita de un conjuro: quién tira, a quiénes alcanza, qué daño o curación lleva.
+// Los del catálogo traen sus grados a mano; el resto se arma con lo que dice el libro.
+export function interaccionDeConjuro(c: ConjuroCompendio): Interaccion | null {
+  if (CATALOGO_INTERACCIONES[claveDe(c.nombre)]) return null;
+  const valido = c.dano.find((d) => leerExpresion(d.formula));
+  const curacion = valido && valido.tipo === 'vitality' && /willing|living|ally/i.test(c.objetivos) ? valido.formula : undefined;
+  const dano = valido && !curacion ? { formula: valido.formula, tipo: valido.tipo === 'untyped' ? '' : valido.tipo.slice(0, 30) } : undefined;
+  if (!dano && !curacion) return null;
+  const area = leerArea(c.area.replace(/cylinder/i, 'burst'));
+  const varios = /up to (\d+|one|two|three|four|five|six|ten) (?:willing )?(?:creatures|targets)/i.exec(c.objetivos);
+  const max = varios ? NUMEROS[varios[1]!.toLowerCase()] ?? Number(varios[1]) : 1;
+  const aliados = /willing|ally|allies/i.test(c.objetivos) || !!curacion;
+  const objetivos: Objetivos = area ? { tipo: 'area', area: { ...area, tamano: Math.min(500, area.tamano) }, ...(aliados ? { aliados } : {}) }
+    : max > 1 ? { tipo: 'varios', max: Math.min(10, max), ...(aliados ? { aliados } : {}) }
+    : { tipo: 'uno', ...(aliados ? { aliados } : {}) };
+  if (curacion) return { modo: { tipo: 'ninguna' }, objetivos, curacion };
+  if (c.defensa === 'ataque') return { modo: { tipo: 'ataque' }, objetivos, dano };
+  if (c.defensa) {
+    return { modo: { tipo: 'salvacion', salvacion: c.defensa, basica: c.basica }, objetivos, dano, ...(c.basica ? {} : { porGrado: { fallo: { dano: 1 }, pifia: { dano: 2 } } }) };
+  }
+  return { modo: { tipo: 'ninguna' }, objetivos, dano };
 }
 
 const PERIODOS: Record<string, 'turno' | '10min' | 'hora' | 'dia'> = { day: 'dia', hour: 'hora', PT10M: '10min', PT1H: 'hora', P1D: 'dia', turn: 'turno', round: 'turno' };

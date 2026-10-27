@@ -2,7 +2,10 @@
 // Lo usan la interfaz y el Durable Object con el mismo `aplicar`, así los dos lados llegan al mismo estado.
 
 import { esCriaturaValida, type Criatura } from '../reglas/criaturas';
-import { calcular, esPersonajeValido, type Grado, type Personaje, type Valor } from '../reglas/pf2e';
+import { calcular, esPersonajeValido, leerExpresion, type Grado, type Personaje, type Valor } from '../reglas/pf2e';
+import {
+  contarRondas, esEfectoValido, esEfectosValidos, ponerEfecto, sostener, velocidadConEfectos, vencerSostenidos, type Aspecto, type EfectoActivo,
+} from '../reglas/efectos';
 import {
   accionesAlEmpezar, alEmpezarTurno, alTerminarTurno, CONDICIONES, esCondicionesValida, penalizaciones, ponerCondicion,
   type ClaveCondicion, type Condicion,
@@ -38,6 +41,8 @@ export interface Token {
   // Token de un personaje jugador: su dueño lo puede mover. El nombre y la imagen salen de la ficha.
   personajeId?: string;
   condiciones?: Condicion[];
+  // Lo que le dejaron puesto las aptitudes (Bless, fuego persistente…), con su duración
+  efectos?: EfectoActivo[];
   // Números de enemigos y NPCs; los personajes los sacan de su ficha
   ca?: number;
   pg?: { actual: number; max: number };
@@ -72,8 +77,11 @@ export interface Tirada {
   // Quién tiró (para avisarle lo que sigue) y desde qué token (para dibujar el golpe)
   personajeId?: string;
   autorTokenId?: string;
-  // Si se tiró contra alguien: a quién y, si fue un d20 contra su CA, cómo salió
-  objetivo?: { nombre: string; tokenId?: string; cd?: number; grado?: Grado };
+  // Si se tiró contra alguien: a quién y, si fue un d20 contra su CA, cómo salió.
+  // `salvacion`: el que tiró fue el objetivo (su grado es cómo resistió)
+  objetivo?: { nombre: string; tokenId?: string; cd?: number; grado?: Grado; salvacion?: boolean };
+  // Lo que el motor de interacciones le aplicó al objetivo por esta tirada
+  resultado?: { dano?: number; curacion?: number; tipo?: string; nota?: string };
 }
 
 // Un ataque en pausa: el objetivo tiene una reacción para "cuando te atacan" y la mesa espera su respuesta
@@ -150,9 +158,19 @@ export type Accion =
   | { tipo: 'abrir-espera'; espera: Espera }
   // Un movimiento ya validado por la sala: el camino (para animarlo) y cuántas acciones gastó (Stride)
   | { tipo: 'mover-turno'; id: string; camino: Casilla[]; acciones: number }
-  | { tipo: 'cerrar-espera'; id: string };
+  | { tipo: 'cerrar-espera'; id: string }
+  // Efectos con duración (el GM también los pone y quita a mano)
+  | { tipo: 'poner-efecto'; tokenId: string; efecto: EfectoActivo }
+  | { tipo: 'quitar-efecto'; tokenId: string; efectoId: string }
+  // Daño ya ajustado (resistencias) y curación: PG temporales primero; a 0 PG un personaje queda Dying
+  | { tipo: 'danar'; tokenId: string; cantidad: number; critico?: boolean }
+  | { tipo: 'curar'; tokenId: string; cantidad: number }
+  // Sustain: lo que mantiene ese token sigue una ronda más
+  | { tipo: 'sostener'; tokenId: string }
+  // Solo para verlo: las casillas que cubrió un área (no cambia el estado)
+  | { tipo: 'mostrar-area'; casillas: Casilla[]; aspecto?: Aspecto; tipoDano?: string; autorTokenId?: string };
 
-const SOLO_SALA: Accion['tipo'][] = ['registrar-tirada', 'iniciar-combate', 'contar-ataque', 'abrir-espera', 'cerrar-espera', 'mover-turno'];
+const SOLO_SALA: Accion['tipo'][] = ['registrar-tirada', 'iniciar-combate', 'contar-ataque', 'abrir-espera', 'cerrar-espera', 'mover-turno', 'sostener', 'mostrar-area'];
 
 // Quién eres en la mesa. El visitante aún no entra: solo ve la lista de personajes.
 export type Sesion =
@@ -204,8 +222,9 @@ export type MensajeCliente =
   | { tipo: 'iniciar-combate'; tokens: string[] }
   // Mover un token a una casilla: la sala calcula el camino, valida la Velocidad y gasta los Strides
   | { tipo: 'mover'; tokenId: string; x: number; y: number }
-  // Usar una aptitud: la sala revisa turno, acciones, usos y alcance, y hace todo junto
-  | { tipo: 'usar'; aptitudId: string; objetivo?: string }
+  // Usar una aptitud: la sala revisa turno, acciones, usos y alcance, y hace todo junto.
+  // `objetivos` para las de varios; `punto` es la esquina de una explosión o hacia dónde va un cono o una línea
+  | { tipo: 'usar'; aptitudId: string; objetivo?: string; objetivos?: string[]; punto?: { x: number; y: number } }
   // Respuesta a un ataque en pausa: la reacción elegida, o null para dejarlo pasar
   | { tipo: 'responder'; esperaId: string; aptitudId: string | null }
   // Dónde está mi puntero en el tablero (en casillas; null si salió) y a quién apunto. No se guarda.
@@ -300,10 +319,10 @@ export function caDeToken(estado: EstadoSala, token: Token): Valor | null {
   const condiciones = token.condiciones ?? [];
   if (token.personajeId) {
     const p = estado.personajes[token.personajeId];
-    return p ? calcular(p, condiciones).ca : null;
+    return p ? calcular(p, condiciones, token.efectos ?? []).ca : null;
   }
   if (token.ca === undefined) return null;
-  const partes = [{ etiqueta: 'CA', valor: token.ca }, ...penalizaciones(condiciones, { tipo: 'ca' })];
+  const partes = [{ etiqueta: 'CA', valor: token.ca }, ...penalizaciones(condiciones, { tipo: 'ca' }, token.efectos ?? [])];
   return { total: partes.reduce((s, p) => s + p.valor, 0), partes };
 }
 
@@ -319,9 +338,42 @@ export function ordenar(orden: Combatiente[], tokens: Record<string, Token>): Co
   return [...orden].sort((a, b) => b.iniciativa - a.iniciativa || esPersonaje(a) - esPersonaje(b));
 }
 
+// Quita efectos de un token y las condiciones que traían (si ningún otro efecto que siga las trae)
+function sinEfectos(token: Token, quitar: EfectoActivo[]): Token {
+  if (quitar.length === 0) return token;
+  const ids = new Set(quitar.map((e) => e.id));
+  const quedan = (token.efectos ?? []).filter((e) => !ids.has(e.id));
+  const siguen = new Set(quedan.flatMap((e) => (e.condiciones ?? []).map((c) => c.clave)));
+  const traidas = new Set(quitar.flatMap((e) => (e.condiciones ?? []).map((c) => c.clave)));
+  const condiciones = (token.condiciones ?? []).filter((c) => !traidas.has(c.clave) || siguen.has(c.clave));
+  return { ...token, efectos: quedan, condiciones };
+}
+
+// Pone un efecto y las condiciones que trae (sin bajar una que ya fuera mayor)
+function conEfecto(token: Token, e: EfectoActivo): Token {
+  let condiciones = token.condiciones ?? [];
+  for (const c of e.condiciones ?? []) {
+    const actual = condiciones.find((x) => x.clave === c.clave)?.valor ?? 0;
+    if (c.valor > actual) condiciones = ponerCondicion(condiciones, c.clave, c.valor);
+  }
+  return { ...token, efectos: ponerEfecto(token.efectos ?? [], e), condiciones };
+}
+
+// En todos los tokens: lo que cuenta sus rondas en el turno que empieza baja una; lo que llega a 0 se va
+function contarEfectos(tokens: Record<string, Token>, enTurno: string): Record<string, Token> {
+  const salen = { ...tokens };
+  for (const t of Object.values(tokens)) {
+    if (!t.efectos?.length) continue;
+    const { quedan, vencidos } = contarRondas(t.efectos, enTurno, t.id);
+    salen[t.id] = sinEfectos({ ...t, efectos: [...quedan, ...vencidos] }, vencidos);
+  }
+  return salen;
+}
+
 // Lo que pasa al empezar el turno de un token: recupera su reacción y calcula sus acciones
 function empezarTurno(estado: EstadoSala, combate: Combate): EstadoSala {
   const id = combate.orden[combate.turno]?.tokenId;
+  if (id) estado = { ...estado, tokens: contarEfectos(estado.tokens, id) };
   const token = id ? estado.tokens[id] : undefined;
   if (!token) return { ...estado, combate: { ...combate, acciones: 3, usadas: 0, ataques: 0 } };
   // Lo que duraba "hasta tu próximo turno" (escudo levantado) se va; luego se pagan Slowed y Stunned
@@ -435,11 +487,18 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     case 'avanzar-turno': {
       const c = estado.combate;
       if (!c || c.orden.length === 0) return estado;
-      // Al terminar el turno: Frightened baja 1
+      // Al terminar el turno: Frightened baja 1, y lo que mantenía sin sostener esta ronda se acaba
       const actual = tokenEnTurno(estado);
-      const tokens = actual
+      let tokens = actual
         ? { ...estado.tokens, [actual.id]: { ...actual, condiciones: alTerminarTurno(actual.condiciones ?? []) } }
         : estado.tokens;
+      if (actual) {
+        for (const t of Object.values(tokens)) {
+          if (!t.efectos?.length) continue;
+          const { vencidos } = vencerSostenidos(t.efectos, actual.id, c.ronda);
+          if (vencidos.length) tokens = { ...tokens, [t.id]: sinEfectos(t, vencidos) };
+        }
+      }
       const siguiente = c.turno + 1;
       const vuelta = siguiente >= c.orden.length;
       return empezarTurno({ ...estado, tokens }, { ...c, turno: vuelta ? 0 : siguiente, ronda: vuelta ? c.ronda + 1 : c.ronda });
@@ -493,6 +552,66 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
       return { ...estado, esperas: [...estado.esperas, accion.espera] };
     case 'cerrar-espera':
       return { ...estado, esperas: estado.esperas.filter((e) => e.id !== accion.id) };
+    case 'poner-efecto': {
+      const token = estado.tokens[accion.tokenId];
+      if (!token) return estado;
+      return { ...estado, tokens: { ...estado.tokens, [token.id]: conEfecto(token, accion.efecto) } };
+    }
+    case 'quitar-efecto': {
+      const token = estado.tokens[accion.tokenId];
+      const efecto = token?.efectos?.find((e) => e.id === accion.efectoId);
+      if (!token || !efecto) return estado;
+      return { ...estado, tokens: { ...estado.tokens, [token.id]: sinEfectos(token, [efecto]) } };
+    }
+    case 'danar': {
+      const token = estado.tokens[accion.tokenId];
+      if (!token || accion.cantidad <= 0) return estado;
+      const p = token.personajeId ? estado.personajes[token.personajeId] : undefined;
+      if (p) {
+        const deTemporales = Math.min(p.pgTemporales, accion.cantidad);
+        const pgActual = Math.max(0, p.pgActual - (accion.cantidad - deTemporales));
+        const personajes = { ...estado.personajes, [p.id]: { ...p, pgTemporales: p.pgTemporales - deTemporales, pgActual } };
+        if (pgActual > 0) return { ...estado, personajes };
+        // A 0 PG: Dying 1 más lo que tenga de Wounded (2 con un crítico); si ya estaba Dying, sube
+        const condiciones = token.condiciones ?? [];
+        const dying = condiciones.find((c) => c.clave === 'dying')?.valor ?? 0;
+        const wounded = condiciones.find((c) => c.clave === 'wounded')?.valor ?? 0;
+        const golpe = accion.critico ? 2 : 1;
+        const nuevo = Math.min(4, dying ? dying + golpe : golpe + wounded);
+        const puestas = ponerCondicion(ponerCondicion(condiciones, 'dying', nuevo), 'unconscious', 1);
+        return { ...estado, personajes, tokens: { ...estado.tokens, [token.id]: { ...token, condiciones: puestas } } };
+      }
+      if (!token.pg) return estado;
+      const actual = Math.max(0, token.pg.actual - accion.cantidad);
+      return { ...estado, tokens: { ...estado.tokens, [token.id]: { ...token, pg: { ...token.pg, actual } } } };
+    }
+    case 'curar': {
+      const token = estado.tokens[accion.tokenId];
+      if (!token || accion.cantidad <= 0) return estado;
+      const p = token.personajeId ? estado.personajes[token.personajeId] : undefined;
+      if (p) {
+        const max = calcular(p).pgMax.total;
+        const personajes = { ...estado.personajes, [p.id]: { ...p, pgActual: Math.min(max, p.pgActual + accion.cantidad) } };
+        // Quien se cura deja de morir y despierta, pero queda más herido (Wounded +1)
+        const condiciones = token.condiciones ?? [];
+        const dying = condiciones.some((c) => c.clave === 'dying');
+        if (!dying) return { ...estado, personajes };
+        const wounded = condiciones.find((c) => c.clave === 'wounded')?.valor ?? 0;
+        const puestas = ponerCondicion(ponerCondicion(ponerCondicion(condiciones, 'dying', 0), 'unconscious', 0), 'wounded', wounded + 1);
+        return { ...estado, personajes, tokens: { ...estado.tokens, [token.id]: { ...token, condiciones: puestas } } };
+      }
+      if (!token.pg) return estado;
+      return { ...estado, tokens: { ...estado.tokens, [token.id]: { ...token, pg: { ...token.pg, actual: Math.min(token.pg.max, token.pg.actual + accion.cantidad) } } } };
+    }
+    case 'sostener': {
+      const ronda = estado.combate?.ronda;
+      if (ronda === undefined) return estado;
+      const tokens = Object.fromEntries(Object.entries(estado.tokens).map(([id, t]) =>
+        [id, t.efectos?.length ? { ...t, efectos: sostener(t.efectos, accion.tokenId, ronda) } : t]));
+      return { ...estado, tokens };
+    }
+    case 'mostrar-area':
+      return estado;
     case 'contar-ataque': {
       const c = estado.combate;
       if (!c || tokenEnTurno(estado)?.id !== accion.tokenId) return estado;
@@ -517,6 +636,9 @@ export function puede(quien: Sesion, accion: Accion, estado: EstadoSala): boolea
       return esMio(accion.tokenId);
     case 'usar-reaccion':
       return esMio(accion.tokenId);
+    // Un jugador puede quitarse un efecto de encima (terminar un Shield, apagar lo que ya no aplica)
+    case 'quitar-efecto':
+      return esMio(accion.tokenId);
     case 'avanzar-turno':
     case 'gastar-acciones':
       return tokenEnTurno(estado)?.personajeId === quien.personajeId;
@@ -539,7 +661,8 @@ export function ladoDe(t: Token): number {
 }
 
 export function velocidadDe(estado: EstadoSala, t: Token): number {
-  return (t.personajeId ? estado.personajes[t.personajeId]?.velocidad : t.criatura?.velocidad) ?? 25;
+  const base = (t.personajeId ? estado.personajes[t.personajeId]?.velocidad : t.criatura?.velocidad) ?? 25;
+  return velocidadConEfectos(base, t.efectos ?? []);
 }
 
 const esEnemigoDe = (a: Token, b: Token) => Boolean(a.personajeId) !== Boolean(b.personajeId) && (a.tipo === 'enemigo' || b.tipo === 'enemigo');
@@ -667,10 +790,20 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
         && usar(estado.personajes[a.personajeId as string]!, a.aptitudId as string, a.rango as number | undefined) !== null;
     case 'descansar':
       return esTexto(a.personajeId) && (a.descanso === 'refocus' || a.descanso === 'diario');
+    case 'poner-efecto':
+      return esTexto(a.tokenId) && esEfectoValido(a.efecto, esExpresion)
+        && (estado.tokens[a.tokenId as string]?.efectos?.length ?? 0) < 20;
+    case 'quitar-efecto':
+      return esTexto(a.tokenId) && esTexto(a.efectoId);
+    case 'danar':
+    case 'curar':
+      return esTexto(a.tokenId) && esEntero(a.cantidad, 0, 9999) && (a.critico === undefined || typeof a.critico === 'boolean');
     default:
       return false;
   }
 }
+
+const esExpresion = (t: string) => leerExpresion(t) !== null;
 
 function esNumero(n: unknown): boolean {
   return typeof n === 'number' && Number.isFinite(n);
@@ -699,6 +832,7 @@ function esTokenValido(t: unknown): boolean {
     && esTexto(k.color, 20)
     && (k.personajeId === undefined || esTexto(k.personajeId))
     && (k.condiciones === undefined || esCondicionesValida(k.condiciones))
+    && (k.efectos === undefined || esEfectosValidos(k.efectos, esExpresion))
     && (k.ca === undefined || esEntero(k.ca, 0, 80))
     && (k.percepcion === undefined || esEntero(k.percepcion, -10, 60))
     && (k.criatura === undefined || esCriaturaValida(k.criatura))
