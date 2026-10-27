@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { leerExpresion, type Personaje } from '../reglas/pf2e';
 import {
   aplicar,
-  type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type Puntero, type QueTirar,
+  type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type Puntero, type Regla, type QueTirar,
   type ResumenPersonaje, type Sesion,
 } from '../compartido/sala';
 import { eventosDe, type Evento } from '../compartido/eventos';
@@ -56,7 +56,7 @@ export function useSala(salaId: string) {
   const [senales, setSenales] = useState<Senal[]>([]);
   const ws = useRef<WebSocket | null>(null);
   // Mi puntero y mi objetivo: se mandan juntos, con un ritmo máximo, y siempre llega el último
-  const miPuntero = useRef<{ x: number | null; y: number | null; apunta: string | null }>({ x: null, y: null, apunta: null });
+  const miPuntero = useRef<{ x: number | null; y: number | null; apunta: string | null; regla: Regla | null }>({ x: null, y: null, apunta: null, regla: null });
   const envioPuntero = useRef<{ ultimo: number; espera?: ReturnType<typeof setTimeout> }>({ ultimo: 0 });
   // El estado también en una ref: para comparar el antes y el después de cada acción que llega
   const estadoRef = useRef<EstadoSala | null>(null);
@@ -305,6 +305,14 @@ export function useSala(salaId: string) {
     mandarPuntero();
   }, [mandarPuntero]);
 
+  // Lo que mido con la regla: los demás la ven con mi nombre
+  const medir = useCallback((regla: Regla | null) => {
+    const r = miPuntero.current.regla;
+    if (r === regla || (r && regla && r.a.x === regla.a.x && r.a.y === regla.a.y && r.b.x === regla.b.x && r.b.y === regla.b.y)) return;
+    miPuntero.current = { ...miPuntero.current, regla };
+    mandarPuntero();
+  }, [mandarPuntero]);
+
   // A quién apunto: los demás ven la marca sobre ese token
   const apuntar = useCallback((tokenId: string | null) => {
     if (miPuntero.current.apunta === tokenId) return;
@@ -326,7 +334,7 @@ export function useSala(salaId: string) {
   }, [mandar]);
 
   return {
-    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales,
+    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales, medir,
     enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
     moverPuntero, apuntar, senalar, puerta, decir, heroico,
     limpiarRechazo: () => setRechazo(null),

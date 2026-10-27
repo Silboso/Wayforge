@@ -848,9 +848,14 @@ export class Sala extends DurableObject<Env> {
     const fuera = m.x === null || m.y === null;
     if (!fuera && (!coordenada(m.x) || !coordenada(m.y))) return;
     const apunta = typeof m.apunta === 'string' && this.estado.tokens[m.apunta] ? m.apunta : null;
+    // La regla: dos casillas enteras
+    const casilla = (c: unknown) => typeof c === 'object' && c !== null && Number.isInteger((c as { x: unknown }).x) && Number.isInteger((c as { y: unknown }).y)
+      && coordenada((c as { x: number }).x) && coordenada((c as { y: number }).y);
+    const r = m.regla as { a?: unknown; b?: unknown } | null | undefined;
+    const regla = r && casilla(r.a) && casilla(r.b) ? { a: r.a as { x: number; y: number }, b: r.b as { x: number; y: number } } : null;
     this.repartir({
       tipo: 'puntero', idConexion, nombre, rol: quien.rol, ...personajeId,
-      x: fuera ? null : m.x as number, y: fuera ? null : m.y as number, apunta,
+      x: fuera ? null : m.x as number, y: fuera ? null : m.y as number, apunta, regla,
     }, ws);
   }
 

@@ -93,6 +93,11 @@ export function caminoA(destino: Casilla, mapa: Map<string, Paso>): Casilla[] | 
   return camino;
 }
 
+// De una casilla a otra, en pies (la regla para medir)
+export function piesEntre(a: Casilla, b: Casilla): number {
+  return distanciaEntre(a, 1, b, 1);
+}
+
 // Distancia entre dos tokens en pies, de borde a borde, con la regla de diagonales de PF2e
 export function distanciaEntre(a: Casilla, ladoA: number, b: Casilla, ladoB: number): number {
   const la = Math.max(1, Math.ceil(ladoA));

@@ -112,7 +112,7 @@ ven a los enemigos como "ileso", "herido", "muy herido", "casi muerto" o "derrot
 
 **Listo cuando:** el GM corre un combate de 3 goblins contra 2 personajes sin usar la tirada libre.
 
-### Fase 3 — Conjuros y áreas *(hecha, salvo la regla para medir)*
+### Fase 3 — Conjuros y áreas *(hecha)*
 
 Ya hecho: el **motor de interacciones** (`reglas/interacciones.ts`, `reglas/efectos.ts`, `reglas/areas.ts` y
 `compartido/interacciones.ts`). Cada aptitud puede decir quién tira (quien la usa contra una defensa, o cada
@@ -146,7 +146,8 @@ enemigos, salvo que el GM mueva a alguien).
    doble) aplicado a cada objetivo.
 2. **Plantillas de área:** explosión (radio), cono, línea y emanación, con las reglas de PF2e para qué
    casillas cubre; se colocan en el tablero y marcan a quién tocan.
-3. **Regla para medir** (arrastrar con una tecla o botón) con distancia PF2e.
+3. **Regla para medir** *(hecha: botón Medir junto a Centrar, o Ctrl + arrastrar; marca las dos casillas y dice
+   pies y casillas con las diagonales de PF2e; los demás ven tu regla con tu nombre. Esc la quita)*.
 4. **Conjuros automatizados** del catálogo: Electric Arc, Fireball, Heal (los 3 modos), Magic Missile/Force
    Barrage, Fear, Grease, Ray of Frost, Produce Flame, Shield…
 5. **Daño persistente y efectos con duración** (rondas) que se cuentan solos al terminar el turno.

@@ -375,13 +375,16 @@ export type MensajeCliente =
   // Respuesta a un ataque en pausa: la reacción elegida, o null para dejarlo pasar
   | { tipo: 'responder'; esperaId: string; aptitudId: string | null }
   // Dónde está mi puntero en el tablero (en casillas; null si salió) y a quién apunto. No se guarda.
-  | { tipo: 'puntero'; x: number | null; y: number | null; apunta: string | null }
+  | { tipo: 'puntero'; x: number | null; y: number | null; apunta: string | null; regla?: Regla | null }
   // "¡Aquí!": una señal en un punto del tablero que ven todos
   | { tipo: 'senal'; x: number; y: number }
   // Hablar en el chat; `para` lo vuelve susurro ("gm" o el id de un personaje)
   | { tipo: 'decir'; texto: string; para?: string }
   // Abrir o cerrar una puerta: el GM cualquiera; un jugador, la que tiene al lado (en combate gasta una acción)
   | { tipo: 'puerta'; id: string };
+
+// Lo que alguien está midiendo con la regla: de una casilla a otra
+export interface Regla { a: { x: number; y: number }; b: { x: number; y: number } }
 
 // Alguien más en el tablero: su puntero y su objetivo (efímero: viaja por el socket, no toca el estado)
 export interface Puntero {
@@ -392,6 +395,7 @@ export interface Puntero {
   x: number | null;
   y: number | null;
   apunta: string | null;
+  regla?: Regla | null;
 }
 
 // Sala → interfaz

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Circle, Group, Image as ImagenKonva, Label, Layer, Line, Rect, Shape, Stage, Tag, Text } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
-import { CornersInIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
+import { CornersInIcon, MinusIcon, PlusIcon, RulerIcon } from '@phosphor-icons/react';
 import { calcular } from '../../reglas/pf2e';
 import { alcanzables, caminoA, clave, desdeClave, distanciaEntre, type Casilla, type Paso } from '../../reglas/movimiento';
 import { areaTexto, casillasDeArea, distanciaAEsquina, tocados, type Area } from '../../reglas/areas';
@@ -17,12 +17,14 @@ import { estadoDeSalud } from '../../reglas/criaturas';
 import type { ColoresTablero } from '../tema';
 import type { Evento } from '../../compartido/eventos';
 import { EfectosTablero } from './Efectos';
-import { PresenciaTablero } from './Presencia';
+import { PresenciaTablero, tintaDe as tintaDePresencia } from './Presencia';
+import { DibujoRegla } from './Regla';
 import { FondoTerreno } from './Terreno';
 import { CapaNiebla, DibujoMuros, distanciaAMuro } from './Muros';
 import { CapaOscuridad, DibujoLuces } from './Luz';
 import { habitacion, type Muro } from '../../compartido/vision';
 import type { PunteroAjeno, Senal } from '../conexion';
+import type { Regla } from '../../compartido/sala';
 
 interface Props {
   estado: EstadoSala;
@@ -49,6 +51,8 @@ interface Props {
   // Los demás en la mesa (punteros, objetivos, señales) y cómo mandar los propios
   presencia?: { punteros: PunteroAjeno[]; senales: Senal[] };
   onPuntero?: (x: number | null, y: number | null) => void;
+  // Lo que mido con la regla (los demás lo ven)
+  onMedir?: (regla: Regla | null) => void;
   onSenal?: (x: number, y: number) => void;
   // Centrar la vista en un token (cada pedido nuevo trae otro `n`)
   enfocar?: { tokenId: string; n: number } | null;
@@ -88,7 +92,7 @@ const PASO_MS = 120;
 
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
-  seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onSenal, enfocar = null,
+  seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onMedir, onSenal, enfocar = null,
   plantilla = null, onPunto, marcados = [], pistas = null, niebla = null, onPuerta, editorMuros = null, oscuridad = null,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
@@ -245,11 +249,34 @@ export function Tablero({
     y: ((py - vista.y) / vista.escala - origen.y) / celda,
   });
 
+  // La regla para medir: con el botón queda puesta (cada arrastre mide); con Ctrl + arrastrar, mide una vez.
+  // Lo medido queda a la vista hasta el próximo toque o Esc.
+  const [modoRegla, setModoRegla] = useState(false);
+  const [regla, setRegla] = useState<Regla | null>(null);
+  const [midiendo, setMidiendo] = useState(false);
+  useEffect(() => { onMedir?.(regla); }, [regla]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') { setRegla(null); setModoRegla(false); setMidiendo(false); } };
+    addEventListener('keydown', alPulsar);
+    return () => removeEventListener('keydown', alPulsar);
+  }, []);
+  const casillaRegla = (px: number, py: number): Casilla => { const m = enCasillas(px, py); return { x: Math.floor(m.x), y: Math.floor(m.y) }; };
+
   // Mantener presionado: señal. Si se suelta antes, se mueve o se arrastra, no pasa nada.
   const presion = useRef<{ x: number; y: number; espera: ReturnType<typeof setTimeout> } | null>(null);
   const senalHecha = useRef(false);
   function alPresionar(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
     soltarPresion();
+    const conCtrl = 'ctrlKey' in e.evt && (e.evt.ctrlKey || e.evt.metaKey);
+    if ((modoRegla || conCtrl) && !('button' in e.evt && e.evt.button !== 0)) {
+      const p = e.target.getStage()?.getPointerPosition();
+      if (!p) return;
+      e.target.getStage()?.stopDrag();
+      const c = casillaRegla(p.x, p.y);
+      setRegla({ a: c, b: c });
+      setMidiendo(true);
+      return;
+    }
     if (!onSenal || ('button' in e.evt && e.evt.button !== 0)) return;
     const p = e.target.getStage()?.getPointerPosition();
     if (!p) return;
@@ -267,6 +294,13 @@ export function Tablero({
   function soltarPresion() {
     if (presion.current) clearTimeout(presion.current.espera);
     presion.current = null;
+  }
+  // Al soltar: la regla queda a la vista (si no se movió, se borra)
+  function alSoltar() {
+    soltarPresion();
+    if (!midiendo) return;
+    setMidiendo(false);
+    setRegla((r) => (r && (r.a.x !== r.b.x || r.a.y !== r.b.y) ? r : null));
   }
   // Tras una señal, el clic que viene al soltar no cuenta
   const consumirSenal = () => {
@@ -346,6 +380,10 @@ export function Tablero({
   function alMoverPuntero(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
     const p = e.target.getStage()?.getPointerPosition();
     if (!p) return;
+    if (midiendo) {
+      const c = casillaRegla(p.x, p.y);
+      setRegla((r) => (r && (r.b.x !== c.x || r.b.y !== c.y) ? { ...r, b: c } : r));
+    }
     if (plantilla && e.evt.type === 'mousemove') {
       const c = puntoEn(p.x, p.y);
       if (!puntoArea || puntoArea.x !== c.x || puntoArea.y !== c.y) setPuntoArea(c);
@@ -371,6 +409,9 @@ export function Tablero({
   // Tocar el papel vacío: suelta la selección (moverse es solo arrastrando el token)
   function alTocarFondo(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
     if (consumirSenal()) return;
+    // Midiendo, tocar solo mide (o borra lo medido)
+    if (modoRegla || ('ctrlKey' in e.evt && (e.evt.ctrlKey || e.evt.metaKey))) return;
+    if (regla) setRegla(null);
     // Alt + clic: señal al instante
     if ('altKey' in e.evt && e.evt.altKey && onSenal) {
       const p = e.target.getStage()?.getPointerPosition();
@@ -424,7 +465,7 @@ export function Tablero({
 
   return (
     // Absoluto: así el canvas no empuja el tamaño de su contenedor y el tablero se puede encoger
-    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango || plantilla || editorMuros ? 'cursor-crosshair' : ''}`}
+    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango || plantilla || editorMuros || modoRegla ? 'cursor-crosshair' : ''}`}
       onMouseLeave={() => { onPuntero?.(null, null); soltarPresion(); }}>
       {medida.ancho > 0 && (
         <Stage
@@ -434,15 +475,15 @@ export function Tablero({
           y={vista.y}
           scaleX={vista.escala}
           scaleY={vista.escala}
-          draggable
+          draggable={!modoRegla && !midiendo}
           dragDistance={5}
           onWheel={alHacerZoom}
           onMouseMove={alMoverPuntero}
           onTouchMove={alMoverPuntero}
           onMouseDown={alPresionar}
           onTouchStart={alPresionar}
-          onMouseUp={soltarPresion}
-          onTouchEnd={soltarPresion}
+          onMouseUp={alSoltar}
+          onTouchEnd={alSoltar}
           onDragStart={soltarPresion}
           onDragEnd={(e) => {
             if (e.target === e.target.getStage()) setVista((v) => ({ ...v, x: e.target.x(), y: e.target.y() }));
@@ -594,7 +635,7 @@ export function Tablero({
                 origen={origen}
                 colores={colores}
                 escala={vista.escala}
-                movible={puedeMoverToken(quien, token)}
+                movible={puedeMoverToken(quien, token) && !modoRegla}
                 recorrido={recorridos.get(token.id) ?? null}
                 pg={pgVisible(estado, token, quien)}
                 salud={!pgVisible(estado, token, quien) && token.pg && !token.personajeId ? estadoDeSalud(token.pg) : null}
@@ -674,6 +715,12 @@ export function Tablero({
       {presencia && (
         <PresenciaTablero estado={estado} vista={vista} celda={celda} origen={origen} punteros={presencia.punteros} senales={presencia.senales} />
       )}
+      {/* Las reglas de los demás, con su nombre; la propia encima */}
+      {presencia?.punteros.filter((p) => p.regla).map((p) => (
+        <DibujoRegla key={`regla-${p.idConexion}`} a={p.regla!.a} b={p.regla!.b} vista={vista} celda={celda} origen={origen} nombre={p.nombre}
+          color={tintaDePresencia(p)} />
+      ))}
+      {regla && <DibujoRegla a={regla.a} b={regla.b} vista={vista} celda={celda} origen={origen} />}
       {tokenMenu && menu && (() => {
         const p = enPantalla(tokenMenu);
         const izquierda = Math.round(Math.min(Math.max(8, p.x - 150), medida.ancho - 308));
@@ -702,6 +749,11 @@ export function Tablero({
           </button>
           <button onClick={centrar} className="flex items-center gap-1.5 px-3 transition hover:bg-superficie-2" title="Encuadrar a todos los tokens">
             <CornersInIcon size={17} aria-hidden /> Centrar
+          </button>
+          <button onClick={() => { setModoRegla(!modoRegla); if (modoRegla) setRegla(null); }} aria-pressed={modoRegla}
+            className={`flex items-center gap-1.5 border-l border-borde px-3 transition ${modoRegla ? 'bg-acento text-sobre-acento' : 'hover:bg-superficie-2'}`}
+            title="Medir: arrastra de una casilla a otra (también Ctrl + arrastrar). Esc la quita">
+            <RulerIcon size={17} aria-hidden /> Medir
           </button>
         </div>
         {/* La escala, dibujada como una regla a lápiz */}

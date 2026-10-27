@@ -604,6 +604,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       enfocar={enfoque}
       presencia={{ punteros: Object.values(sala.punteros), senales: sala.senales }}
       onPuntero={sala.moverPuntero}
+      onMedir={sala.medir}
       onSenal={sala.senalar}
       onNegar={sala.negarLocal}
       seleccionado={seleccionado}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alcanzables, caminoA, clave, distanciaEntre, type OpcionesMovimiento } from './movimiento';
+import { alcanzables, caminoA, clave, distanciaEntre, piesEntre, type OpcionesMovimiento } from './movimiento';
 
 const libre: OpcionesMovimiento = { lado: 1, bloqueadas: new Set(), ocupadas: new Set(), columnas: Infinity, filas: Infinity };
 
@@ -52,5 +52,13 @@ describe('distanciaEntre', () => {
     expect(distanciaEntre({ x: 0, y: 0 }, 1, { x: 2, y: 2 }, 1)).toBe(15);
     // Un Large (2×2) que empieza en x=2: su borde está a 1 casilla
     expect(distanciaEntre({ x: 0, y: 0 }, 1, { x: 2, y: 0 }, 2)).toBe(10);
+  });
+});
+
+describe('la regla para medir', () => {
+  it('de casilla a casilla: diagonales 5, 10, 5…', () => {
+    expect(piesEntre({ x: 0, y: 0 }, { x: 3, y: 3 })).toBe(20);
+    expect(piesEntre({ x: 2, y: 5 }, { x: 10, y: 10 })).toBe(50);
+    expect(piesEntre({ x: 4, y: 4 }, { x: 4, y: 4 })).toBe(0);
   });
 });
