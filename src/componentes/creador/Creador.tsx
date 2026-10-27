@@ -27,7 +27,7 @@ function leerBorrador(): { e: Eleccion; nombre: string; retrato: string } | null
 
 // El creador de personajes paso a paso: cada elección se ve al instante en la ficha de la derecha.
 // Guarda un borrador en este navegador, por si se cierra la pestaña a la mitad.
-export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano }: {
+export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano, onImportar }: {
   salaId: string;
   id: string;
   error?: string | null;
@@ -35,6 +35,8 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano }: {
   onCancelar: () => void;
   // Para quien ya tiene la ficha hecha (en Foundry o en papel) y prefiere copiar los números
   onAMano?: () => void;
+  // Para quien ya lo tiene en Pathbuilder 2e
+  onImportar?: () => void;
 }) {
   const borrador = useMemo(leerBorrador, []);
   const [e, setE] = useState<Eleccion>(borrador?.e ?? ELECCION_VACIA);
@@ -103,6 +105,7 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano }: {
           {[nombre.trim(), personaje.ascendencia, personaje.clase].filter(Boolean).join(' · ') || 'nivel 1'}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {onImportar && <button type="button" className="hidden h-9 rounded-md px-3 text-[13px] text-texto-suave hover:text-texto sm:block" onClick={onImportar}>Importar de Pathbuilder</button>}
           {onAMano && <button type="button" className="hidden h-9 rounded-md px-3 text-[13px] text-texto-suave hover:text-texto sm:block" onClick={onAMano}>Prefiero copiar mi ficha a mano</button>}
           <button type="button" className="flex size-10 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={onCancelar} aria-label="Cancelar">
             <XIcon size={20} aria-hidden />

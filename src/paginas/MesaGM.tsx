@@ -15,6 +15,7 @@ import { PanelCombateGM } from '../componentes/Combate';
 import { EditorFicha } from '../componentes/EditorFicha';
 import { EditarPersonaje } from '../componentes/EditarPersonaje';
 import { Creador } from '../componentes/creador/Creador';
+import { ImportarPathbuilder } from '../componentes/ImportarPathbuilder';
 import { mensajeRechazo } from '../componentes/Entrada';
 import { PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
 import { AyudaTeclas, ModalCondiciones, PanelReglas } from '../componentes/hud/Paneles';
@@ -75,6 +76,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [editandoP, setEditandoP] = useState<Personaje | null>(null);
   const [creando, setCreando] = useState<Personaje | null>(null);
   const [aMano, setAMano] = useState(false);
+  const [importando, setImportando] = useState(false);
   const [ayuda, setAyuda] = useState(false);
   const [codigos, setCodigos] = useState(false);
   const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
@@ -124,7 +126,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
 
   // El GM creó un personaje: cuando aparece en la mesa, se cierra el creador
   useEffect(() => {
-    if (creando && estado.personajes[creando.id]) { setCreando(null); setAMano(false); }
+    if (creando && estado.personajes[creando.id]) { setCreando(null); setAMano(false); setImportando(false); }
   }, [estado, creando]);
 
   // Los jugadores ven a quién apunta el GM
@@ -274,12 +276,17 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   if (creando) {
     return (
       <div className="h-full overflow-y-auto">
-        {aMano ? (
+        {importando ? (
+          <ImportarPathbuilder id={creando.id} error={mensajeRechazo(sala.rechazo)}
+            onCancelar={() => { setCreando(null); setImportando(false); sala.limpiarRechazo(); }}
+            onRevisar={(p) => { setCreando(p); setImportando(false); setAMano(true); }}
+            onGuardar={(p, codigo) => sala.nuevoPersonaje(p, codigo)} />
+        ) : aMano ? (
           <EditorFicha salaId={salaId} inicial={creando} modo="crear" error={mensajeRechazo(sala.rechazo)}
             onCancelar={() => { setCreando(null); setAMano(false); sala.limpiarRechazo(); }} onGuardar={(p, codigo) => sala.nuevoPersonaje(p, codigo)} />
         ) : (
           <Creador salaId={salaId} id={creando.id} error={mensajeRechazo(sala.rechazo)}
-            onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }} onAMano={() => setAMano(true)} onGuardar={(p, codigo) => sala.nuevoPersonaje(p, codigo)} />
+            onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }} onAMano={() => setAMano(true)} onImportar={() => setImportando(true)} onGuardar={(p, codigo) => sala.nuevoPersonaje(p, codigo)} />
         )}
       </div>
     );

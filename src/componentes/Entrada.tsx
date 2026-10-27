@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { CrownSimpleIcon, PlusIcon } from '@phosphor-icons/react';
+import { CrownSimpleIcon, FileArrowUpIcon, PlusIcon } from '@phosphor-icons/react';
 import { personajeNuevo, type Personaje } from '../../reglas/pf2e';
 import type { ResumenPersonaje } from '../../compartido/sala';
 import type { Sala } from '../conexion';
 import { EditorFicha, EntradaCodigo } from './EditorFicha';
 import { Creador } from './creador/Creador';
+import { ImportarPathbuilder } from './ImportarPathbuilder';
 import { claseBotonPrincipal } from './ui';
 
 const MENSAJES: Record<string, string> = {
@@ -24,6 +25,8 @@ export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
   const [creando, setCreando] = useState<Personaje | null>(null);
   // Con el creador guiado, o copiando una ficha que ya existe (a mano)
   const [aMano, setAMano] = useState(false);
+  // O trayéndolo de Pathbuilder 2e
+  const [importando, setImportando] = useState(false);
   const [codigo, setCodigo] = useState('');
   const error = mensajeRechazo(sala.rechazo);
 
@@ -33,11 +36,20 @@ export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
     sala.limpiarRechazo();
   }, [elegido]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (creando && importando) {
+    return (
+      <ImportarPathbuilder id={creando.id} error={error}
+        onCancelar={() => { setCreando(null); setImportando(false); sala.limpiarRechazo(); }}
+        onRevisar={(p) => { setCreando(p); setImportando(false); setAMano(true); }}
+        onGuardar={(p, codigoNuevo) => sala.nuevoPersonaje(p, codigoNuevo)} />
+    );
+  }
   if (creando && !aMano) {
     return (
       <Creador salaId={salaId} id={creando.id} error={error}
         onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }}
         onAMano={() => setAMano(true)}
+        onImportar={() => setImportando(true)}
         onGuardar={(p, codigoNuevo) => sala.nuevoPersonaje(p, codigoNuevo)} />
     );
   }
@@ -81,6 +93,14 @@ export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
             onClick={() => setCreando(personajeNuevo(crypto.randomUUID()))}
           >
             <PlusIcon size={22} aria-hidden /> Crear un personaje nuevo
+          </button>
+        </li>
+        <li>
+          <button
+            className="flex h-full min-h-24 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-borde p-4 text-texto-suave transition hover:border-acento hover:text-texto"
+            onClick={() => { setCreando(personajeNuevo(crypto.randomUUID())); setImportando(true); }}
+          >
+            <FileArrowUpIcon size={22} aria-hidden /> Importar de Pathbuilder 2e
           </button>
         </li>
       </ul>

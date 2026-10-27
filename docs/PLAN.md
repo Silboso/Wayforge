@@ -213,7 +213,10 @@ objetivo (−2 a su CA) y te delata; un Stride también.
 
 ### Fase 6 — Contenido y fichas
 
-1. Importar personaje de Pathbuilder 2e (JSON exportado).
+1. ~~Importar de Pathbuilder 2e~~ (hecho: `reglas/pathbuilder.ts`. Se pega el JSON de "Export JSON" o se sube el
+   archivo; los números salen de Pathbuilder y las dotes, conjuros y objetos se buscan por nombre en el compendio.
+   Avisa lo que no cuadra, como un bono de daño que la mesa no suma. Pathbuilder no deja pedir el JSON desde un
+   servidor, por eso no basta con el número de la exportación).
 2. Inventario: objetos, cantidad, Bulk, oro; consumibles conectados a "Objetos".
 3. ~~Compendio buscable~~ (hecho, con todo el contenido de Foundry; los textos quedan en inglés, como en los libros).
 4. ~~Subida de nivel guiada~~ (hecha: `reglas/nivel.ts`, `reglas/sugerencias.ts`, `src/componentes/nivel/`).
