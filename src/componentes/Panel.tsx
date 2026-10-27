@@ -4,6 +4,7 @@ import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, typ
 import { TERRENOS } from './Terreno';
 import { ElegirLuz } from './Luz';
 import { SeccionTiempo } from './Descanso';
+import { SeccionHandouts } from './Handouts';
 import { subirImagen } from '../imagenes';
 import { EditorCondiciones } from './Condiciones';
 import {
@@ -43,6 +44,7 @@ export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSelec
       ) : (
         <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={onSeleccionar} />
       )}
+      <SeccionHandouts salaId={salaId} estado={estado} enviar={enviar} />
       <SeccionTiempo estado={estado} enviar={enviar} />
       <EditorMapa salaId={salaId} estado={estado} enviar={enviar} />
       {murosNiebla}

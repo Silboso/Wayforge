@@ -621,7 +621,8 @@ export class Sala extends DurableObject<Env> {
     const ids = idsDe(accion);
     const oculta = ids.some((id) => this.estado.tokens[id] && !vista.estado.tokens[id]);
     // Pasar de escena o mover el telón cambia todo lo que ve un jugador: le llega el estado entero
-    const todo = accion.tipo.endsWith('-escena') || accion.tipo === 'telon';
+    // Los handouts también: así nunca viaja uno que no le mostraron
+    const todo = accion.tipo.endsWith('-escena') || accion.tipo === 'telon' || accion.tipo.endsWith('-handout');
     for (const ws of this.ctx.getWebSockets()) {
       const { quien } = ws.deserializeAttachment() as Conexion;
       if (quien.rol === 'visitante') continue;

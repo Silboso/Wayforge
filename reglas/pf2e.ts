@@ -4,6 +4,7 @@
 import { penalizaciones, type Condicion, type Contexto } from './condiciones';
 import type { EfectoActivo } from './efectos';
 import { esAptitudValida, esRecursosValido, type Aptitud, type Lanzador, type Recursos } from './aptitudes';
+import { cargado } from './objetos';
 
 export type Atributo = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 
@@ -106,7 +107,8 @@ export interface Personaje {
   // Lores en Trained (Warfare Lore, Circus Lore…)
   saberes?: string[];
   dotes?: { id: string; nombre: string; tipo: string; nivel: number }[];
-  inventario?: { id: string; nombre: string; cantidad: number; bulto: number }[];
+  // `aptitudId`: la acción de un consumible (se gastan juntas). `precio`: en piezas de plata, para venderlo
+  inventario?: { id: string; nombre: string; cantidad: number; bulto: number; aptitudId?: string; precio?: number }[];
   monedas?: { oro: number; plata: number; cobre: number };
   // La CD de clase (para los efectos que la usan)
   claseCD?: { atributo: Atributo; rango: Rango };
@@ -165,6 +167,8 @@ function parteAtributo(p: Personaje, atributo: Atributo): Parte {
 
 // `condiciones` y `efectos` son los del token del personaje: suman o restan con las reglas de apilamiento
 export function calcular(p: Personaje, condiciones: Condicion[] = [], efectos: EfectoActivo[] = []): FichaCalculada {
+  // Cargar de más (Encumbered) deja Clumsy 1, que no se suma a otro Clumsy
+  if (cargado(p) && !condiciones.some((c) => c.clave === 'clumsy' && c.valor >= 1)) condiciones = [...condiciones.filter((c) => c.clave !== 'clumsy'), { clave: 'clumsy', valor: 1 }];
   const con = (contexto: Contexto) => penalizaciones(condiciones, contexto, efectos);
   // Modificador de un chequeo: atributo + competencia + lo que sumen o quiten condiciones y efectos
   const chequeo = (atributo: Atributo, rango: Rango, salvacion?: ClaveSalvacion, clase?: 'percepcion' | 'habilidad') =>
@@ -362,7 +366,8 @@ function esExtrasValidos(p: Record<string, unknown>): boolean {
     && lista(p.saberes, 20, (x) => esTexto(x, 60))
     && lista(p.dotes, 60, (x) => obj(x) && esTexto(x.id, 80) && esTexto(x.nombre, 80) && esTexto(x.tipo, 20) && esEntero(x.nivel, 1, 20))
     && lista(p.inventario, 200, (x) => obj(x) && esTexto(x.id, 80) && esTexto(x.nombre, 80) && esEntero(x.cantidad, 0, 9999)
-      && typeof x.bulto === 'number' && x.bulto >= 0 && x.bulto <= 50)
+      && typeof x.bulto === 'number' && x.bulto >= 0 && x.bulto <= 50
+      && (x.aptitudId === undefined || esTexto(x.aptitudId, 100)) && (x.precio === undefined || (typeof x.precio === 'number' && x.precio >= 0 && x.precio <= 1e7)))
     && (monedas === undefined || (obj(monedas) && esEntero(monedas.oro, 0, 1e7) && esEntero(monedas.plata, 0, 1e7) && esEntero(monedas.cobre, 0, 1e7)))
     && (claseCD === undefined || (obj(claseCD) && typeof claseCD.atributo === 'string' && claseCD.atributo in ATRIBUTOS && esRango(claseCD.rango)))
     && (escudo === undefined || (obj(escudo) && esTexto(escudo.nombre, 60) && esEntero(escudo.ca, 0, 4) && esEntero(escudo.dureza, 0, 50)

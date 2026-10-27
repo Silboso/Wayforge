@@ -3,6 +3,7 @@
 // así la sala tira de verdad y las pruebas tiran lo que quieran.
 
 import { calcular, gradoDeExito, HABILIDADES, leerExpresion, type Grado, type Personaje } from '../reglas/pf2e';
+import { golpeDeBomba } from '../reglas/objetos';
 import type { Aptitud } from '../reglas/aptitudes';
 import { danoAjustado } from '../reglas/criaturas';
 import { ASPECTO_POR_DANO, crearEfecto, type Aspecto, type EfectoActivo } from '../reglas/efectos';
@@ -85,6 +86,8 @@ function numerosDelAutor(p: Personaje, autor: Token, a: Aptitud, i: Interaccion,
   const f = calcular(p, autor.condiciones ?? [], autor.efectos ?? []);
   const m = i.modo;
   if (m.tipo === 'ataque') {
+    // Una bomba es un Strike con Dex y la competencia en armas marciales
+    if (a.rasgos.includes('bomb')) return { mod: calcular({ ...p, golpes: [golpeDeBomba(p, a)] }, autor.condiciones ?? [], autor.efectos ?? []).golpes[0]!.penalizaciones[numero], cd: null };
     if (a.tirada?.tipo === 'golpe') return { mod: f.golpes[0]?.penalizaciones[numero] ?? null, cd: null };
     return { mod: f.conjuros ? f.conjuros.ataque.total - numero * 5 : null, cd: null };
   }

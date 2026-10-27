@@ -42,7 +42,7 @@ export function faltan(fila: Fila, libres: number | null): number {
 }
 
 // La lista de una sección, como renglones de cuaderno. La fila que probablemente toca va con marcatextos.
-export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null, onElegir, onAsomar, alcance, arrastrable = false }: {
+export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null, onElegir, onAsomar, alcance, arrastrable = false, enColumnas = false }: {
   seccion: Seccion;
   elegida: string | null;
   marcada: string | null;
@@ -56,9 +56,11 @@ export function ListaAcciones({ seccion, elegida, marcada, teclas, libres = null
   alcance?: (fila: Fila) => number | null;
   // Se pueden arrastrar a la barra de habilidades
   arrastrable?: boolean;
+  // En pantallas anchas, en dos columnas (para que quepan más sin bajar)
+  enColumnas?: boolean;
 }) {
   return (
-    <ul className="flex flex-col" onMouseLeave={() => onAsomar?.(null)}>
+    <ul className={enColumnas ? "flex flex-col xl:grid xl:grid-cols-2 xl:gap-x-5" : "flex flex-col"} onMouseLeave={() => onAsomar?.(null)}>
       {seccion.filas.map((fila, i) => {
         const sinAcciones = faltan(fila, libres) > 0;
         const agotada = (fila.tipo === 'aptitud' && !fila.disp.puede) || sinAcciones;

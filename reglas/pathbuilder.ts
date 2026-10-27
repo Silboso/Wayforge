@@ -12,6 +12,7 @@ import {
   ATRIBUTOS, calcular, esPersonajeValido, HABILIDADES, SALVACIONES, signo,
   type Atributo, type ClaveHabilidad, type ClaveSalvacion, type Golpe, type Personaje, type Rango,
 } from './pf2e';
+import { consumibleDeCompendio } from './objetos';
 
 // Lo que usamos del JSON de Pathbuilder (todo opcional: las versiones viejas no traen todo)
 export interface ArmaPathbuilder {
@@ -350,7 +351,15 @@ export async function desdePathbuilder(b: BuildPathbuilder, id: string, buscar: 
   const meter = async (nombre: string, cantidad: number) => {
     if (!nombre || inventario.length >= 200) return;
     const e = await hallar<EquipoCompendio>('equipo', nombre);
-    inventario.push({ id: (e ? `compendio:${e.id}` : `pb:${slug(nombre)}`).slice(0, 80), nombre: corto(nombre, 80), cantidad: entre(cantidad, 0, 9999), bulto: Math.min(50, Math.max(0, e?.bulto ?? 0)) });
+    const n = entre(cantidad, 0, 9999);
+    // Los consumibles (pociones, bombas) llegan con su acción, ligada a la mochila
+    const uso = e ? consumibleDeCompendio(e, n) : null;
+    const ligar = uso && aptitudes.length < 80 && !aptitudes.some((a) => a.id === uso.id);
+    if (ligar) aptitudes.push(uso);
+    inventario.push({
+      id: (e ? `compendio:${e.id}` : `pb:${slug(nombre)}`).slice(0, 80), nombre: corto(nombre, 80), cantidad: n, bulto: Math.min(50, Math.max(0, e?.bulto ?? 0)),
+      ...(e && e.precio > 0 ? { precio: Math.min(1e7, e.precio) } : {}), ...(ligar ? { aptitudId: uso.id } : {}),
+    });
   };
   for (const w of b.weapons ?? []) await meter(w.display || w.name, 1);
   for (const a of b.armor ?? []) await meter(a.display || a.name, 1);

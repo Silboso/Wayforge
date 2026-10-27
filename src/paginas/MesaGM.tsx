@@ -71,6 +71,10 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [asomado, setAsomado] = useState<AtaqueCriatura | null>(null);
   const [plegada, setPlegada] = useState(false);
   const [cajon, setCajon] = useState<CajonGM | null>(null);
+  // En pantallas bajas, abrir un panel pliega la hoja de la criatura para que el panel tenga lugar
+  useEffect(() => {
+    if (cajon && innerHeight < 800) setPlegada(true);
+  }, [cajon]);
   const [editandoCriatura, setEditandoCriatura] = useState<string | null>(null);
   const [condicionesDe, setCondicionesDe] = useState<string | null>(null);
   const [editandoP, setEditandoP] = useState<Personaje | null>(null);
@@ -349,7 +353,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       <Cabecera salaId={salaId} sala={sala} tema={tema} onAyuda={() => setAyuda(true)} textoSalir="Para volver como GM vas a necesitar tu código de GM."
         extra={(
           <button className="flex h-10 items-center gap-1.5 rounded-lg border border-borde bg-superficie px-3 font-titulo text-[14px] transition hover:bg-superficie-2" onClick={() => setCodigos(!codigos)}>
@@ -357,7 +361,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           </button>
         )} />
 
-      <div className="relative min-h-0 flex-1">
+      {/* Nada se sale de la pantalla (la hoja plegada de la criatura tampoco): sin scroll */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <Tablero
           estado={estado}
           colores={colores}
@@ -401,18 +406,21 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           className={actor ? (plegada ? 'bottom-[92px]' : 'bottom-[322px]') : 'bottom-4'} />}
 
         {/* Los paneles del GM, como pestañas de índice a la izquierda */}
-        <div className="hidden lg:block">
-          <Companeros estado={estado} presentes={sala.presentes} className="absolute top-[100px] left-3 z-20"
+        {/* Compañeros y paneles en una columna que termina antes de la hoja de la criatura (si no cabe, sigue en otra);
+            con poco alto, solo los iconos (el nombre sale al pasar el cursor) */}
+        <div className={`pointer-events-none absolute top-[96px] left-3 z-20 hidden gap-2 lg:flex ${actor ? (plegada ? 'bottom-[96px]' : 'bottom-[336px]') : 'bottom-4'}`}>
+          <Companeros estado={estado} presentes={sala.presentes} className="pointer-events-auto max-h-full overflow-hidden"
             onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
+          <nav aria-label="Paneles del GM" className="flex max-h-full flex-col flex-wrap content-start items-start gap-1.5">
+            {CAJONES.map((c) => (
+              <button key={c.clave} onClick={() => setCajon(cajon === c.clave ? null : c.clave)} aria-pressed={cajon === c.clave} aria-label={c.nombre} title={`${c.nombre} (${c.tecla})`}
+                className={`pointer-events-auto flex h-10 min-w-10 shrink-0 items-center justify-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition [@media(min-height:820px)]:justify-start ${cajon === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie hover:border-acento hover:text-acento'}`}>
+                {c.icono}<span className="hidden [@media(min-height:820px)]:inline">{c.nombre}</span>
+                <span className="ml-0.5 hidden xl:[@media(min-height:820px)]:inline"><Tecla sobreTinta={cajon === c.clave}>{c.tecla}</Tecla></span>
+              </button>
+            ))}
+          </nav>
         </div>
-        <nav aria-label="Paneles del GM" className={`absolute top-[100px] z-10 hidden flex-col gap-1.5 lg:flex ${Object.keys(estado.personajes).length ? 'left-[84px]' : 'left-3'}`}>
-          {CAJONES.map((c) => (
-            <button key={c.clave} onClick={() => setCajon(cajon === c.clave ? null : c.clave)} aria-pressed={cajon === c.clave} title={`${c.nombre} (${c.tecla})`}
-              className={`flex h-10 items-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition ${cajon === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie hover:border-acento hover:text-acento'}`}>
-              {c.icono}<span>{c.nombre}</span><span className="ml-0.5 hidden xl:inline"><Tecla sobreTinta={cajon === c.clave}>{c.tecla}</Tecla></span>
-            </button>
-          ))}
-        </nav>
         {/* En el teléfono, los paneles van en una fila abajo */}
         {!actor && (
           <nav aria-label="Paneles del GM" className="absolute inset-x-0 bottom-0 z-10 grid grid-cols-6 border-t border-dashed border-borde bg-fondo/95 lg:hidden">
@@ -456,18 +464,24 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         )}
 
         {cajon && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-full flex-col border-l border-borde bg-fondo shadow-[-20px_0_40px_-20px_var(--sombra)] sm:w-[440px]">
-            <div className="flex items-center gap-1 overflow-x-auto border-b border-dashed border-borde px-3 py-2">
-              {CAJONES.map((c) => (
-                <button key={c.clave} onClick={() => setCajon(c.clave)}
-                  className={`shrink-0 rounded-lg px-2.5 py-1.5 font-titulo text-[14.5px] ${cajon === c.clave ? 'font-bold text-acento' : 'text-texto-suave hover:text-texto'}`}>
-                  {c.nombre}
-                </button>
-              ))}
+          <aside className={`absolute top-0 right-0 z-30 flex w-full flex-col border-l border-borde bg-fondo shadow-[-20px_0_40px_-20px_var(--sombra)] sm:w-[440px] ${actor ? (plegada ? 'bottom-0 lg:bottom-[92px] lg:rounded-bl-xl lg:border-b' : 'bottom-0 lg:bottom-[332px] lg:rounded-bl-xl lg:border-b') : 'bottom-0'}`}>
+            {/* El título entero arriba; las pestañas, como iconos con su nombre al pasar el cursor */}
+            <div className="flex items-center gap-2 px-4 pt-3">
+              <h2 className="flex min-w-0 items-center gap-2 font-titulo text-[22px] font-bold text-acento">
+                {CAJONES.find((c) => c.clave === cajon)?.icono}<span className="truncate">{CAJONES.find((c) => c.clave === cajon)?.nombre}</span>
+              </h2>
               <button className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={() => setCajon(null)} aria-label="Cerrar">
                 <XIcon size={18} aria-hidden />
               </button>
             </div>
+            <nav aria-label="Paneles del GM" className="flex gap-1 border-b border-dashed border-borde px-3 pt-1 pb-2">
+              {CAJONES.map((c) => (
+                <button key={c.clave} onClick={() => setCajon(c.clave)} aria-pressed={cajon === c.clave} aria-label={c.nombre} title={`${c.nombre} (${c.tecla})`}
+                  className={`flex size-10 items-center justify-center rounded-lg transition ${cajon === c.clave ? 'bg-acento/12 text-acento' : 'text-texto-suave hover:bg-superficie-2 hover:text-texto'}`}>
+                  {c.icono}
+                </button>
+              ))}
+            </nav>
             <div className="flex-1 overflow-y-auto p-4">{panel(cajon)}</div>
           </aside>
         )}

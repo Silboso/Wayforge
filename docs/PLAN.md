@@ -209,7 +209,9 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    contra lo escondido, y un pincel para revelar a mano en mapas con imagen)*.
 3. ~~Chat de la mesa~~ (hecho: mensajes y tiradas en el mismo registro; susurros al GM o a otro personaje que
    solo ven quien lo manda, quien lo recibe y el GM; tiradas en secreto del GM que no le llegan a nadie más).
-4. Notas y handouts (imagen o texto) que el GM muestra a todos o a uno.
+4. ~~Notas y handouts~~ (hecho: el GM prepara handouts con texto e imagen en Mesa → Handouts y los muestra a
+   todos, a uno o a varios; a quien se lo muestran se le abre en la pantalla y queda en sus Notas para volver a
+   verlo. Nadie recibe un handout que no le mostraron: la sala le manda su estado filtrado).
 
 ### Fase 6 — Contenido y fichas
 
@@ -217,7 +219,10 @@ objetivo (−2 a su CA) y te delata; un Stride también.
    archivo; los números salen de Pathbuilder y las dotes, conjuros y objetos se buscan por nombre en el compendio.
    Avisa lo que no cuadra, como un bono de daño que la mesa no suma. Pathbuilder no deja pedir el JSON desde un
    servidor, por eso no basta con el número de la exportación).
-2. Inventario: objetos, cantidad, Bulk, oro; consumibles conectados a "Objetos".
+2. ~~Inventario~~ (hecho: `reglas/objetos.ts`. La mochila es la cuenta de verdad: cada consumible está ligado a su
+   acción y usarlo descuenta de los dos; las pociones curan solas y las bombas son un Strike con Dex. El Bulk cuenta
+   lo ligero de a 10 y las monedas de a 1000; pasar 5 + Str deja Encumbered (Clumsy 1 y −10 ft). Se compra en el
+   compendio con las monedas de la ficha, con cambio, y se vende a mitad de precio).
 3. ~~Compendio buscable~~ (hecho, con todo el contenido de Foundry; los textos quedan en inglés, como en los libros).
 4. ~~Subida de nivel guiada~~ (hecha: `reglas/nivel.ts`, `reglas/sugerencias.ts`, `src/componentes/nivel/`).
    La progresión de cada clase sale de Foundry (niveles de dotes y de skills, rasgos de clase y las

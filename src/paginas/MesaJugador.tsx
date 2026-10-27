@@ -25,6 +25,7 @@ import { BarraHabilidades } from '../componentes/hud/BarraHabilidades';
 import { BarraEstados } from '../componentes/hud/BarraEstados';
 import { Telon, TituloEscena } from '../componentes/Escenas';
 import { PanelChat } from '../componentes/Chat';
+import { HandoutRecibido, ListaHandouts } from '../componentes/Handouts';
 import { ElegirActividad, ElegirCurar, PuntosHeroicos } from '../componentes/Descanso';
 import { deMascara, visionActiva } from '../../compartido/vision';
 import { ElegirLuz } from '../componentes/Luz';
@@ -44,7 +45,8 @@ import { alcanceDe, ponerAtajo, secciones, TECLAS, type Fila, type Seccion } fro
 import { ElegirAtajo, Modal, useConfirmar } from '../componentes/hud/Modal';
 import { AyudaTeclas, ModalCondiciones, PanelGrupo, PanelMochila, PanelNotas, PanelReglas } from '../componentes/hud/Paneles';
 import { PanelCompendio, type AccionesCompendio } from '../componentes/compendio/PanelCompendio';
-import { conjuroAAptitud, doteAAptitud, objetoDeCompendio } from '../../reglas/compendio';
+import { conjuroAAptitud, doteAAptitud } from '../../reglas/compendio';
+import { agregarObjeto, comprarObjeto, consumibleDeCompendio, objetoDeCompendio, textoPrecio } from '../../reglas/objetos';
 import { PanelEspera, PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
 
 type Tema = ReturnType<typeof useTema>;
@@ -76,6 +78,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const [elegida, setElegida] = useState<string | null>(null);
   const [seccionActiva, setSeccionActiva] = useState<Seccion['id']>('acciones');
   const [cajon, setCajon] = useState<Cajon | null>(null);
+  // En qué parte del compendio se abre (desde la mochila, en el equipo)
+  const [compendioEn, setCompendioEn] = useState<'conjuros' | 'equipo'>('conjuros');
   // El atajo que se está eligiendo (abre la ventana para elegir qué va en esa tecla)
   const [eligiendoAtajo, setEligiendoAtajo] = useState<number | null>(null);
   // En el teléfono: la lista de "Más" y el panel abierto desde ahí
@@ -86,6 +90,22 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
   const [viendoCondiciones, setViendoCondiciones] = useState(false);
   const [plegada, setPlegada] = useState(false);
+  // Lo alto de la hoja (abierta o plegada): el tablero, el menú y los avisos se acomodan encima, nunca debajo
+  const hojaRef = useRef<HTMLElement>(null);
+  const [altoHoja, setAltoHoja] = useState(300);
+  useEffect(() => {
+    const h = hojaRef.current;
+    if (!h) return;
+    const medir = () => setAltoHoja(Math.round(h.getBoundingClientRect().height));
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(h);
+    return () => ro.disconnect();
+  }, []);
+  // En pantallas bajas, abrir un panel pliega la hoja para que el panel tenga lugar (se vuelve a abrir con su botón)
+  useEffect(() => {
+    if (cajon && innerHeight < 800) setPlegada(true);
+  }, [cajon]);
   const [pestana, setPestana] = useState<PestanaMovil>('turno');
   const [editando, setEditando] = useState(false);
   const [colores, setColores] = useState(leerColoresTablero);
@@ -455,20 +475,30 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       const a = doteAAptitud(d);
       if (a) agregarAptitud(a);
     },
+    // A la mochila (lo encontró o se lo dieron); los consumibles llegan con su acción
     onAgregarObjeto: (e) => {
-      const item = objetoDeCompendio(e);
-      const inventario = p.inventario ?? [];
-      const ya = inventario.find((x) => x.id === item.id);
-      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { inventario: ya ? inventario.map((x) => (x.id === item.id ? { ...x, cantidad: x.cantidad + 1 } : x)) : [...inventario, item] } });
+      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: agregarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e)) });
+    },
+    // Comprarlo: paga con sus monedas
+    onComprarObjeto: (e) => {
+      const cambios = comprarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e), e.precio);
+      if (!cambios) { sala.negarLocal(`No te alcanza: ${e.nombre} cuesta ${textoPrecio(e.precio)}.`); return false; }
+      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios });
+      return true;
     },
   };
   const panelDe = (c: Cajon) => c === 'ficha' ? fichaCompleta
     : c === 'chat' ? <PanelChat estado={estado} quien={sala.quien} onDecir={sala.decir} />
     : c === 'tiradas' ? tiradas
     : c === 'grupo' ? <PanelGrupo estado={estado} presentes={sala.presentes} miId={p.id} />
-    : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} />
-    : c === 'compendio' ? <PanelCompendio tipoInicial="conjuros" acciones={accionesCompendio} />
-    : c === 'notas' ? <PanelNotas p={p} onGuardar={(notas) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { notas } })} />
+    : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} onBuscar={() => { setCompendioEn('equipo'); setCajon('compendio'); }} />
+    : c === 'compendio' ? <PanelCompendio key={compendioEn} tipoInicial={compendioEn} acciones={accionesCompendio} />
+    : c === 'notas' ? (
+      <div className="flex h-full flex-col gap-5">
+        <ListaHandouts estado={estado} />
+        <PanelNotas p={p} onGuardar={(notas) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { notas } })} />
+      </div>
+    )
     : <PanelReglas />;
 
   const fichaCompleta = (
@@ -600,47 +630,61 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden" style={{ ['--alto-hoja' as string]: `${altoHoja}px` }}>
       <Cabecera salaId={salaId} sala={sala} tema={tema} onAyuda={() => setAyuda(true)} />
 
       {/* Pantalla grande: tablero + página apoyada encima */}
-      <div className="relative hidden min-h-0 flex-1 lg:block">
-        {tablero(plegada ? 70 : 400)}
+      <div className="relative hidden min-h-0 flex-1 overflow-hidden lg:block">
+        {tablero(altoHoja + 20)}
         {estado.telon && <Telon />}
         {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />}
-        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className={plegada ? 'bottom-[92px]' : 'bottom-[422px]'} />}
+        {eligiendo && filaRango && <BandaElegir fila={filaRango} rango={rango} texto={textoElegir} confirmar={confirmar} onCancelar={() => { setEligiendo(null); setMarcados([]); }} className="bottom-[calc(var(--alto-hoja)+22px)]" />}
         {!filaElegida && avisos.length === 0 && <MargenTiradas estado={estado} onVerTodas={() => setCajon('tiradas')} p={p} onRepetir={(id) => sala.heroico('repetir', id)} />}
         {/* Los compañeros en miniatura, a la izquierda; los botones de paneles se corren a su lado */}
-        <Companeros estado={estado} presentes={sala.presentes} excluir={p.id} className="absolute top-[100px] left-3 z-20"
-          onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
-        <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)} corrida={Object.keys(estado.personajes).length > 1}>
-          <BarraEstados efectos={efectos} condiciones={condiciones} onCondiciones={() => setViendoCondiciones(true)}
-            onQuitarEfecto={(efectoId) => miToken && sala.enviar({ tipo: 'quitar-efecto', tokenId: miToken.id, efectoId })} />
-        </Botonera>
+        <div className="pointer-events-none absolute top-[96px] bottom-[calc(var(--alto-hoja)+34px)] left-3 z-20 flex gap-2">
+          <Companeros estado={estado} presentes={sala.presentes} excluir={p.id} className="pointer-events-auto max-h-full overflow-hidden"
+            onEnfocar={(tokenId) => setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 }))} />
+          <Botonera actual={cajon} onAbrir={(c) => setCajon(cajon === c ? null : c)}>
+            <BarraEstados efectos={efectos} condiciones={condiciones} onCondiciones={() => setViendoCondiciones(true)}
+              onQuitarEfecto={(efectoId) => miToken && sala.enviar({ tipo: 'quitar-efecto', tokenId: miToken.id, efectoId })} />
+          </Botonera>
+        </div>
 
-        <section aria-label={`Página de ${p.nombre}`}
-          className={`hoja absolute inset-x-5 bottom-5 z-10 transition-transform duration-300 ease-out ${plegada ? 'translate-y-[calc(100%-56px)]' : ''}`}>
+        <section ref={hojaRef} aria-label={`Página de ${p.nombre}`} className="hoja absolute inset-x-5 bottom-4 z-10">
           <button className="absolute -top-9 right-6 flex h-9 items-center gap-1.5 rounded-t-lg bg-superficie px-3 font-titulo text-[13px] text-texto-suave shadow-[0_-4px_10px_-6px_var(--sombra)] hover:text-acento"
             onClick={() => setPlegada(!plegada)} aria-expanded={!plegada}>
             {plegada ? <CaretUpIcon size={16} aria-hidden /> : <CaretDownIcon size={16} aria-hidden />}
             {plegada ? 'Mostrar mi hoja' : 'Bajar la hoja'}
           </button>
-          <div className="grid min-h-[268px] grid-cols-[290px_minmax(0,1fr)_250px] xl:grid-cols-[310px_minmax(0,1fr)_270px]">
+          {plegada ? (
+            <div className="grid grid-cols-[260px_minmax(0,1fr)_minmax(200px,300px)] items-center xl:grid-cols-[290px_minmax(0,1fr)_minmax(220px,340px)]">
+              <ColumnaQuien compacta contexto={contexto} onAbrirFicha={() => setCajon('ficha')} />
+              <div className="flex min-w-0 items-center border-x border-dashed border-borde px-5 py-2.5">
+                <BarraHabilidades incrustada ranuras={ranuras} teclas={TECLAS} libres={libres} elegida={elegida}
+                  alcanceDe={(f) => alcanceDe(p, f)?.pies ?? null}
+                  onElegir={(f) => { setElegida(elegida === f.clave ? null : f.clave); setPlegada(false); }}
+                  onAsignar={asignarAtajo} onAsomar={(f) => setAsomada(f?.clave ?? null)} />
+              </div>
+              <CondicionesCompactas contexto={contexto} condiciones={condiciones} />
+            </div>
+          ) : (
+          <div className="grid grid-cols-[270px_minmax(0,1fr)_240px] xl:grid-cols-[310px_minmax(0,1fr)_270px]">
             <ColumnaQuien contexto={contexto} onAbrirFicha={() => setCajon('ficha')} />
 
-            <div className="relative border-x border-dashed border-borde px-5 pt-3 pb-4">
+            <div className="relative flex min-w-0 flex-col border-x border-dashed border-borde px-5 pt-3 pb-3">
               <CabeceraTurno contexto={contexto} />
               <div className="mt-2 mb-1 flex items-end gap-4">
                 <BarraHabilidades incrustada ranuras={ranuras} teclas={TECLAS} libres={libres} elegida={elegida}
                   alcanceDe={(f) => alcanceDe(p, f)?.pies ?? null}
                   onElegir={(f) => { setElegida(elegida === f.clave ? null : f.clave); setPlegada(false); }}
                   onAsignar={asignarAtajo} onAsomar={(f) => setAsomada(f?.clave ?? null)} />
-                <p className="hidden max-w-[190px] pb-1 font-titulo text-[12.5px] leading-snug text-texto-suave xl:block">
+                <p className="hidden max-w-[190px] shrink pb-1 font-titulo text-[12.5px] leading-snug text-texto-suave 2xl:block">
                   Arrastra acciones de las pestañas a la barra; sácalas arrastrándolas afuera.
                 </p>
               </div>
               <Pestanas lista={lista.filter((s) => s.id !== 'turno')} activa={seccionActiva} onCambiar={(id) => { setSeccionActiva(id); setElegida(null); }} />
-              <div className="mt-1 max-h-[132px] overflow-y-auto pr-1">
+              {/* La lista llena lo que dejan las columnas de los lados (no estira la hoja); en pantallas anchas, en dos columnas */}
+              <div className="mt-1 min-h-[76px] flex-1 basis-0 overflow-y-auto pr-1">
                 {lista.filter((s) => s.id === seccionActiva).map((s) => (
                   <div key={s.id}>
                     {s.resumen && <p className="px-1.5 pt-1 font-titulo text-[13px] text-texto-suave">{s.resumen}</p>}
@@ -649,7 +693,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
                         onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} onAsomar={(f) => setAsomada(f?.clave ?? null)}
                         onCambiar={setEligiendoAtajo} />
                     ) : (
-                      <ListaAcciones seccion={s} elegida={elegida} marcada={marcada} libres={libres} arrastrable alcance={(f) => alcanceDe(p, f)?.pies ?? null}
+                      <ListaAcciones seccion={s} elegida={elegida} marcada={marcada} libres={libres} arrastrable enColumnas alcance={(f) => alcanceDe(p, f)?.pies ?? null}
                         onElegir={(f) => setElegida(elegida === f.clave ? null : f.clave)} onAsomar={(f) => setAsomada(f?.clave ?? null)} />
                     )}
                   </div>
@@ -659,9 +703,10 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
 
             <ColumnaLado contexto={contexto} condiciones={condiciones} />
           </div>
-          {filaElegida && (
+          )}
+          {filaElegida && !plegada && (
             // Sobre la lista de la que salió (no a la derecha, donde caen los avisos), con su propio scroll si es larga
-            <div className="tarjeta absolute bottom-[calc(100%+52px)] left-[300px] z-20 max-h-[calc(100vh-520px)] w-[400px] overflow-y-auto px-4 py-3.5 xl:left-[320px]">
+            <div className="tarjeta absolute bottom-[calc(100%+52px)] left-[300px] z-20 max-h-[calc(100vh-var(--alto-hoja)-150px)] w-[400px] overflow-y-auto px-4 py-3.5 xl:left-[320px]">
               <span aria-hidden className="absolute -top-2 left-1/2 h-4 w-16 -translate-x-1/2 -rotate-2 bg-[var(--cinta)]" />
               <Detalle fila={filaElegida} ataquesHechos={ataquesHechos} libres={libres} objetivo={objetivo} enCombate={!!combate} antes={filasAlAtacar} onAbrir={setElegida}
                 dano={filaElegida.tipo === 'golpe' ? ficha.golpes[filaElegida.indice]?.dano ?? null : null}
@@ -670,19 +715,26 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
           )}
         </section>
 
+        {/* El panel de la derecha termina donde empieza la hoja: no la tapa */}
         {cajon && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-[440px] flex-col border-l border-borde bg-fondo shadow-[-20px_0_40px_-20px_var(--sombra)]">
-            <div className="flex items-center gap-2 border-b border-dashed border-borde px-4 py-2">
-              {CAJONES.map((c) => (
-                <button key={c.clave} onClick={() => setCajon(c.clave)}
-                  className={`rounded-lg px-2.5 py-1.5 font-titulo text-[15px] ${cajon === c.clave ? 'font-bold text-acento' : 'text-texto-suave hover:text-texto'}`}>
-                  {c.nombre}
-                </button>
-              ))}
-              <button className="ml-auto flex size-9 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={() => setCajon(null)} aria-label="Cerrar">
+          <aside className="absolute top-0 right-0 bottom-[calc(var(--alto-hoja)+28px)] z-30 flex w-[440px] max-w-[45vw] flex-col rounded-bl-xl border-b border-l border-borde bg-fondo shadow-[-20px_0_40px_-20px_var(--sombra)]">
+            <div className="flex items-center gap-2 px-4 pt-3">
+              <h2 className="flex min-w-0 items-center gap-2 font-titulo text-[22px] font-bold text-acento">
+                {iconoCajon(cajon, 22)}<span className="truncate">{CAJONES.find((c) => c.clave === cajon)?.nombre}</span>
+              </h2>
+              <button className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={() => setCajon(null)} aria-label="Cerrar">
                 <XIcon size={18} aria-hidden />
               </button>
             </div>
+            <nav aria-label="Paneles" className="flex gap-1 border-b border-dashed border-borde px-3 pt-1 pb-2">
+              {CAJONES.map((c) => (
+                <button key={c.clave} onClick={() => setCajon(c.clave)} aria-pressed={cajon === c.clave} aria-label={c.nombre}
+                  title={`${c.nombre}${c.tecla ? ` (${c.tecla})` : ''}`}
+                  className={`flex size-10 items-center justify-center rounded-lg transition ${cajon === c.clave ? 'bg-acento/12 text-acento' : 'text-texto-suave hover:bg-superficie-2 hover:text-texto'}`}>
+                  {iconoCajon(c.clave, 20)}
+                </button>
+              ))}
+            </nav>
             <div className="flex-1 overflow-y-auto p-4">{panelDe(cajon)}</div>
           </aside>
         )}
@@ -793,8 +845,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       </div>
 
       <TituloEscena eventos={sala.eventos} />
+      <HandoutRecibido estado={estado} eventos={sala.eventos} />
       <AvisoTirada tiradas={estado.tiradas} verCd={false} pendiente={sala.pendiente}
-        lugar={`bottom-[156px] lg:inset-x-auto lg:right-6 ${plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[442px]'}`} />
+        lugar="bottom-[156px] lg:inset-x-auto lg:right-6 lg:bottom-[calc(var(--alto-hoja)+40px)]" />
 
       {/* Avisos del momento: arriba a la derecha en PC, arriba en el teléfono */}
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
@@ -858,28 +911,34 @@ function ListaAtajos({ seccion, elegida, marcada, libres, onElegir, onAsomar, on
 }
 
 // Los paneles de consulta, como pestañas de índice pegadas al borde izquierdo del tablero
-function Botonera({ actual, onAbrir, corrida = false, children }: { actual: Cajon | null; onAbrir: (c: Cajon) => void; corrida?: boolean; children?: ReactNode }) {
-  const iconos: Record<Cajon, ReactNode> = {
-    ficha: <NotebookIcon size={20} aria-hidden />,
-    chat: <ChatCircleDotsIcon size={20} aria-hidden />,
-    grupo: <UsersThreeIcon size={20} aria-hidden />,
-    mochila: <BackpackIcon size={20} aria-hidden />,
-    notas: <NotePencilIcon size={20} aria-hidden />,
-    compendio: <BooksIcon size={20} aria-hidden />,
-    tiradas: <DiceFiveIcon size={20} aria-hidden />,
-    reglas: <BookOpenTextIcon size={20} aria-hidden />,
-  };
+function iconoCajon(c: Cajon, size: number): ReactNode {
+  const props = { size, 'aria-hidden': true } as const;
+  switch (c) {
+    case 'ficha': return <NotebookIcon {...props} />;
+    case 'chat': return <ChatCircleDotsIcon {...props} />;
+    case 'grupo': return <UsersThreeIcon {...props} />;
+    case 'mochila': return <BackpackIcon {...props} />;
+    case 'notas': return <NotePencilIcon {...props} />;
+    case 'compendio': return <BooksIcon {...props} />;
+    case 'tiradas': return <DiceFiveIcon {...props} />;
+    case 'reglas': return <BookOpenTextIcon {...props} />;
+  }
+}
+
+// El menú de paneles: una columna que se corta donde empieza la hoja; si no cabe, sigue en una segunda.
+// En pantallas altas los botones llevan su nombre; si no, solo el icono (el nombre sale al pasar el cursor)
+function Botonera({ actual, onAbrir, children }: { actual: Cajon | null; onAbrir: (c: Cajon) => void; children?: ReactNode }) {
   return (
-    <nav aria-label="Paneles" className={`absolute top-[100px] z-10 flex flex-col gap-1.5 ${corrida ? 'left-[84px]' : 'left-3'}`}>
+    <nav aria-label="Paneles" className="flex max-h-full flex-col flex-wrap content-start items-start gap-1.5">
       {CAJONES.map((c) => (
-        <button key={c.clave} onClick={() => onAbrir(c.clave)} aria-pressed={actual === c.clave} title={`${c.nombre}${c.tecla ? ` (${c.tecla})` : ''}`}
-          className={`group flex h-10 items-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition ${actual === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie text-texto hover:border-acento hover:text-acento'}`}>
-          {iconos[c.clave]}
-          <span>{c.nombre}</span>
-          {c.tecla && <span className="ml-0.5 hidden xl:inline"><Tecla sobreTinta={actual === c.clave}>{c.tecla}</Tecla></span>}
+        <button key={c.clave} onClick={() => onAbrir(c.clave)} aria-pressed={actual === c.clave} aria-label={c.nombre} title={`${c.nombre}${c.tecla ? ` (${c.tecla})` : ''}`}
+          className={`pointer-events-auto group flex h-10 min-w-10 shrink-0 items-center justify-center gap-2 rounded-lg border px-2.5 font-titulo text-[14px] shadow-[0_4px_10px_-6px_var(--sombra)] transition [@media(min-height:900px)]:justify-start ${actual === c.clave ? 'border-acento bg-acento text-sobre-acento' : 'border-borde bg-superficie text-texto hover:border-acento hover:text-acento'}`}>
+          {iconoCajon(c.clave, 20)}
+          <span className="hidden [@media(min-height:900px)]:inline">{c.nombre}</span>
+          {c.tecla && <span className="ml-0.5 hidden xl:[@media(min-height:900px)]:inline"><Tecla sobreTinta={actual === c.clave}>{c.tecla}</Tecla></span>}
         </button>
       ))}
-      {children}
+      <div className="pointer-events-auto">{children}</div>
     </nav>
   );
 }
@@ -1047,11 +1106,24 @@ function MargenTiradas({ estado, onVerTodas, p, onRepetir }: { estado: EstadoSal
   );
 }
 
-function ColumnaQuien({ contexto, onAbrirFicha }: { contexto: Contexto; onAbrirFicha: () => void }) {
+function ColumnaQuien({ contexto, onAbrirFicha, compacta = false }: { contexto: Contexto; onAbrirFicha: () => void; compacta?: boolean }) {
   const { p, ficha, sala, onEditar, onSubirNivel, combate } = contexto;
   const tirar = (que: QueTirar) => sala.tirar(p.id, que);
+  if (compacta) {
+    return (
+      <div className="flex min-w-0 items-center gap-3 px-4 py-2.5">
+        <div className="w-14 shrink-0 [&>*]:scale-[0.8] [&>*]:origin-left"><FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} nombre={p.nombre} onEditar={onEditar} /></div>
+        <button className="min-w-0 flex-1 text-left" onClick={onAbrirFicha} title="Abrir la ficha completa">
+          <span className="block truncate font-titulo text-[20px] leading-tight font-bold text-acento">{p.nombre}</span>
+          <span className="font-titulo text-[18px] font-bold">{p.pgActual}</span>
+          <span className="ml-1 font-titulo text-[13px] text-texto-suave">/ {ficha.pgMax.total} PG · CA {ficha.ca.total}</span>
+          <div className="mt-1"><BarraPG actual={p.pgActual} max={ficha.pgMax.total} temporales={p.pgTemporales} alto="h-2" /></div>
+        </button>
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-3 px-5 pt-4 pb-4">
+    <div className="flex flex-col gap-3 px-5 pt-4 pb-4 [@media(max-height:760px)]:gap-2 [@media(max-height:760px)]:pt-3 [@media(max-height:760px)]:pb-3">
       <div className="flex items-center gap-3.5">
         <FotoPegada src={p.retrato || undefined} inicial={p.nombre.slice(0, 1)} nombre={p.nombre} onEditar={onEditar} />
         <div className="min-w-0">
@@ -1065,7 +1137,7 @@ function ColumnaQuien({ contexto, onAbrirFicha }: { contexto: Contexto; onAbrirF
         </div>
       </div>
       <button className="text-left" onClick={onAbrirFicha} title="Abrir la ficha completa para curar o recibir daño">
-        <span className="font-titulo text-[38px] leading-none font-bold">{p.pgActual}</span>
+        <span className="font-titulo text-[38px] leading-none font-bold [@media(max-height:760px)]:text-[30px]">{p.pgActual}</span>
         <span className="ml-1 font-titulo text-[17px] text-texto-suave">/ {ficha.pgMax.total} PG</span>
         {p.pgTemporales > 0 && <span className="ml-2 font-titulo text-[13px] text-acento">+{p.pgTemporales} temp</span>}
         <div className="mt-1.5"><BarraPG actual={p.pgActual} max={ficha.pgMax.total} temporales={p.pgTemporales} /></div>
@@ -1146,6 +1218,29 @@ function Pestanas({ lista, activa, onCambiar }: { lista: Seccion[]; activa: Secc
 }
 
 // Columna derecha: condiciones como post-its y la acción grande del momento
+// Las condiciones en chiquito (hoja plegada); en combate y en tu turno, también el botón para terminarlo
+function CondicionesCompactas({ contexto, condiciones }: { contexto: Contexto; condiciones: Condicion[] }) {
+  const { combate, miTurno, sala } = contexto;
+  return (
+    <div className="flex min-w-0 items-center gap-2 px-4 py-2.5">
+      <button className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-left" onClick={contexto.onCondiciones} title="Cambiar o quitar condiciones">
+        {condiciones.length === 0
+          ? <span className="font-titulo text-[13.5px] text-texto-suave"><StickerIcon size={15} className="mr-1 inline" aria-hidden />Sin condiciones</span>
+          : condiciones.map((c) => (
+            <span key={c.clave} className="rounded-md bg-[var(--postit)] px-2 py-0.5 font-titulo text-[13px] font-semibold text-[#3a2f12]" title={CONDICIONES[c.clave].ayuda}>
+              {CONDICIONES[c.clave].nombre}{CONDICIONES[c.clave].conValor ? ` ${c.valor}` : ''}
+            </span>
+          ))}
+      </button>
+      {combate && miTurno && (
+        <button className="boli flex h-9 shrink-0 items-center gap-1.5 bg-acento px-3 font-titulo text-[14px] font-bold text-sobre-acento" onClick={() => sala.enviar({ tipo: 'avanzar-turno' })}>
+          Terminar <Tecla sobreTinta>Espacio</Tecla>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ColumnaLado({ contexto, condiciones }: { contexto: Contexto; condiciones: Condicion[] }) {
   const { combate, miTurno, miToken, sala, p } = contexto;
   return (

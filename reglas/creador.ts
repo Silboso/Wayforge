@@ -356,7 +356,7 @@ export function construir(e: Eleccion, base: Pick<Personaje, 'id' | 'nombre'> & 
     ...(armadura.id !== 'none' ? [{ id: armadura.id, nombre: armadura.nombre, cantidad: 1, bulto: armadura.bulto }] : []),
     ...(e.escudo ? ESCUDOS.filter((x) => x.id === e.escudo).map((x) => ({ id: x.id, nombre: x.nombre, cantidad: 1, bulto: x.bulto })) : []),
     ...e.equipo.map((it) => ({ it, x: EQUIPO.find((y) => y.id === it.id) })).filter((p) => !!p.x)
-      .map(({ it, x }) => ({ id: x!.id, nombre: x!.nombre, cantidad: it.cantidad, bulto: x!.bulto })),
+      .map(({ it, x }) => ({ id: x!.id, nombre: x!.nombre, cantidad: it.cantidad, bulto: x!.bulto, ...(x!.aptitud ? { aptitudId: `objeto:${x!.id}` } : {}) })),
   ];
   const escudo = e.escudo ? ESCUDOS.find((x) => x.id === e.escudo) : undefined;
 

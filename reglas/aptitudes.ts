@@ -6,6 +6,7 @@ import type { Atributo, ClaveHabilidad, Personaje, Rango } from './pf2e';
 import { CONDICIONES, type ClaveCondicion } from './condiciones';
 import { MOMENTOS_VALIDOS, type Momento } from './disparadores';
 import { esInteraccionValida, type Interaccion } from './interacciones';
+import { gastarConsumible } from './objetos';
 
 // ◆, ◆◆, ◆◆◆, reacción, acción libre, o una actividad que lleva minutos (fuera de combate)
 export type Costo = 1 | 2 | 3 | 'reaccion' | 'libre' | 'larga';
@@ -193,10 +194,8 @@ export function usar(p: Personaje, aptitudId: string, rango?: number): Partial<P
     case 'frecuencia':
       return { recursos: { ...r, usos: { ...r.usos, [a.id]: (r.usos[a.id] ?? 0) + 1 } } };
     case 'consumible':
-      return {
-        aptitudes: (p.aptitudes ?? []).map((x) =>
-          x.id === a.id ? { ...x, recuperacion: { tipo: 'consumible' as const, cantidad: rec.cantidad - 1 } } : x),
-      };
+      // Si viene de la mochila, se gasta de las dos; el último se va de la hoja
+      return gastarConsumible(p, a);
   }
 }
 

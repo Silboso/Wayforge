@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { MagnifyingGlassIcon, MinusIcon, PlusIcon, ShieldIcon, WifiHighIcon } from '@phosphor-icons/react';
+import { CoinsIcon, MagnifyingGlassIcon, MinusIcon, PlusIcon, ShieldIcon, WifiHighIcon } from '@phosphor-icons/react';
 import { calcular, signo, type Personaje } from '../../../reglas/pf2e';
 import { ACCIONES_BASICAS, todasLasAptitudes, type Aptitud } from '../../../reglas/aptitudes';
 import { CONDICIONES, type ClaveCondicion, type Condicion } from '../../../reglas/condiciones';
 import { estadoDeSalud } from '../../../reglas/criaturas';
+import { bultoDe, cambiarCantidad, limiteCarga, maximoCarga, precioDeVenta, textoPrecio, venderObjeto } from '../../../reglas/objetos';
 import { tokenEnTurno, type EstadoSala, type Presente } from '../../../compartido/sala';
 import { BarraPG, CostoAccion, PostitCondicion, Tecla } from './piezas';
 import { Modal } from './Modal';
@@ -77,48 +78,101 @@ export function PanelGrupo({ estado, presentes, miId }: { estado: EstadoSala; pr
   );
 }
 
-// La mochila: lo que lleva, cuánto pesa, sus monedas y sus consumibles para usar de un toque
-export function PanelMochila({ p, onCambiar, onUsar }: {
+// La mochila: lo que lleva, cuánto pesa, sus monedas y sus consumibles para usar de un toque.
+// Cada consumible está una sola vez: en la mochila, con su botón para usarlo; usar uno lo descuenta de ahí.
+export function PanelMochila({ p, onCambiar, onUsar, onBuscar }: {
   p: Personaje;
   onCambiar: (cambios: Partial<Personaje>) => void;
   onUsar: (a: Aptitud) => void;
+  // Abrir el compendio de equipo (para comprar o agregar algo con su texto)
+  onBuscar?: () => void;
 }) {
   const [nuevo, setNuevo] = useState('');
   const inventario = p.inventario ?? [];
   const monedas = p.monedas ?? { oro: 0, plata: 0, cobre: 0 };
-  const bulto = inventario.reduce((s, x) => s + x.bulto * x.cantidad, 0);
-  // Encumbered a 5 + Str de Bulk; el máximo es 10 + Str
-  const limite = 5 + p.atributos.str;
-  const consumibles = todasLasAptitudes(p).filter((a) => a.recuperacion.tipo === 'consumible');
-  const cambiarCantidad = (i: number, n: number) => onCambiar({
-    inventario: n <= 0 ? inventario.filter((_, j) => j !== i) : inventario.map((x, j) => (j === i ? { ...x, cantidad: n } : x)),
-  });
+  const { total, ligeros } = bultoDe(p);
+  const limite = limiteCarga(p);
+  const maximo = maximoCarga(p);
+  const aptitudes = todasLasAptitudes(p);
+  // Los consumibles hechos a mano (sin objeto en la mochila) se siguen mostrando arriba
+  const sueltos = aptitudes.filter((a) => a.recuperacion.tipo === 'consumible' && !inventario.some((x) => x.aptitudId === a.id));
   const agregar = () => {
     const nombre = nuevo.trim();
     if (!nombre) return;
     onCambiar({ inventario: [...inventario, { id: `propio-${crypto.randomUUID().slice(0, 8)}`, nombre: nombre.slice(0, 80), cantidad: 1, bulto: 0.1 }] });
     setNuevo('');
   };
-  const moneda = (clave: keyof typeof monedas, delta: number) => onCambiar({ monedas: { ...monedas, [clave]: Math.max(0, monedas[clave] + delta) } });
+  const fijarMoneda = (clave: keyof typeof monedas, valor: number) => onCambiar({ monedas: { ...monedas, [clave]: Math.min(1e7, Math.max(0, Math.round(valor) || 0)) } });
+  const filaUsar = (a: Aptitud, quedan: number) => (
+    <button className="boli h-8 shrink-0 bg-acento px-2.5 font-titulo text-[13.5px] font-bold text-sobre-acento disabled:bg-superficie-2 disabled:text-texto-suave"
+      disabled={quedan <= 0} onClick={() => onUsar(a)} title={a.descripcion}>
+      {/* La primera palabra basta (Beber, Lanzar, Leer): el nombre ya está al lado */}
+      {(a.verbo || 'Usar').split(' ')[0]}
+    </button>
+  );
   return (
     <div className="flex flex-col gap-5">
-      {consumibles.length > 0 && (
+      <section>
+        <div className="mb-1.5 flex items-baseline justify-between gap-2">
+          <h3 className="font-titulo text-[17px] font-bold">Lo que llevas</h3>
+          {onBuscar && (
+            <button className="flex items-center gap-1 font-titulo text-[13.5px] text-acento hover:underline" onClick={onBuscar}>
+              <MagnifyingGlassIcon size={14} aria-hidden /> Comprar o buscar
+            </button>
+          )}
+        </div>
+        <CargaBulk total={total} ligeros={ligeros} limite={limite} maximo={maximo} />
+        {inventario.length === 0 && <p className="mt-2 text-[13.5px] text-texto-suave">Vacía. Agrega lo que vayas encontrando, o cómpralo en el compendio.</p>}
+        <ul className="mt-1">
+          {inventario.map((x, i) => {
+            const uso = x.aptitudId ? aptitudes.find((a) => a.id === x.aptitudId) : undefined;
+            const venta = precioDeVenta(x);
+            return (
+              <li key={`${x.id}-${i}`} className="flex min-h-12 items-center gap-2 border-b border-dashed border-borde py-1">
+                {uso && <CostoAccion costo={uso.costo} />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-titulo text-[15px]" title={uso?.descripcion}>{x.nombre}</span>
+                  <span className="block text-[11.5px] text-texto-suave">
+                    {x.bulto >= 1 ? `${x.bulto} Bulk` : x.bulto > 0 ? 'L' : 'sin peso'}{x.precio ? ` · ${textoPrecio(x.precio)}` : ''}
+                  </span>
+                </span>
+                {uso && filaUsar(uso, x.cantidad)}
+                <span className="flex items-center gap-1">
+                  <button className="flex size-7 items-center justify-center rounded-md border border-borde" onClick={() => onCambiar(cambiarCantidad(p, i, x.cantidad - 1))} aria-label={`Quitar un ${x.nombre}`}><MinusIcon size={12} /></button>
+                  <span className="w-6 text-center font-titulo text-[15px] font-bold">{x.cantidad}</span>
+                  <button className="flex size-7 items-center justify-center rounded-md border border-borde" onClick={() => onCambiar(cambiarCantidad(p, i, x.cantidad + 1))} aria-label={`Agregar un ${x.nombre}`}><PlusIcon size={12} /></button>
+                </span>
+                {venta > 0 && (
+                  <button className="flex size-7 items-center justify-center rounded-md border border-borde text-texto-suave hover:border-acento hover:text-acento"
+                    onClick={() => onCambiar(venderObjeto(p, i))} title={`Vender uno por la mitad: ${textoPrecio(venta)}`} aria-label={`Vender un ${x.nombre} por ${textoPrecio(venta)}`}>
+                    <CoinsIcon size={14} aria-hidden />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); agregar(); }}>
+          <input className="h-10 min-w-0 flex-1 rounded-lg border border-borde bg-superficie px-3" value={nuevo} maxLength={80} placeholder="Algo nuevo (Cuerda élfica, mapa…)" aria-label="Nuevo objeto" onChange={(e) => setNuevo(e.target.value)} />
+          <button className="boli h-10 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10">Agregar</button>
+        </form>
+      </section>
+
+      {sueltos.length > 0 && (
         <section>
-          <h3 className="mb-1 font-titulo text-[17px] font-bold">Para usar</h3>
+          <h3 className="mb-1 font-titulo text-[17px] font-bold">Otros para usar</h3>
           <ul>
-            {consumibles.map((a) => {
-              // Usar uno descuenta de la cantidad que queda
+            {sueltos.map((a) => {
               const quedan = a.recuperacion.tipo === 'consumible' ? a.recuperacion.cantidad : 0;
               return (
                 <li key={a.id} className="flex items-center gap-3 border-b border-dashed border-borde py-2">
                   <CostoAccion costo={a.costo} />
                   <span className="min-w-0 flex-1">
-                    <span className="block font-titulo text-[15.5px] font-semibold">{a.verbo || a.nombre}</span>
-                    <span className="block text-[12px] text-texto-suave">{a.descripcion}</span>
+                    <span className="block font-titulo text-[15.5px] font-semibold">{a.nombre}</span>
+                    <span className="block truncate text-[12px] text-texto-suave">{a.descripcion}</span>
                   </span>
                   <span className="font-titulo text-[14px] text-texto-suave">×{Math.max(0, quedan)}</span>
-                  <button className="boli h-9 bg-acento px-3 font-titulo text-[14px] font-bold text-sobre-acento disabled:bg-superficie-2 disabled:text-texto-suave"
-                    disabled={quedan <= 0} onClick={() => onUsar(a)}>Usar</button>
+                  {filaUsar(a, quedan)}
                 </li>
               );
             })}
@@ -127,46 +181,16 @@ export function PanelMochila({ p, onCambiar, onUsar }: {
       )}
 
       <section>
-        <div className="mb-1 flex items-baseline justify-between gap-2">
-          <h3 className="font-titulo text-[17px] font-bold">Mochila</h3>
-          <span className={`font-titulo text-[13px] ${bulto > limite ? 'text-peligro' : 'text-texto-suave'}`}>
-            Bulk {Math.floor(bulto)}{bulto % 1 >= 0.1 ? ` y ${Math.round((bulto % 1) * 10)} L` : ''} de {limite}{bulto > limite ? ' · cargado (Encumbered)' : ''}
-          </span>
-        </div>
-        {inventario.length === 0 && <p className="text-[13.5px] text-texto-suave">Vacía. Agrega lo que vayas encontrando.</p>}
-        <ul>
-          {inventario.map((x, i) => (
-            <li key={`${x.id}-${i}`} className="flex min-h-11 items-center gap-2 border-b border-dashed border-borde">
-              <span className="min-w-0 flex-1 truncate font-titulo text-[15px]">{x.nombre}</span>
-              <span className="text-[12px] text-texto-suave">{x.bulto < 1 ? 'L' : `${x.bulto} Bulk`}</span>
-              <span className="flex items-center gap-1">
-                <button className="flex size-8 items-center justify-center rounded-md border border-borde" onClick={() => cambiarCantidad(i, x.cantidad - 1)} aria-label={`Quitar un ${x.nombre}`}><MinusIcon size={13} /></button>
-                <span className="w-6 text-center font-titulo text-[15px] font-bold">{x.cantidad}</span>
-                <button className="flex size-8 items-center justify-center rounded-md border border-borde" onClick={() => cambiarCantidad(i, x.cantidad + 1)} aria-label={`Agregar un ${x.nombre}`}><PlusIcon size={13} /></button>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); agregar(); }}>
-          <input className="h-10 min-w-0 flex-1 rounded-lg border border-borde bg-superficie px-3" value={nuevo} maxLength={80} placeholder="Algo nuevo (Cuerda élfica, mapa…)" aria-label="Nuevo objeto" onChange={(e) => setNuevo(e.target.value)} />
-          <button className="boli h-10 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10">Agregar</button>
-        </form>
-      </section>
-
-      <section>
         <h3 className="mb-2 font-titulo text-[17px] font-bold">Monedas</h3>
         <div className="grid grid-cols-3 gap-2">
           {([['oro', 'po', 'Oro'], ['plata', 'pp', 'Plata'], ['cobre', 'pc', 'Cobre']] as const).map(([clave, abrev, nombre]) => (
-            <div key={clave} className="flex flex-col items-center rounded-lg border border-borde bg-superficie px-2 py-2">
-              <span className="font-titulo text-[12.5px] text-texto-suave">{nombre}</span>
-              <b className="font-titulo text-[24px] leading-tight">{monedas[clave]} <span className="text-[13px] font-normal text-texto-suave">{abrev}</span></b>
-              <span className="mt-1 flex gap-1">
-                <button className="flex size-8 items-center justify-center rounded-md border border-borde" onClick={() => moneda(clave, -1)} aria-label={`Quitar 1 ${abrev}`}><MinusIcon size={13} /></button>
-                <button className="flex size-8 items-center justify-center rounded-md border border-borde" onClick={() => moneda(clave, 1)} aria-label={`Agregar 1 ${abrev}`}><PlusIcon size={13} /></button>
-              </span>
-            </div>
+            <label key={clave} className="flex flex-col items-center rounded-lg border border-borde bg-superficie px-2 py-2">
+              <span className="font-titulo text-[12.5px] text-texto-suave">{nombre} ({abrev})</span>
+              <EntradaMoneda valor={monedas[clave]} onCambio={(v) => fijarMoneda(clave, v)} etiqueta={`${nombre} en ${abrev}`} />
+            </label>
           ))}
         </div>
+        <p className="mt-1.5 text-[12px] text-texto-suave">1 po = 10 pp = 100 pc. Al comprar se paga solo y se da el cambio; 1000 monedas pesan 1 Bulk.</p>
       </section>
 
       {p.escudo && (
@@ -358,5 +382,36 @@ export function AyudaTeclas({ onCerrar, filas: propias }: { onCerrar: () => void
         ))}
       </dl>
     </Modal>
+  );
+}
+
+// Cuánto carga: la barra se pone ámbar al pasar el límite (Encumbered) y roja al máximo
+function CargaBulk({ total, ligeros, limite, maximo }: { total: number; ligeros: number; limite: number; maximo: number }) {
+  const cargado = total > limite;
+  const tope = total > maximo;
+  const color = tope ? 'bg-peligro' : cargado ? 'bg-[#c48a16]' : 'bg-exito';
+  return (
+    <div title={`Hasta ${limite} Bulk vas normal; más es Encumbered (Clumsy 1 y −10 ft); más de ${maximo} no lo puedes cargar`}>
+      <div className="flex items-baseline justify-between font-titulo text-[13px]">
+        <span>Bulk <b className="text-[15px]">{total}</b>{ligeros ? ` y ${ligeros} L` : ''} de {limite}</span>
+        <span className={tope ? 'text-peligro' : cargado ? 'text-[#c48a16]' : 'text-texto-suave'}>
+          {tope ? 'demasiado: no lo puedes cargar' : cargado ? 'Encumbered: Clumsy 1 y −10 ft' : `máximo ${maximo}`}
+        </span>
+      </div>
+      <div className="mt-1 h-2 overflow-hidden rounded-full bg-superficie-2">
+        <div className={`h-full rounded-full transition-[width] ${color}`} style={{ width: `${Math.min(100, (total / Math.max(1, maximo)) * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// Un número de monedas que se escribe; se guarda al salir del campo o con Enter
+function EntradaMoneda({ valor, onCambio, etiqueta }: { valor: number; onCambio: (v: number) => void; etiqueta: string }) {
+  const [texto, setTexto] = useState(String(valor));
+  useEffect(() => setTexto(String(valor)), [valor]);
+  const guardar = () => { if (Number(texto) !== valor) onCambio(Number(texto)); };
+  return (
+    <input className="w-full bg-transparent text-center font-titulo text-[24px] font-bold leading-tight outline-none focus:text-acento" inputMode="numeric" aria-label={etiqueta}
+      value={texto} onChange={(e) => setTexto(e.target.value.replace(/\D/g, '').slice(0, 7))} onBlur={guardar} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
   );
 }

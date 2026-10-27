@@ -2,6 +2,7 @@
 // Lo usan la interfaz y el Durable Object con el mismo `aplicar`, así los dos lados llegan al mismo estado.
 
 import { esCriaturaValida, type Criatura } from '../reglas/criaturas';
+import { cargado } from '../reglas/objetos';
 import { calcular, esPersonajeValido, leerExpresion, type Grado, type Personaje, type Valor } from '../reglas/pf2e';
 import {
   contarRondas, crearEfecto, esEfectoValido, esEfectosValidos, pasarTiempo, ponerEfecto, sostener, velocidadConEfectos, vencerSostenidos, type Aspecto, type EfectoActivo,
@@ -121,6 +122,26 @@ export interface MensajeChat {
 
 export const MAX_CHAT = 80;
 
+// Un handout: lo que el GM prepara (una carta, un mapa, un retrato) y muestra cuando quiere, a todos o a algunos
+export interface Handout {
+  id: string;
+  titulo: string;
+  texto: string;
+  imagen?: string;
+  // A quién se mostró: a nadie todavía (solo lo ve el GM), a todos, o a esos personajes
+  para: 'nadie' | 'todos' | string[];
+  // Cuándo se mostró por última vez (mostrarlo otra vez lo vuelve a abrir en sus pantallas)
+  cuando: number;
+}
+
+export const MAX_HANDOUTS = 40;
+
+export function puedeVerHandout(h: Handout, quien: Sesion): boolean {
+  if (quien.rol === 'gm') return true;
+  if (quien.rol !== 'jugador') return false;
+  return h.para === 'todos' || (Array.isArray(h.para) && h.para.includes(quien.personajeId));
+}
+
 // ¿Puede ver esto alguien de la mesa? (los susurros ajenos y las tiradas secretas del GM, no)
 export function puedeVerMensaje(m: MensajeChat, quien: Sesion): boolean {
   if (!m.para || quien.rol === 'gm') return true;
@@ -203,6 +224,8 @@ export interface EstadoSala {
   telon?: boolean;
   // El chat de la mesa, el más nuevo al final
   chat?: MensajeChat[];
+  // Lo que el GM prepara para mostrar (a cada jugador solo le llega lo que le mostraron)
+  handouts?: Handout[];
   // El reloj de la mesa, en minutos desde que empezó (lo adelantan los descansos, Treat Wounds y el GM)
   reloj?: number;
 }
@@ -231,6 +254,10 @@ export type Accion =
   | { tipo: 'telon'; bajo: boolean }
   // Un mensaje del chat (lo arma la sala con quién lo mandó)
   | { tipo: 'chat'; mensaje: MensajeChat }
+  // Handouts: el GM los crea o edita (sin mostrarlos), los muestra a quien quiera, o los borra
+  | { tipo: 'guardar-handout'; handout: Pick<Handout, 'id' | 'titulo' | 'texto' | 'imagen'> }
+  | { tipo: 'mostrar-handout'; id: string; para: Handout['para']; cuando: number }
+  | { tipo: 'borrar-handout'; id: string }
   // Pasa el tiempo fuera de combate: los efectos se cuentan (1 minuto = 10 rondas)
   | { tipo: 'pasar-tiempo'; minutos: number }
   // Todo el grupo descansa: 10 minutos (Refocus) o una noche (8 horas)
@@ -748,6 +775,19 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
       return { ...estado, telon: accion.bajo };
     case 'chat':
       return { ...estado, chat: [...(estado.chat ?? []), accion.mensaje].slice(-MAX_CHAT) };
+    case 'guardar-handout': {
+      const handouts = estado.handouts ?? [];
+      const ya = handouts.find((h) => h.id === accion.handout.id);
+      if (!ya && handouts.length >= MAX_HANDOUTS) return estado;
+      const { id, titulo, texto, imagen } = accion.handout;
+      const h: Handout = { ...(ya ?? { para: 'nadie', cuando: 0 }), id, titulo, texto, ...(imagen ? { imagen } : {}) };
+      if (!imagen) delete h.imagen;
+      return { ...estado, handouts: ya ? handouts.map((x) => (x.id === id ? h : x)) : [...handouts, h] };
+    }
+    case 'mostrar-handout':
+      return { ...estado, handouts: (estado.handouts ?? []).map((h) => (h.id === accion.id ? { ...h, para: accion.para, cuando: accion.cuando } : h)) };
+    case 'borrar-handout':
+      return { ...estado, handouts: (estado.handouts ?? []).filter((h) => h.id !== accion.id) };
     case 'pasar-tiempo':
       return pasarMinutos(estado, accion.minutos);
     case 'descanso-grupo': {
@@ -1043,7 +1083,9 @@ export function ladoDe(t: Token): number {
 }
 
 export function velocidadDe(estado: EstadoSala, t: Token): number {
-  const base = (t.personajeId ? estado.personajes[t.personajeId]?.velocidad : t.criatura?.velocidad) ?? 25;
+  const p = t.personajeId ? estado.personajes[t.personajeId] : undefined;
+  // Encumbered: −10 ft (nunca menos de 5)
+  const base = p ? (cargado(p) ? Math.max(5, p.velocidad - 10) : p.velocidad) : t.criatura?.velocidad ?? 25;
   return velocidadConEfectos(base, t.efectos ?? []);
 }
 
@@ -1170,6 +1212,16 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
       return esTexto(a.id, 60) && esNombre(a.nombre);
     case 'telon':
       return typeof a.bajo === 'boolean';
+    case 'guardar-handout': {
+      const h = a.handout as Record<string, unknown>;
+      return esObjeto(h) && esTexto(h.id, 60) && esTexto(h.titulo, 80) && (h.titulo as string).trim().length > 0 && esTexto(h.texto, 4000)
+        && (h.imagen === undefined || esTexto(h.imagen, 500));
+    }
+    case 'mostrar-handout':
+      return esTexto(a.id, 60) && esEntero(a.cuando, 0, Number.MAX_SAFE_INTEGER)
+        && (a.para === 'nadie' || a.para === 'todos' || (Array.isArray(a.para) && a.para.length >= 1 && a.para.length <= 12 && a.para.every((x) => esTexto(x))));
+    case 'borrar-handout':
+      return esTexto(a.id, 60);
     case 'pasar-tiempo':
       return esEntero(a.minutos, 1, 10_080);
     case 'descanso-grupo':

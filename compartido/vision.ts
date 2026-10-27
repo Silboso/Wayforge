@@ -5,7 +5,7 @@
 // nadie vio todavía queda bajo la niebla. La sala filtra lo que manda a cada jugador: lo oculto no viaja.
 
 import type { Casilla } from '../reglas/movimiento';
-import { puedeVerMensaje, puedeVerTirada, type EstadoSala, type Mapa, type Token } from './sala';
+import { puedeVerHandout, puedeVerMensaje, puedeVerTirada, type EstadoSala, type Mapa, type Token } from './sala';
 
 export type TipoMuro = 'muro' | 'puerta' | 'ventana';
 
@@ -304,6 +304,7 @@ export function vistaDeJugador(estado: EstadoSala, personajeId?: string): { esta
     ...estado, escenas: [],
     tiradas: estado.tiradas.filter((t) => puedeVerTirada(t, quien)),
     chat: (estado.chat ?? []).filter((m) => puedeVerMensaje(m, quien)),
+    handouts: (estado.handouts ?? []).filter((h) => puedeVerHandout(h, quien)),
   };
   const escena = estado.escena?.id ?? '';
   if (estado.telon) {

@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { textoPrecio } from '../../../reglas/objetos';
 import { ArrowLeftIcon, MagnifyingGlassIcon, PlusIcon } from '@phosphor-icons/react';
 import { signo } from '../../../reglas/pf2e';
 import type { Costo } from '../../../reglas/aptitudes';
@@ -19,6 +20,8 @@ export interface AccionesCompendio {
   onAgregarConjuro?: (c: ConjuroCompendio) => void;
   onAgregarDote?: (d: DoteCompendio) => void;
   onAgregarObjeto?: (e: EquipoCompendio) => void;
+  // Comprar: false si no le alcanza el dinero
+  onComprarObjeto?: (e: EquipoCompendio) => boolean;
 }
 
 // Todo Pathfinder 2e para consultar: buscar por nombre o rasgo, filtrar por nivel y abrir el detalle
@@ -134,8 +137,13 @@ function Detalle({ tipo, id, acciones, onVolver }: { tipo: TipoCompendio; id: st
             {tipo === 'dotes' && acciones.onAgregarDote && (
               <Boton onClick={() => hacer('Agregada a tu hoja.', () => acciones.onAgregarDote!(e as DoteCompendio))}>Agregar a mi hoja</Boton>
             )}
+            {tipo === 'equipo' && acciones.onComprarObjeto && (e as EquipoCompendio).precio > 0 && (
+              <Boton onClick={() => { if (acciones.onComprarObjeto!(e as EquipoCompendio)) hacer('Comprado: está en tu mochila.', () => {}); }}>
+                Comprar ({textoPrecio((e as EquipoCompendio).precio)})
+              </Boton>
+            )}
             {tipo === 'equipo' && acciones.onAgregarObjeto && (
-              <Boton onClick={() => hacer('Está en tu mochila.', () => acciones.onAgregarObjeto!(e as EquipoCompendio))}>Agregar a mi mochila</Boton>
+              <Boton onClick={() => hacer('Está en tu mochila.', () => acciones.onAgregarObjeto!(e as EquipoCompendio))}>{acciones.onComprarObjeto ? 'Agregar sin pagar' : 'Agregar a mi mochila'}</Boton>
             )}
           </div>
           {hecho && <p className="font-titulo text-[14px] text-exito" role="status">{hecho}</p>}

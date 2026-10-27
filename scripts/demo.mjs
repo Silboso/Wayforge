@@ -41,9 +41,22 @@ const personajes = [
           'Cuando un enemigo a tu alcance se mueve o manipula algo, le haces un Strike.', { disparadores: ['enemigo-se-mueve'], tirada: { tipo: 'golpe' } }),
         aptitud('power-attack', 'Power Attack', 'Ataque poderoso', 'dote', 2, { tipo: 'siempre' },
           'Un Strike cuerpo a cuerpo con un dado de daño extra.', { disparadores: ['al-atacar'], tirada: { tipo: 'golpe' } }),
-        aptitud('pocion', 'Minor Healing Potion', 'Beber poción', 'objeto', 1, { tipo: 'consumible', cantidad: 2 },
-          'Recuperas 1d8 PG.', { tirada: { tipo: 'expresion', expresion: '1d8' } }),
+        aptitud('pocion', 'Healing Potion (Minor)', 'Beber poción', 'objeto', 1, { tipo: 'consumible', cantidad: 2 },
+          'Recuperas 1d8 PG.', { rasgos: ['consumable', 'healing', 'potion'], interaccion: { modo: { tipo: 'ninguna' }, objetivos: { tipo: 'yo' }, curacion: '1d8' } }),
+        aptitud('fuego', "Alchemist's Fire (Lesser)", 'Lanzar bomba', 'objeto', 1, { tipo: 'consumible', cantidad: 2 },
+          'Strike a distancia con Dex: 1d8 de fuego, 1 de fuego persistente y 1 de salpicadura.',
+          { rasgos: ['alchemical', 'bomb', 'consumable', 'fire', 'splash'], dano: '1d8', distancia: 20, interaccion: { modo: { tipo: 'ataque' }, objetivos: { tipo: 'uno' }, dano: { formula: '1d8', tipo: 'fire' } } }),
       ],
+      // La mochila: las pociones y las bombas están ligadas a su acción (se gastan juntas)
+      inventario: [
+        { id: 'compendio:chain-mail', nombre: 'Chain Mail', cantidad: 1, bulto: 2, precio: 60 },
+        { id: 'compendio:longsword', nombre: 'Longsword', cantidad: 1, bulto: 1, precio: 10 },
+        { id: 'compendio:steel-shield', nombre: 'Steel Shield', cantidad: 1, bulto: 1, precio: 20 },
+        { id: 'compendio:healing-potion-minor', nombre: 'Healing Potion (Minor)', cantidad: 2, bulto: 0.1, precio: 40, aptitudId: 'pocion' },
+        { id: 'compendio:alchemist-s-fire-lesser', nombre: "Alchemist's Fire (Lesser)", cantidad: 2, bulto: 0.1, precio: 30, aptitudId: 'fuego' },
+        { id: 'compendio:torch', nombre: 'Torch', cantidad: 5, bulto: 0.1, precio: 0.1 },
+      ],
+      monedas: { oro: 12, plata: 4, cobre: 0 },
     },
   },
   {
@@ -132,6 +145,8 @@ enviar({ tipo: 'accion', accion: { tipo: 'editar-mapa', cambios: { muros: [
 ], luz: 'tenue', luces: [{ id: 'brasero', x: 20, y: 4, brillante: 10, tenue: 10 }] } } });
 // Atardecer: Kyra lleva una antorcha; los goblins ven en la oscuridad
 enviar({ tipo: 'accion', accion: { tipo: 'llevar-luz', tokenId: 'kyra', luz: { brillante: 20, tenue: 20 } } });
+// Un handout preparado (nadie lo ve hasta que el GM lo muestre desde Mesa → Handouts)
+enviar({ tipo: 'accion', accion: { tipo: 'guardar-handout', handout: { id: 'carta-alcalde', titulo: 'La carta del alcalde', texto: 'Al grupo que limpió el camino:\n\nVengan solos al molino viejo cuando caiga la noche. No confíen en el herrero.\n\n— Alcalde Deverin' } } });
 await esperar(300);
 ws.close();
 
@@ -149,5 +164,6 @@ Mesa de prueba lista
   (Korakai puede usar Oracular Warning antes de tirar). Para ver el motor: Ezren lanza Caustic Blast entre el Goblin y el Goblin guerrero.
   Para ver la niebla: acércate a la cabaña; mira por la ventana o abre la puerta (tócala estando al lado).
   Atardecer: fuera de la antorcha de Kyra, los goblins están en penumbra (atacarlos pide chequeo plano CD 5).
+  Handout: el GM abre Mesa → Handouts y muestra La carta del alcalde a todos o a uno (se les abre en la pantalla).
 
 Para jugar GM y jugador a la vez en la misma PC, abre al jugador en una ventana de incógnito.`);

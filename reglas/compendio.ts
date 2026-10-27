@@ -224,8 +224,3 @@ export function criaturaDeCompendio(c: CriaturaCompendio): { tamano: 'Tiny' | 'S
     },
   };
 }
-
-// Un objeto del compendio a la mochila
-export function objetoDeCompendio(e: EquipoCompendio): { id: string; nombre: string; cantidad: number; bulto: number } {
-  return { id: `compendio:${e.id}`.slice(0, 80), nombre: corto(e.nombre, 80), cantidad: 1, bulto: Math.min(50, Math.max(0, e.bulto)) };
-}
