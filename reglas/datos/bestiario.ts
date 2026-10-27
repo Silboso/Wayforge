@@ -1,4 +1,4 @@
-import type { Criatura } from '../criaturas';
+import type { Criatura, Defensas } from '../criaturas';
 
 // Criaturas de nivel bajo para empezar, con valores de referencia del Monster Core (remaster, licencia ORC).
 // Son un punto de partida: el GM las ajusta a su mesa desde la hoja de la criatura.
@@ -19,8 +19,8 @@ const ataque = (nombre: string, bono: number, dano: string, tipoDano: string, ra
 });
 
 const c = (nivel: number, fort: number, ref: number, will: number, velocidad: number, ataques: Criatura['ataques'],
-  habilidades: Criatura['habilidades'], rasgos: string[], notas = ''): Criatura =>
-  ({ nivel, salvaciones: { fortitude: fort, reflex: ref, will }, velocidad, ataques, habilidades, rasgos, notas });
+  habilidades: Criatura['habilidades'], rasgos: string[], notas = '', defensas?: Defensas): Criatura =>
+  ({ nivel, salvaciones: { fortitude: fort, reflex: ref, will }, velocidad, ataques, habilidades, rasgos, notas, ...(defensas ? { defensas } : {}) });
 
 export const BESTIARIO: Plantilla[] = [
   {
@@ -58,13 +58,17 @@ export const BESTIARIO: Plantilla[] = [
     criatura: c(-1, 2, 8, 2, 25, [
       ataque('Scimitar', 6, '1d6+2', 'slashing', ['forceful', 'sweep']),
       ataque('Shortbow', 6, '1d6', 'piercing', ['deadly d10'], 60),
-    ], [{ nombre: 'Athletics', bono: 4 }], ['Undead', 'Mindless', 'Skeleton'], 'Resistencia 5 a cortante, perforante y frío. Inmune a mental y veneno.'),
+    ], [{ nombre: 'Athletics', bono: 4 }], ['Undead', 'Mindless', 'Skeleton'], 'Muerto sin mente: no se cansa ni tiene miedo.', {
+      inmunidades: ['mental', 'poison'], resistencias: [{ tipo: 'cold', valor: 5 }, { tipo: 'piercing', valor: 5 }, { tipo: 'slashing', valor: 5 }], debilidades: [],
+    }),
   },
   {
     id: 'zombie-shambler', nombre: 'Zombie Shambler', tamano: 'Medium', ca: 13, pg: 20, percepcion: 0,
     descripcion: 'Muerto lento y torpe, pero difícil de tumbar.',
     criatura: c(-1, 6, 0, 2, 25, [ataque('Fist', 7, '1d6+1', 'bludgeoning')], [], ['Undead', 'Mindless', 'Zombie'],
-      'Slowed 1 siempre (2 acciones por turno). Debilidad 5 a cortante y vital.'),
+      'Slowed 1 siempre (2 acciones por turno).', {
+        inmunidades: ['mental', 'poison'], resistencias: [], debilidades: [{ tipo: 'slashing', valor: 5 }, { tipo: 'vitality', valor: 5 }],
+      }),
   },
   {
     id: 'wolf', nombre: 'Wolf', tamano: 'Medium', ca: 15, pg: 24, percepcion: 7,

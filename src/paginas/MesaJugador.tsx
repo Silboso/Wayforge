@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowsClockwiseIcon, BackpackIcon, BedIcon, BookOpenTextIcon, CaretDownIcon, CaretUpIcon, CoffeeIcon, CrosshairIcon, DiceFiveIcon,
-  DotsThreeOutlineIcon, MapTrifoldIcon, NotebookIcon, NotePencilIcon, PencilSimpleIcon, QuestionIcon, StickerIcon, SignOutIcon, SwordIcon, UsersIcon, UsersThreeIcon, XIcon,
+  BooksIcon, DotsThreeOutlineIcon, MapTrifoldIcon, NotebookIcon, NotePencilIcon, PencilSimpleIcon, QuestionIcon, StickerIcon, SignOutIcon, SwordIcon, UsersIcon, UsersThreeIcon, XIcon,
 } from '@phosphor-icons/react';
 import { calcular, leerDados, signo, type Personaje } from '../../reglas/pf2e';
 import { DESCANSOS, disponibilidad, recursosDe, todasLasAptitudes, type Aptitud, type Descanso } from '../../reglas/aptitudes';
@@ -25,18 +25,21 @@ import { BarraPG, FotoPegada, PostitCondicion, RayaAMano, Rombo, Tecla } from '.
 import { alcanceDe, ponerAtajo, secciones, TECLAS, type Fila, type Seccion } from '../componentes/hud/secciones';
 import { ElegirAtajo, Modal, useConfirmar } from '../componentes/hud/Modal';
 import { AyudaTeclas, ModalCondiciones, PanelGrupo, PanelMochila, PanelNotas, PanelReglas } from '../componentes/hud/Paneles';
+import { PanelCompendio, type AccionesCompendio } from '../componentes/compendio/PanelCompendio';
+import { conjuroAAptitud, doteAAptitud, objetoDeCompendio } from '../../reglas/compendio';
 import { PanelEspera, PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
 
 type Tema = ReturnType<typeof useTema>;
 type PestanaMovil = 'turno' | 'ficha' | 'tablero' | 'tiradas';
 // Lo que se abre en el cajón lateral (en el teléfono, en una ventana)
-type Cajon = 'ficha' | 'grupo' | 'mochila' | 'notas' | 'tiradas' | 'reglas';
+type Cajon = 'ficha' | 'grupo' | 'mochila' | 'notas' | 'compendio' | 'tiradas' | 'reglas';
 
 const CAJONES: { clave: Cajon; nombre: string; tecla?: string }[] = [
   { clave: 'ficha', nombre: 'Ficha' },
   { clave: 'grupo', nombre: 'Grupo', tecla: 'G' },
   { clave: 'mochila', nombre: 'Mochila', tecla: 'I' },
   { clave: 'notas', nombre: 'Notas', tecla: 'N' },
+  { clave: 'compendio', nombre: 'Compendio', tecla: 'K' },
   { clave: 'tiradas', nombre: 'Tiradas' },
   { clave: 'reglas', nombre: 'Reglas', tecla: 'H' },
 ];
@@ -327,10 +330,35 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     onAsignar: (i: number) => asignarAtajo(i, f.clave),
   });
   const usarObjeto = (a: Aptitud) => usarAptitud(a);
+  // Del compendio a la hoja: conjuros y dotes como aptitudes (las pasivas, a la lista de dotes), objetos a la mochila
+  const agregarAptitud = (a: Aptitud) => {
+    const actuales = p.aptitudes ?? [];
+    if (actuales.some((x) => x.id === a.id)) return sala.negarLocal(`${a.nombre} ya está en tu hoja.`);
+    if (actuales.length >= 80) return sala.negarLocal('Tu hoja ya tiene 80 aptitudes: quita alguna primero.');
+    sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { aptitudes: [...actuales, a] } });
+  };
+  const accionesCompendio: AccionesCompendio = {
+    onAgregarConjuro: (c) => agregarAptitud(conjuroAAptitud(c)),
+    onAgregarDote: (d) => {
+      const dotes = p.dotes ?? [];
+      if (!dotes.some((x) => x.id === d.id) && dotes.length < 60) {
+        sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { dotes: [...dotes, { id: d.id.slice(0, 80), nombre: d.nombre.slice(0, 80), tipo: d.categoria.slice(0, 20), nivel: Math.min(20, Math.max(1, d.nivel ?? 1)) }] } });
+      }
+      const a = doteAAptitud(d);
+      if (a) agregarAptitud(a);
+    },
+    onAgregarObjeto: (e) => {
+      const item = objetoDeCompendio(e);
+      const inventario = p.inventario ?? [];
+      const ya = inventario.find((x) => x.id === item.id);
+      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { inventario: ya ? inventario.map((x) => (x.id === item.id ? { ...x, cantidad: x.cantidad + 1 } : x)) : [...inventario, item] } });
+    },
+  };
   const panelDe = (c: Cajon) => c === 'ficha' ? fichaCompleta
     : c === 'tiradas' ? tiradas
     : c === 'grupo' ? <PanelGrupo estado={estado} presentes={sala.presentes} miId={p.id} />
     : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} />
+    : c === 'compendio' ? <PanelCompendio tipoInicial="conjuros" acciones={accionesCompendio} />
     : c === 'notas' ? <PanelNotas p={p} onGuardar={(notas) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { notas } })} />
     : <PanelReglas />;
 
@@ -520,6 +548,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
               ['grupo', 'Grupo', 'Cómo están tus aliados', <UsersThreeIcon key="i" size={26} aria-hidden />],
               ['mochila', 'Mochila', 'Objetos, monedas, pociones', <BackpackIcon key="i" size={26} aria-hidden />],
               ['notas', 'Notas', 'Lo que no quieres olvidar', <NotePencilIcon key="i" size={26} aria-hidden />],
+              ['compendio', 'Compendio', 'Todo Pathfinder: conjuros, dotes, objetos', <BooksIcon key="i" size={26} aria-hidden />],
               ['reglas', 'Reglas', 'Condiciones y acciones', <BookOpenTextIcon key="i" size={26} aria-hidden />],
             ] as const).map(([clave, nombre, ayuda, icono]) => (
               <button key={clave} className="flex flex-col items-start gap-1 rounded-lg border-[1.5px] border-borde bg-superficie p-3 text-left hover:border-acento"
@@ -621,6 +650,7 @@ function Botonera({ actual, onAbrir }: { actual: Cajon | null; onAbrir: (c: Cajo
     grupo: <UsersThreeIcon size={20} aria-hidden />,
     mochila: <BackpackIcon size={20} aria-hidden />,
     notas: <NotePencilIcon size={20} aria-hidden />,
+    compendio: <BooksIcon size={20} aria-hidden />,
     tiradas: <DiceFiveIcon size={20} aria-hidden />,
     reglas: <BookOpenTextIcon size={20} aria-hidden />,
   };
@@ -755,7 +785,9 @@ function MargenTiradas({ estado, onVerTodas }: { estado: EstadoSala; onVerTodas:
             <b className="row-span-2 text-[28px] leading-none text-acento">{t.total}</b>
             <small className="truncate text-[12.5px] text-texto-suave">
               {textoTirada(t)}
-              {t.objetivo && (
+              {/* Solo los ataques tienen grado; el daño contra alguien dice a quién */}
+              {t.objetivo && !t.objetivo.grado && <span>{' · a '}{t.objetivo.nombre}</span>}
+              {t.objetivo?.grado && (
                 <span className={t.objetivo.grado === 'exito' || t.objetivo.grado === 'critico' ? 'font-semibold text-exito' : 'font-semibold text-peligro'}>
                   {' · '}{t.objetivo.grado === 'critico' ? '¡crítico!' : t.objetivo.grado === 'exito' ? 'le diste' : t.objetivo.grado === 'pifia' ? 'pifia' : 'falló'}
                 </span>

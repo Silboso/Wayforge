@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { MagnifyingGlassIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
-import { signo } from '../../../reglas/pf2e';
-import { penalizacionesAtaque } from '../../../reglas/criaturas';
-import { BESTIARIO, type Plantilla } from '../../../reglas/datos/bestiario';
+import { criaturaDeCompendio, type CriaturaCompendio } from '../../../reglas/compendio';
 import { COLORES_TOKEN, TAMANOS, type Accion, type EstadoSala, type Token } from '../../../compartido/sala';
+import { PanelCompendio } from '../compendio/PanelCompendio';
 
-// Dónde poner criaturas nuevas: cerca de la casilla pedida, sin pisar a nadie
-function casillasLibres(estado: EstadoSala, cerca: { x: number; y: number }, cuantas: number): { x: number; y: number }[] {
+// Dónde poner criaturas nuevas: cerca de la casilla pedida, sin pisar a nadie (todas las casillas que ocupa si es grande)
+export function casillasLibres(estado: EstadoSala, cerca: { x: number; y: number }, cuantas: number, lado = 1): { x: number; y: number }[] {
   const ocupadas = new Set<string>();
   for (const t of Object.values(estado.tokens)) {
     const n = Math.max(1, TAMANOS[t.tamano]);
@@ -18,8 +16,10 @@ function casillasLibres(estado: EstadoSala, cerca: { x: number; y: number }, cua
       for (let dx = -r; dx <= r && libres.length < cuantas; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const c = { x: cerca.x + dx, y: cerca.y + dy };
-        if (c.x < 0 || c.y < 0 || ocupadas.has(`${c.x},${c.y}`)) continue;
-        ocupadas.add(`${c.x},${c.y}`);
+        const pisa: string[] = [];
+        for (let ox = 0; ox < lado; ox++) for (let oy = 0; oy < lado; oy++) pisa.push(`${c.x + ox},${c.y + oy}`);
+        if (c.x < 0 || c.y < 0 || pisa.some((k) => ocupadas.has(k))) continue;
+        pisa.forEach((k) => ocupadas.add(k));
         libres.push(c);
       }
     }
@@ -27,31 +27,28 @@ function casillasLibres(estado: EstadoSala, cerca: { x: number; y: number }, cua
   return libres;
 }
 
-// El bestiario: criaturas listas para el tablero, con sus números a la vista
+// El compendio del GM: todo Pathfinder para consultar, y cualquier criatura de los bestiarios al tablero (1 a 6 iguales)
 export function PanelBestiario({ estado, enviar, cerca, onCreados }: {
   estado: EstadoSala;
   enviar: (accion: Accion) => void;
-  // La casilla alrededor de la cual aparecen (el centro de lo que mira el GM)
+  // La casilla alrededor de la cual aparecen
   cerca: { x: number; y: number };
   onCreados: (ids: string[]) => void;
 }) {
-  const [busca, setBusca] = useState('');
-  const [cuantos, setCuantos] = useState<Record<string, number>>({});
-  const lista = BESTIARIO.filter((b) => `${b.nombre} ${b.descripcion} ${b.criatura.rasgos.join(' ')}`.toLowerCase().includes(busca.toLowerCase()))
-    .sort((a, b) => a.criatura.nivel - b.criatura.nivel);
+  const [cuantas, setCuantas] = useState(1);
 
-  function agregar(b: Plantilla) {
-    const n = cuantos[b.id] ?? 1;
-    const lugares = casillasLibres(estado, cerca, n);
-    const existentes = Object.values(estado.tokens).filter((t) => t.nombre.startsWith(b.nombre)).length;
+  function poner(c: CriaturaCompendio) {
+    const d = criaturaDeCompendio(c);
+    const lugares = casillasLibres(estado, cerca, cuantas, Math.max(1, TAMANOS[d.tamano]));
+    const existentes = Object.values(estado.tokens).filter((t) => t.nombre.startsWith(c.nombre)).length;
     const ids: string[] = [];
-    lugares.forEach((c, i) => {
+    lugares.forEach((lugar, i) => {
       const token: Token = {
         id: crypto.randomUUID(),
-        // Varios iguales se numeran para no confundirlos: Goblin Warrior 2, 3…
-        nombre: n > 1 || existentes ? `${b.nombre} ${existentes + i + 1}` : b.nombre,
-        tipo: 'enemigo', tamano: b.tamano, x: c.x, y: c.y, color: COLORES_TOKEN.enemigo,
-        ca: b.ca, pg: { actual: b.pg, max: b.pg }, percepcion: b.percepcion, criatura: b.criatura,
+        // Varias iguales se numeran para no confundirlas: Goblin Warrior 2, 3…
+        nombre: (cuantas > 1 || existentes ? `${c.nombre} ${existentes + i + 1}` : c.nombre).slice(0, 60),
+        tipo: 'enemigo', tamano: d.tamano, x: lugar.x, y: lugar.y, color: COLORES_TOKEN.enemigo,
+        ca: d.ca, pg: { actual: d.pg, max: d.pg }, percepcion: d.percepcion, criatura: d.criatura,
       };
       enviar({ tipo: 'crear-token', token });
       ids.push(token.id);
@@ -61,39 +58,16 @@ export function PanelBestiario({ estado, enviar, cerca, onCreados }: {
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="relative block">
-        <MagnifyingGlassIcon size={17} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-texto-suave" aria-hidden />
-        <input className="h-10 w-full rounded-lg border border-borde bg-superficie pr-3 pl-9" value={busca} placeholder="Buscar (goblin, undead, animal…)" aria-label="Buscar criatura" onChange={(e) => setBusca(e.target.value)} />
-      </label>
-      <p className="text-[12.5px] text-texto-suave">Valores de referencia del Monster Core. Después de ponerlas, toca una para ajustar sus números.</p>
-      <ul className="flex flex-col gap-2.5">
-        {lista.map((b) => {
-          const n = cuantos[b.id] ?? 1;
-          return (
-            <li key={b.id} className="rounded-lg border border-borde bg-superficie px-3 py-2.5">
-              <div className="flex items-baseline gap-2">
-                <b className="font-titulo text-[17px] text-peligro">{b.nombre}</b>
-                <span className="font-titulo text-[13px] text-texto-suave">nivel {b.criatura.nivel}</span>
-                <span className="ml-auto font-titulo text-[13.5px]">CA <b>{b.ca}</b> · PG <b>{b.pg}</b></span>
-              </div>
-              <p className="text-[12.5px] text-texto-suave">{b.descripcion}</p>
-              <p className="mt-1 text-[12.5px]">
-                {b.criatura.ataques.map((a) => `${a.nombre} ${signo(penalizacionesAtaque(a)[0])} (${a.dano})`).join(' · ')}
-              </p>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="flex items-center gap-1">
-                  <button className="flex size-8 items-center justify-center rounded-md border border-borde" aria-label="Menos" onClick={() => setCuantos({ ...cuantos, [b.id]: Math.max(1, n - 1) })}><MinusIcon size={13} /></button>
-                  <span className="w-6 text-center font-titulo text-[15px] font-bold">{n}</span>
-                  <button className="flex size-8 items-center justify-center rounded-md border border-borde" aria-label="Más" onClick={() => setCuantos({ ...cuantos, [b.id]: Math.min(8, n + 1) })}><PlusIcon size={13} /></button>
-                </span>
-                <button className="boli ml-auto h-9 bg-acento px-3 font-titulo text-[14px] font-bold text-sobre-acento" onClick={() => agregar(b)}>
-                  Poner {n > 1 ? `${n} en` : 'en'} el tablero
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="flex items-center gap-2 font-titulo text-[13.5px] text-texto-suave">
+        Poner de a:
+        {[1, 2, 3, 4, 6].map((n) => (
+          <button key={n} aria-pressed={cuantas === n} onClick={() => setCuantas(n)}
+            className={`h-8 min-w-8 rounded-md border-[1.5px] px-1.5 font-semibold transition ${cuantas === n ? 'border-acento bg-acento text-sobre-acento' : 'border-borde hover:border-acento/60'}`}>
+            {n}
+          </button>
+        ))}
+      </div>
+      <PanelCompendio tipoInicial="criaturas" acciones={{ onPonerCriatura: poner }} />
     </div>
   );
 }

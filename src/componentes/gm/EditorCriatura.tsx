@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PlusIcon, TrashIcon } from '@phosphor-icons/react';
 import { leerExpresion, signo } from '../../../reglas/pf2e';
-import { CRIATURA_VACIA, type AtaqueCriatura, type Criatura } from '../../../reglas/criaturas';
+import { CRIATURA_VACIA, escribirValores, leerValores, type AtaqueCriatura, type Criatura } from '../../../reglas/criaturas';
 import { COLORES_TOKEN, TAMANOS, type Accion, type Tamano, type TipoToken, type Token } from '../../../compartido/sala';
 import { subirImagen } from '../../imagenes';
 import { Modal } from '../hud/Modal';
@@ -26,6 +26,9 @@ export function EditorCriatura({ salaId, token, enviar, onCerrar }: {
   const [percepcion, setPercepcion] = useState(token.percepcion ?? 3);
   const [c, setC] = useState<Criatura>(token.criatura ?? CRIATURA_VACIA);
   const [habilidades, setHabilidades] = useState((token.criatura?.habilidades ?? []).map((h) => `${h.nombre} ${signo(h.bono)}`).join(', '));
+  const [inmunidades, setInmunidades] = useState((token.criatura?.defensas?.inmunidades ?? []).join(', '));
+  const [resistencias, setResistencias] = useState(escribirValores(token.criatura?.defensas?.resistencias ?? []));
+  const [debilidades, setDebilidades] = useState(escribirValores(token.criatura?.defensas?.debilidades ?? []));
   const [aviso, setAviso] = useState('');
   const [subiendo, setSubiendo] = useState(false);
 
@@ -46,7 +49,14 @@ export function EditorCriatura({ salaId, token, enviar, onCerrar }: {
       const m = /^(.+?)\s*([+-]\d+)$/.exec(x);
       return m ? { nombre: m[1]!.slice(0, 40), bono: Number(m[2]) } : null;
     }).filter((x) => !!x);
-    const criatura: Criatura = { ...c, habilidades: hab };
+    const defensas = {
+      inmunidades: inmunidades.split(',').map((x) => x.trim().toLowerCase().slice(0, 30)).filter(Boolean),
+      resistencias: leerValores(resistencias),
+      debilidades: leerValores(debilidades),
+    };
+    const { defensas: _antes, ...sinDefensas } = c;
+    const conAlgo = defensas.inmunidades.length || defensas.resistencias.length || defensas.debilidades.length;
+    const criatura: Criatura = { ...sinDefensas, habilidades: hab, ...(conAlgo ? { defensas } : {}) };
     enviar({
       tipo: 'editar-token', id: token.id,
       cambios: {
@@ -138,6 +148,16 @@ export function EditorCriatura({ salaId, token, enviar, onCerrar }: {
               <PlusIcon size={16} aria-hidden /> Agregar ataque
             </button>
           </div>
+        </section>
+
+        <section className="grid gap-3 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-[13px] text-texto-suave">Resistencias
+            <input className={campo} value={resistencias} placeholder="slashing 5, cold 5" onChange={(e) => setResistencias(e.target.value)} /></label>
+          <label className="flex flex-col gap-1 text-[13px] text-texto-suave">Debilidades
+            <input className={campo} value={debilidades} placeholder="fire 5, vitality 5" onChange={(e) => setDebilidades(e.target.value)} /></label>
+          <label className="flex flex-col gap-1 text-[13px] text-texto-suave">Inmunidades
+            <input className={campo} value={inmunidades} placeholder="poison, mental" onChange={(e) => setInmunidades(e.target.value)} /></label>
+          <p className="text-[12px] text-texto-suave sm:col-span-3">Al restar daño, la mesa las aplica sola: "physical" cubre cortante, perforante y contundente; "all", todo.</p>
         </section>
 
         <section className="grid gap-3">

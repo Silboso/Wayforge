@@ -5,6 +5,7 @@ import {
   ladoDe, motivoAlcance, motivoParaActuar, opcionesMovimiento, velocidadDe, type EstadoSala, type Token,
 } from '../../../compartido/sala';
 import type { Aptitud } from '../../../reglas/aptitudes';
+import { estadoDeSalud } from '../../../reglas/criaturas';
 import type { Fila } from './secciones';
 import { CostoAccion, Rombo } from './piezas';
 
@@ -78,7 +79,7 @@ export function MenuObjetivo({ estado, p, miToken, objetivo, filas, ataquesHecho
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="font-titulo text-[18px] leading-tight font-bold">{objetivo.nombre}</p>
-          <p className="text-[12.5px] text-texto-suave">A {pies} ft de ti{objetivo.condiciones?.length ? ` · ${objetivo.condiciones.map((c) => c.clave).join(', ')}` : ''}</p>
+          <p className="text-[12.5px] text-texto-suave">A {pies} ft de ti{objetivo.pg && !objetivo.personajeId ? ` · se ve ${estadoDeSalud(objetivo.pg)}` : ''}{objetivo.condiciones?.length ? ` · ${objetivo.condiciones.map((c) => c.clave).join(', ')}` : ''}</p>
         </div>
         <button className="-mt-1 -mr-1 flex size-8 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2" onClick={onCerrar} aria-label="Cerrar">
           <XIcon size={16} aria-hidden />

@@ -3,6 +3,7 @@ import { MagnifyingGlassIcon, MinusIcon, PlusIcon, ShieldIcon, WifiHighIcon } fr
 import { calcular, signo, type Personaje } from '../../../reglas/pf2e';
 import { ACCIONES_BASICAS, todasLasAptitudes, type Aptitud } from '../../../reglas/aptitudes';
 import { CONDICIONES, type ClaveCondicion, type Condicion } from '../../../reglas/condiciones';
+import { estadoDeSalud } from '../../../reglas/criaturas';
 import { tokenEnTurno, type EstadoSala, type Presente } from '../../../compartido/sala';
 import { BarraPG, CostoAccion, PostitCondicion, Tecla } from './piezas';
 import { Modal } from './Modal';
@@ -61,7 +62,8 @@ export function PanelGrupo({ estado, presentes, miId }: { estado: EstadoSala; pr
           <ul className="flex flex-col">
             {enemigos.map((t) => (
               <li key={t.id} className="flex items-center gap-2 border-b border-dashed border-borde py-1.5">
-                <span className="font-titulo text-[15px]">{t.nombre}</span>
+                <span className={`font-titulo text-[15px] ${t.pg && t.pg.actual <= 0 ? 'text-texto-suave line-through' : ''}`}>{t.nombre}</span>
+                {t.pg && <span className="font-titulo text-[12.5px] text-texto-suave">{estadoDeSalud(t.pg)}</span>}
                 {enTurno?.id === t.id && <span className="marcatextos font-titulo text-[12px]">le toca</span>}
                 <span className="ml-auto flex flex-wrap justify-end gap-1">
                   {(t.condiciones ?? []).map((c, i) => <PostitCondicion key={c.clave} condicion={c} compacto giro={i % 2 ? -2 : 2} />)}

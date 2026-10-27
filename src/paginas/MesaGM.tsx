@@ -3,7 +3,7 @@ import {
   BookOpenTextIcon, CopyIcon, DiceFiveIcon, PawPrintIcon, SwordIcon, UsersThreeIcon, WrenchIcon, XIcon,
 } from '@phosphor-icons/react';
 import { personajeNuevo, leerExpresion, type Personaje } from '../../reglas/pf2e';
-import type { AtaqueCriatura } from '../../reglas/criaturas';
+import { danoAjustado, type AtaqueCriatura } from '../../reglas/criaturas';
 import { motivoAlcance, motivoParaActuarToken, tokenEnTurno, type EstadoSala } from '../../compartido/sala';
 import type { Evento } from '../../compartido/eventos';
 import { almacen, leer, type Sala } from '../conexion';
@@ -31,7 +31,7 @@ type CajonGM = 'mesa' | 'bestiario' | 'personajes' | 'combate' | 'tiradas' | 're
 
 const CAJONES: { clave: CajonGM; nombre: string; tecla: string; icono: ReactNode }[] = [
   { clave: 'combate', nombre: 'Combate', tecla: 'C', icono: <SwordIcon size={20} aria-hidden /> },
-  { clave: 'bestiario', nombre: 'Bestiario', tecla: 'B', icono: <PawPrintIcon size={20} aria-hidden /> },
+  { clave: 'bestiario', nombre: 'Compendio', tecla: 'B', icono: <PawPrintIcon size={20} aria-hidden /> },
   { clave: 'personajes', nombre: 'Personajes', tecla: 'P', icono: <UsersThreeIcon size={20} aria-hidden /> },
   { clave: 'mesa', nombre: 'Mesa', tecla: 'M', icono: <WrenchIcon size={20} aria-hidden /> },
   { clave: 'tiradas', nombre: 'Tiradas', tecla: 'D', icono: <DiceFiveIcon size={20} aria-hidden /> },
@@ -43,7 +43,7 @@ const TECLAS_GM: [string, string][] = [
   ['Esc', 'Cierra lo abierto o cancela "elige a quién"'],
   ['F', 'Termina el turno de la criatura'],
   ['C', 'Combate (iniciativa, quién pelea)'],
-  ['B', 'Bestiario: poner criaturas'],
+  ['B', 'Compendio: las 6.500 criaturas y todo Pathfinder'],
   ['P', 'Personajes de los jugadores'],
   ['M', 'Mesa: mapa, tokens y códigos'],
   ['D', 'Tiradas (y tirada libre)'],
@@ -182,10 +182,13 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       const p = objetivo.personajeId ? estado.personajes[objetivo.personajeId] : undefined;
       const pg = p ? { actual: p.pgActual } : objetivo.pg;
       if (!pg) return [];
+      // Resistencias, debilidades e inmunidades de la criatura, ya aplicadas al número del botón
+      const tipo = /\(([^)]+)\)/.exec(t.etiqueta)?.[1] ?? null;
+      const ajuste = p ? { total: t.total, nota: null } : danoAjustado(objetivo.criatura, t.total, tipo);
       return [{
         id: id(), tono: 'peligro', titulo: `${t.quien} le hace ${t.total} de daño a ${objetivo.nombre}`,
-        cuerpo: `${objetivo.nombre} tiene ${pg.actual} PG${p ? ' (también le avisamos al jugador)' : ''}.`,
-        botones: [{ etiqueta: `Restar ${t.total} PG`, principal: true, hacer: () => cambiarPG(objetivo.id, -t.total) }],
+        cuerpo: `${ajuste.nota ? `Recibe ${ajuste.total} (${ajuste.nota}). ` : ''}${objetivo.nombre} tiene ${pg.actual} PG${p ? ' (también le avisamos al jugador)' : ''}.`,
+        botones: [{ etiqueta: ajuste.total ? `Restar ${ajuste.total} PG` : 'No le hace nada', principal: true, hacer: () => cambiarPG(objetivo.id, -ajuste.total) }],
       }];
     }
     return [];
@@ -342,7 +345,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center px-4 lg:bottom-6">
             <p className="tarjeta pointer-events-auto max-w-md px-4 py-2.5 text-center font-titulo text-[14.5px] text-texto-suave">
               Toca una criatura para manejarla. {tokens.some((t) => !t.personajeId) ? '' : 'Pon algunas desde el '}
-              {!tokens.some((t) => !t.personajeId) && <button className="font-bold text-acento underline decoration-dotted" onClick={() => setCajon('bestiario')}>Bestiario</button>}
+              {!tokens.some((t) => !t.personajeId) && <button className="font-bold text-acento underline decoration-dotted" onClick={() => setCajon('bestiario')}>Compendio</button>}
               {combate ? '' : ' · Para pelear, abre Combate.'}
             </p>
           </div>

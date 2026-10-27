@@ -139,6 +139,28 @@ describe('el creador', () => {
     expect(gastoDe({ ...e, armadura: 'none' })).toBe(0);
   });
 
+  it('lo elegido del compendio llena el hueco y llega a la ficha', () => {
+    const base = completa('elf', 'wizard');
+    const truco = CONJUROS.find((x) => x.id === base.trucos[0])!;
+    const e: Eleccion = {
+      ...base,
+      doteClase: null,
+      trucos: base.trucos.slice(1),
+      delCompendio: [
+        { ranura: 'clase', id: 'reach-spell', nombre: 'Reach Spell', categoria: 'class', nivel: 1, aptitud: null },
+        { ranura: 'truco', id: 'ancient-dust', nombre: 'Ancient Dust', categoria: 'conjuro', nivel: 1,
+          aptitud: { id: 'compendio:conjuro:ancient-dust', nombre: 'Ancient Dust', verbo: 'Ancient Dust', categoria: 'truco', costo: 2, recuperacion: { tipo: 'siempre' }, descripcion: 'Polvo.', rasgos: ['cantrip'] } },
+      ],
+    };
+    expect(pendientes(e)).toEqual([]);
+    expect(pendientes({ ...e, delCompendio: [] }).map((x) => x.paso)).toEqual(['dotes', 'conjuros']);
+    const p = construir(e, { id: 'e', nombre: 'Ezren' });
+    expect(esPersonajeValido(p)).toBe(true);
+    expect(p.dotes!.some((d) => d.id === 'reach-spell' && d.tipo === 'class')).toBe(true);
+    expect(p.aptitudes!.some((a) => a.id === 'compendio:conjuro:ancient-dust')).toBe(true);
+    expect(p.aptitudes!.some((a) => a.nombre === truco.nombre)).toBe(false);
+  });
+
   it('pide lo que falta, paso por paso', () => {
     const faltas = pendientes(ELECCION_VACIA).map((x) => x.paso);
     expect(faltas).toContain('ascendencia');

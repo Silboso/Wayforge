@@ -169,7 +169,8 @@ reglas/       motor PF2e en TypeScript puro, sin interfaz, con tests (vitest)
 - **Una partida = un Durable Object `Sala`.** Todos se conectan a él por WebSocket (con
   hibernación: no cobra mientras nadie juega). Es la fuente de verdad: guarda el estado en su
   SQLite y tira los dados.
-- **R2** guarda las imágenes de mapas y tokens.
+- **Workers KV** guarda las imágenes de mapas y tokens (gratis, sin activar nada). Si la cuenta activa
+  **R2**, basta con agregar el bucket `IMAGENES` en `wrangler.jsonc` y el Worker lo usa en su lugar.
 - **D1** (más adelante) para cuentas y lista de campañas.
 - **El motor de reglas no conoce la interfaz.** Se prueba sin navegador.
 
@@ -177,3 +178,16 @@ reglas/       motor PF2e en TypeScript puro, sin interfaz, con tests (vitest)
 
 Pathfinder 2e se usa bajo la licencia ORC. Nada de material con marca registrada de Paizo
 (nombres de productos, logos) en la interfaz.
+
+## Publicar
+
+La mesa está en **https://wayforge.convoca.workers.dev**.
+
+```
+npm run deploy                                        # compila y sube el Worker
+node scripts/demo.mjs https://wayforge.convoca.workers.dev   # una mesa de prueba en producción
+```
+
+La primera vez hizo falta: iniciar sesión con `npx wrangler login`, y crear el espacio de KV de las
+imágenes (`npx wrangler kv namespace create IMAGENES_KV`, cuyo id va en `wrangler.jsonc`). Los Durable
+Objects con SQLite no necesitan nada: se crean solos con la migración `v1`.

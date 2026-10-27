@@ -16,6 +16,7 @@
 | Avisos | Momento justo de cada aptitud, pausa para reaccionar, daño con "Restar" |
 | Gráficos | Dado rodando, trazo del golpe, impacto, números de daño, sello de turno |
 | Jugador | Hoja de cuaderno en PC; mando en el teléfono con pestañas |
+| Compendio | Todo el contenido del sistema PF2e de Foundry (`npm run compendio`): 6.519 criaturas, 2.018 conjuros, 6.366 dotes, equipo, acciones, condiciones, ascendencias, clases, deidades y peligros. El GM pone cualquier criatura en el tablero; el jugador agrega conjuros, dotes y objetos a su hoja; el creador ofrece todas las dotes y conjuros de nivel 1 |
 
 ## Lo que tiene Foundry y nos falta
 
@@ -88,15 +89,15 @@ Además de lo que sigue, entraron en esta fase:
 **Listo cuando:** dos navegadores ven el puntero y el objetivo del otro; atacar sin objetivo lleva al
 modo de elegir; el retrato abre el editor en PC, teléfono y GM.
 
-### Fase 2 — El GM juega a sus enemigos *(en curso)*
+### Fase 2 — El GM juega a sus enemigos *(hecha)*
 
 Ya hecho: ficha de criatura en el token (nivel, salvaciones, velocidad, ataques con bono y daño, skills,
 notas), bestiario con 12 criaturas de nivel −1 a 3, mesa del GM con el estilo de cuaderno (hoja de la
 criatura abajo, paneles a la izquierda, cajón lateral), la criatura en turno pasa sola al GM, se mueve
 gastando Strides, ataca desde su hoja o desde el menú contra un objetivo con las mismas reglas que los
 jugadores (turno, acciones, alcance, penalización por ataques seguidos, pausa para reaccionar), y el daño
-se tira y se resta con un toque. Falta: resistencias/debilidades automáticas y ocultar los PG a los
-jugadores como texto ("herido").
+se tira y se resta con un toque, ya con resistencias, debilidades e inmunidades aplicadas. Los jugadores
+ven a los enemigos como "ileso", "herido", "muy herido", "casi muerto" o "derrotado" (tachado), sin sus PG.
 
 1. **Ficha de enemigo** (`Criatura`): nivel, CA, PG, salvaciones, Perception, velocidad, ataques
    (bono, daño, rasgos: agile, reach), habilidades, resistencias, debilidades, inmunidades.
@@ -143,7 +144,7 @@ registro claro.
 
 1. Importar personaje de Pathbuilder 2e (JSON exportado).
 2. Inventario: objetos, cantidad, Bulk, oro; consumibles conectados a "Objetos".
-3. Compendio buscable: acciones, condiciones, conjuros y objetos comunes, con texto en español.
+3. ~~Compendio buscable~~ (hecho, con todo el contenido de Foundry; los textos quedan en inglés, como en los libros).
 4. Subida de nivel guiada (lo que cambia por nivel).
 
 ### Fase 7 — Campañas y publicación

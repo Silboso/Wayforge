@@ -11,7 +11,10 @@ import type { Arma, Conjuro, Dote } from '../../../reglas/datos/tipos';
 import {
   atributosDe, conjurosAElegir, conjurosDisponibles, dotesDeAscendencia, dotesDeClase, fuentesDeMejoras, gastoDe, habilidadesAElegir,
   habilidadesDadas, idiomasAElegir, libresDeAscendencia, necesitaDoteGeneral, rangoConArma, tradicionDe, type Eleccion,
+  conjurosElegidos, delCompendio, trucosElegidos, type RanuraCompendio,
 } from '../../../reglas/creador';
+import type { Indice } from '../../../reglas/compendio';
+import { DelCompendio } from './DelCompendio';
 import { CostoAccion } from '../hud/piezas';
 import { claseEntrada } from '../ui';
 import { Chip, Cuenta, Opcion, TituloPaso } from './piezas';
@@ -304,10 +307,23 @@ function TarjetaDote({ d, elegida, onElegir }: { d: Dote; elegida: boolean; onEl
   );
 }
 
+// Las dotes de nivel 1 del compendio que sirven para cada hueco
+const FILTROS_DOTE: Record<'ascendencia' | 'clase' | 'general', (e: Eleccion) => (x: Indice) => boolean> = {
+  ascendencia: (e) => (x) => x.nivel === 1 && x.resumen === 'ancestry' && !!e.ascendencia && x.rasgos.includes(e.ascendencia),
+  clase: (e) => (x) => x.nivel === 1 && x.resumen === 'class' && !!e.clase && x.rasgos.includes(e.clase),
+  general: () => (x) => x.nivel === 1 && (x.resumen === 'general' || x.resumen === 'skill'),
+};
+
 export function PasoDotes({ e, cambiar }: PropsPaso) {
   const tras = TRASFONDOS.find((t) => t.id === e.trasfondo);
   const doteTras = tras ? doteDe(tras.dote) : undefined;
   const deClase = dotesDeClase(e);
+  // Elegir de la lista corta saca lo del compendio en ese hueco, y al revés
+  const sinCompendio = (ranura: RanuraCompendio) => ({ delCompendio: (e.delCompendio ?? []).filter((x) => x.ranura !== ranura) });
+  const delHueco = (ranura: 'ascendencia' | 'clase' | 'general', titulo: string, limpiar: Partial<Eleccion>) => (
+    <DelCompendio e={e} cambiar={cambiar} tipo="dotes" ranura={ranura} filtro={FILTROS_DOTE[ranura](e)} max={1} ocupados={0}
+      titulo={titulo} alElegir={() => cambiar(limpiar)} />
+  );
   return (
     <>
       <TituloPaso titulo="Dotes" ayuda="Talentos especiales. A nivel 1 tienes una de ascendencia y una de clase; tu trasfondo ya te regaló una de skill." />
@@ -320,23 +336,26 @@ export function PasoDotes({ e, cambiar }: PropsPaso) {
       <div className={rejilla}>
         {dotesDeAscendencia(e).map((d) => (
           <TarjetaDote key={d.id} d={d} elegida={e.doteAscendencia === d.id}
-            onElegir={() => cambiar({ doteAscendencia: d.id, ...(d.id !== 'general-training' && e.herencia !== 'versatile' ? { doteGeneral: null } : {}) })} />
+            onElegir={() => cambiar({ doteAscendencia: d.id, ...sinCompendio('ascendencia'), ...(d.id !== 'general-training' && e.herencia !== 'versatile' ? { doteGeneral: null } : {}) })} />
         ))}
       </div>
+      {e.ascendencia && delHueco('ascendencia', 'Otra dote de ascendencia del compendio', { doteAscendencia: null })}
       {deClase.length > 0 && (
         <>
           <h3 className="mt-6 mb-2 font-titulo text-[20px] font-bold">De clase</h3>
           <div className={rejilla}>
-            {deClase.map((d) => <TarjetaDote key={d.id} d={d} elegida={e.doteClase === d.id} onElegir={() => cambiar({ doteClase: d.id })} />)}
+            {deClase.map((d) => <TarjetaDote key={d.id} d={d} elegida={e.doteClase === d.id} onElegir={() => cambiar({ doteClase: d.id, ...sinCompendio('clase') })} />)}
           </div>
+          {delHueco('clase', 'Otra dote de clase del compendio', { doteClase: null })}
         </>
       )}
       {necesitaDoteGeneral(e) && (
         <>
           <h3 className="mt-6 mb-2 font-titulo text-[20px] font-bold">General</h3>
           <div className={rejilla}>
-            {DOTES_GENERALES.map((d) => <TarjetaDote key={d.id} d={d} elegida={e.doteGeneral === d.id} onElegir={() => cambiar({ doteGeneral: d.id })} />)}
+            {DOTES_GENERALES.map((d) => <TarjetaDote key={d.id} d={d} elegida={e.doteGeneral === d.id} onElegir={() => cambiar({ doteGeneral: d.id, ...sinCompendio('general') })} />)}
           </div>
+          {delHueco('general', 'Otra dote general o de skill del compendio', { doteGeneral: null })}
         </>
       )}
     </>
@@ -361,10 +380,13 @@ export function PasoConjuros({ e, cambiar }: PropsPaso) {
   const tradicion = tradicionDe(e);
   const pide = conjurosAElegir(e);
   const cla = CLASES.find((c) => c.id === e.clase);
+  // El tope cuenta también lo elegido del compendio
   const alternar = (lista: 'trucos' | 'conjuros', id: string, max: number) => cambiar((x) => {
     const actual = x[lista];
-    return { [lista]: actual.includes(id) ? actual.filter((y) => y !== id) : actual.length < max ? [...actual, id] : actual };
+    const libres = max - delCompendio(x, lista === 'trucos' ? 'truco' : 'rango1').length;
+    return { [lista]: actual.includes(id) ? actual.filter((y) => y !== id) : actual.length < libres ? [...actual, id] : actual };
   });
+  const deTradicion = (clase: string, rango: number) => (x: Indice) => x.nivel === rango && x.resumen.startsWith(clase) && !!tradicion && x.resumen.includes(tradicion);
   if (!tradicion) {
     return <TituloPaso titulo="Conjuros" ayuda="Tu tradición de magia sale de tu subclase: elígela primero en el paso Clase." />;
   }
@@ -377,25 +399,29 @@ export function PasoConjuros({ e, cambiar }: PropsPaso) {
       <section>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="font-titulo text-[20px] font-bold">Trucos <span className="text-[14px] font-normal text-texto-suave">· sin límite</span></h3>
-          <Cuenta llevas={e.trucos.length} de={pide.trucos} que="trucos" />
+          <Cuenta llevas={trucosElegidos(e)} de={pide.trucos} que="trucos" />
         </div>
         <div className={rejilla}>
           {conjurosDisponibles(e, 0).map((x) => (
-            <TarjetaConjuro key={x.id} x={x} elegida={e.trucos.includes(x.id)} lleno={e.trucos.length >= pide.trucos} onElegir={() => alternar('trucos', x.id, pide.trucos)} />
+            <TarjetaConjuro key={x.id} x={x} elegida={e.trucos.includes(x.id)} lleno={trucosElegidos(e) >= pide.trucos} onElegir={() => alternar('trucos', x.id, pide.trucos)} />
           ))}
         </div>
+        <DelCompendio e={e} cambiar={cambiar} tipo="conjuros" ranura="truco" filtro={deTradicion('truco', 0)} max={pide.trucos} ocupados={e.trucos.length}
+          titulo={`Más trucos ${NOMBRES_TRADICION[tradicion]} del compendio`} />
       </section>
       {pide.rango1 > 0 && (
         <section className="mt-6">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h3 className="font-titulo text-[20px] font-bold">Rango 1 <span className="text-[14px] font-normal text-texto-suave">· gastan un espacio</span></h3>
-            <Cuenta llevas={e.conjuros.length} de={pide.rango1} que="conjuros" />
+            <Cuenta llevas={conjurosElegidos(e)} de={pide.rango1} que="conjuros" />
           </div>
           <div className={rejilla}>
             {conjurosDisponibles(e, 1).map((x) => (
-              <TarjetaConjuro key={x.id} x={x} elegida={e.conjuros.includes(x.id)} lleno={e.conjuros.length >= pide.rango1} onElegir={() => alternar('conjuros', x.id, pide.rango1)} />
+              <TarjetaConjuro key={x.id} x={x} elegida={e.conjuros.includes(x.id)} lleno={conjurosElegidos(e) >= pide.rango1} onElegir={() => alternar('conjuros', x.id, pide.rango1)} />
             ))}
           </div>
+          <DelCompendio e={e} cambiar={cambiar} tipo="conjuros" ranura="rango1" filtro={deTradicion('conjuro', 1)} max={pide.rango1} ocupados={e.conjuros.length}
+            titulo="Más conjuros de rango 1 del compendio" />
         </section>
       )}
     </>

@@ -10,6 +10,7 @@ import {
   type EstadoSala, type Sesion, type Token,
 } from '../../compartido/sala';
 import { resumenCondiciones } from './Condiciones';
+import { estadoDeSalud } from '../../reglas/criaturas';
 import type { ColoresTablero } from '../tema';
 import type { Evento } from '../../compartido/eventos';
 import { EfectosTablero } from './Efectos';
@@ -385,6 +386,8 @@ export function Tablero({
                 movible={puedeMoverToken(quien, token)}
                 recorrido={recorridos.get(token.id) ?? null}
                 pg={pgVisible(estado, token, quien)}
+                salud={!pgVisible(estado, token, quien) && token.pg && !token.personajeId ? estadoDeSalud(token.pg) : null}
+                derrotado={token.personajeId ? (estado.personajes[token.personajeId]?.pgActual ?? 1) <= 0 : !!token.pg && token.pg.actual <= 0}
                 enTurno={token.id === enTurno}
                 seleccionado={token.id === seleccionado}
                 pista={!!zona && token.id === tokenMovil?.id && !arrastrando && !yaArrastro}
@@ -640,6 +643,10 @@ interface PropsFicha {
   // Su último movimiento: lo recorre casilla por casilla
   recorrido: { id: number; camino: Casilla[] } | null;
   pg: { actual: number; max: number } | null;
+  // Para los jugadores: cómo se ve un enemigo sin decir sus PG ("herido")
+  salud: string | null;
+  // Con 0 PG: tachado, gris
+  derrotado: boolean;
   enTurno: boolean;
   seleccionado: boolean;
   // Mostrar "arrástrame" sobre el token propio la primera vez
@@ -650,7 +657,7 @@ interface PropsFicha {
   onSoltar: (px: number, py: number) => void;
 }
 
-function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, enTurno, seleccionado, pista, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
+function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
   const [imagen] = useImage(token.imagen || '', 'anonymous');
   const nodo = useRef<Konva.Group>(null);
   const lado = TAMANOS[token.tamano] * celda;
@@ -738,7 +745,7 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
         <Shape listening={false} stroke={colores.acento} strokeWidth={grosor * 0.8} dash={[6, 5]}
           sceneFunc={(ctx, forma) => { trazoAMano(ctx, radio, radio, radio + 7, semilla + 7); ctx.strokeShape(forma); }} />
       )}
-      <Group x={radio} y={radio} offsetX={radio} offsetY={radio} scaleX={levantada ? 1.08 : 1} scaleY={levantada ? 1.08 : 1}>
+      <Group x={radio} y={radio} offsetX={radio} offsetY={radio} scaleX={levantada ? 1.08 : 1} scaleY={levantada ? 1.08 : 1} opacity={derrotado ? 0.5 : 1}>
         {/* La pieza de cartón: papel con sombra sobre la mesa (más sombra si está levantada) */}
         <Circle x={radio} y={radio} radius={radio - grosor * 0.5} fill={colores.superficie}
           shadowColor={colores.sombra} shadowBlur={levantada ? 18 : 7} shadowOffsetX={levantada ? 4 : 1} shadowOffsetY={levantada ? 12 : 3}
@@ -771,6 +778,17 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
             }} />
         )}
       </Group>
+      {/* Derrotado: una cruz a tinta roja encima */}
+      {derrotado && (
+        <Shape listening={false} stroke={colores.peligro} strokeWidth={grosor * 1.4} lineCap="round"
+          sceneFunc={(ctx, forma) => {
+            const m = lado * 0.18;
+            ctx.beginPath();
+            ctx.moveTo(m, m + 2); ctx.lineTo(lado - m, lado - m - 1);
+            ctx.moveTo(lado - m + 1, m); ctx.lineTo(m - 1, lado - m + 2);
+            ctx.strokeShape(forma);
+          }} />
+      )}
       {/* PG: barra rayada a lápiz justo debajo */}
       {pg && (
         <Shape x={radio - anchoBarra / 2} y={lado + 3} listening={false}
@@ -798,7 +816,7 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
       <Label x={radio} y={lado + (pg ? altoBarra + 6 : 4)} listening={false}>
         <Tag fill={colores.superficie} opacity={0.94} cornerRadius={3 / escala} pointerDirection="up" pointerWidth={8 / escala} pointerHeight={4 / escala}
           shadowColor={colores.sombra} shadowBlur={4 / escala} shadowOffsetY={1.5 / escala} shadowOpacity={0.25} />
-        <Text text={token.nombre} fontSize={letraNombre} fontFamily="Shantell Sans, cursive" fontStyle={enTurno ? 'bold' : 'normal'}
+        <Text text={salud ? `${token.nombre} · ${salud}` : token.nombre} fontSize={letraNombre} fontFamily="Shantell Sans, cursive" fontStyle={enTurno ? 'bold' : 'normal'}
           fill={token.tipo === 'enemigo' ? colores.peligro : colores.texto} padding={letraNombre * 0.28} />
       </Label>
       {/* Condiciones: un post-it pegado arriba a la derecha */}

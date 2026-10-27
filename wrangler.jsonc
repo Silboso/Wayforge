@@ -11,6 +11,9 @@
   // Una partida = un Durable Object Sala: guarda el estado en su SQLite y reparte los cambios por WebSocket
   "durable_objects": { "bindings": [{ "name": "SALAS", "class_name": "Sala" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }],
-  // Imágenes de mapas y tokens. En local, wrangler la simula en .wrangler/
-  "r2_buckets": [{ "binding": "IMAGENES", "bucket_name": "wayforge-imagenes" }]
+  // Imágenes de mapas y tokens en Workers KV (gratis, sin activar nada; hasta 25 MB por imagen).
+  // Si algún día se activa R2 en la cuenta, basta con agregar:
+  //   "r2_buckets": [{ "binding": "IMAGENES", "bucket_name": "wayforge-imagenes" }]
+  // y el Worker las guarda ahí en lugar de KV. En local, wrangler simula ambos en .wrangler/
+  "kv_namespaces": [{ "binding": "IMAGENES_KV", "id": "3a4a737496e64ad3964ed9ca5a2ae414" }]
 }

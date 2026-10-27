@@ -151,6 +151,13 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
                 <FootprintsIcon size={17} className="ml-3.5" aria-hidden /> Moverse: arrastra su token ({velocidadDe(estado, actor)} ft por Stride)
               </li>
               {cr.habilidades.length > 0 && <li className="px-1 pt-1 text-[12.5px] text-texto-suave">Skills: {cr.habilidades.map((h) => `${h.nombre} ${signo(h.bono)}`).join(' · ')}</li>}
+              {cr.defensas && (
+                <li className="px-1 pt-1 text-[12.5px]">
+                  {cr.defensas.resistencias.length > 0 && <span className="mr-3"><b className="font-titulo">Resiste</b> {cr.defensas.resistencias.map((x) => `${x.tipo} ${x.valor}`).join(', ')}</span>}
+                  {cr.defensas.debilidades.length > 0 && <span className="mr-3 text-peligro"><b className="font-titulo">Débil</b> {cr.defensas.debilidades.map((x) => `${x.tipo} ${x.valor}`).join(', ')}</span>}
+                  {cr.defensas.inmunidades.length > 0 && <span><b className="font-titulo">Inmune</b> {cr.defensas.inmunidades.join(', ')}</span>}
+                </li>
+              )}
               {cr.notas && <li className="px-1 pt-1 text-[12.5px] text-texto-suave">{cr.notas}</li>}
             </ul>
           )}

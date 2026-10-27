@@ -1,4 +1,4 @@
-// Sube una imagen a la sala (se guarda en R2) y devuelve su URL.
+// Sube una imagen a la sala (se guarda en KV, o en R2 si la cuenta lo tiene) y devuelve su URL.
 export async function subirImagen(salaId: string, archivo: File): Promise<string> {
   const respuesta = await fetch(`/api/salas/${salaId}/imagenes`, {
     method: 'PUT',

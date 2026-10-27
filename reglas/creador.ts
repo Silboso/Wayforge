@@ -34,6 +34,9 @@ export interface Eleccion {
   doteGeneral: string | null;
   trucos: string[];
   conjuros: string[];
+  // Lo que se eligió del compendio completo en vez de las listas de arriba. Se guarda ya convertido
+  // (el compendio se carga aparte y construir es puro)
+  delCompendio: ElegidoCompendio[];
   armas: string[];
   armadura: string;
   escudo: string | null;
@@ -41,13 +44,33 @@ export interface Eleccion {
   idiomas: string[];
 }
 
+// Para qué hueco se eligió: cuenta igual que la dote o el conjuro de la lista corta
+export type RanuraCompendio = 'ascendencia' | 'clase' | 'general' | 'truco' | 'rango1';
+export interface ElegidoCompendio {
+  ranura: RanuraCompendio;
+  id: string;
+  nombre: string;
+  // ancestry, class, general… (para la lista de dotes de la ficha)
+  categoria: string;
+  nivel: number;
+  // null para las dotes pasivas: van solo a la lista de dotes
+  aptitud: Aptitud | null;
+}
+
+export const delCompendio = (e: Eleccion, ranura: RanuraCompendio) => (e.delCompendio ?? []).filter((x) => x.ranura === ranura);
+// Lo elegido en cada hueco, de la lista corta o del compendio
+export const tieneDote = (e: Eleccion, ranura: 'ascendencia' | 'clase' | 'general') =>
+  !!(ranura === 'ascendencia' ? e.doteAscendencia : ranura === 'clase' ? e.doteClase : e.doteGeneral) || delCompendio(e, ranura).length > 0;
+export const trucosElegidos = (e: Eleccion) => e.trucos.length + delCompendio(e, 'truco').length;
+export const conjurosElegidos = (e: Eleccion) => e.conjuros.length + delCompendio(e, 'rango1').length;
+
 export const ELECCION_VACIA: Eleccion = {
   ascendencia: null, herencia: null, dosLibres: false, mejorasAscendencia: [],
   trasfondo: null, mejorasTrasfondo: [null, null],
   clase: null, subclase: null, atributoClave: null,
   mejorasLibres: [null, null, null, null],
   habilidades: [], doteAscendencia: null, doteClase: null, doteGeneral: null,
-  trucos: [], conjuros: [], armas: [], armadura: 'none', escudo: null, equipo: [], idiomas: [],
+  trucos: [], conjuros: [], delCompendio: [], armas: [], armadura: 'none', escudo: null, equipo: [], idiomas: [],
 };
 
 const asc = (e: Eleccion) => ASCENDENCIAS.find((a) => a.id === e.ascendencia);
@@ -197,13 +220,13 @@ export function pendientes(e: Eleccion): Pendiente[] {
     }
   }
 
-  if (a && !e.doteAscendencia) lista.push({ paso: 'dotes', falta: 'Elige una dote de ascendencia' });
-  if (c && !e.doteClase && dotesDeClase(e).length) lista.push({ paso: 'dotes', falta: 'Elige una dote de clase' });
-  if (necesitaDoteGeneral(e) && !e.doteGeneral) lista.push({ paso: 'dotes', falta: 'Elige una dote general' });
+  if (a && !tieneDote(e, 'ascendencia')) lista.push({ paso: 'dotes', falta: 'Elige una dote de ascendencia' });
+  if (c && !tieneDote(e, 'clase') && dotesDeClase(e).length) lista.push({ paso: 'dotes', falta: 'Elige una dote de clase' });
+  if (necesitaDoteGeneral(e) && !tieneDote(e, 'general')) lista.push({ paso: 'dotes', falta: 'Elige una dote general' });
 
   const pide = conjurosAElegir(e);
-  if (pide.trucos && e.trucos.length < pide.trucos) lista.push({ paso: 'conjuros', falta: `Te faltan ${pide.trucos - e.trucos.length} truco(s)` });
-  if (pide.rango1 && e.conjuros.length < pide.rango1) lista.push({ paso: 'conjuros', falta: `Te faltan ${pide.rango1 - e.conjuros.length} conjuro(s) de rango 1` });
+  if (pide.trucos && trucosElegidos(e) < pide.trucos) lista.push({ paso: 'conjuros', falta: `Te faltan ${pide.trucos - trucosElegidos(e)} truco(s)` });
+  if (pide.rango1 && conjurosElegidos(e) < pide.rango1) lista.push({ paso: 'conjuros', falta: `Te faltan ${pide.rango1 - conjurosElegidos(e)} conjuro(s) de rango 1` });
   if (cla(e)?.lanzador && !tradicionDe(e)) lista.push({ paso: 'conjuros', falta: 'Elige primero tu subclase (decide tu tradición)' });
 
   if (gastoDe(e) > DINERO_INICIAL) lista.push({ paso: 'equipo', falta: 'Gastaste más de 15 po' });
@@ -311,6 +334,8 @@ export function construir(e: Eleccion, base: Pick<Personaje, 'id' | 'nombre'> & 
     const x = CONJUROS.find((y) => y.id === id);
     if (x) aptitudes.push(aptitudDeConjuro(x));
   }
+  const extras = e.delCompendio ?? [];
+  for (const x of extras) if (x.aptitud && !aptitudes.some((y) => y.id === x.aptitud!.id)) aptitudes.push(x.aptitud);
   for (const it of e.equipo) {
     const x = EQUIPO.find((y) => y.id === it.id);
     if (x?.aptitud) aptitudes.push({ ...x.aptitud, id: `objeto:${x.id}`, recuperacion: { tipo: 'consumible', cantidad: it.cantidad } });
@@ -371,7 +396,11 @@ export function construir(e: Eleccion, base: Pick<Personaje, 'id' | 'nombre'> & 
     idiomas: [...(a?.idiomas ?? []), ...e.idiomas],
     sentidos: herencia?.efecto?.sentidos ?? a?.sentidos ?? '',
     saberes: t ? [t.saber] : [],
-    dotes: dotes.map((d) => ({ id: d.id, nombre: d.nombre, tipo: d.tipo, nivel: d.nivel })),
+    dotes: [
+      ...dotes.map((d) => ({ id: d.id, nombre: d.nombre, tipo: d.tipo, nivel: d.nivel })),
+      ...extras.filter((x) => x.ranura !== 'truco' && x.ranura !== 'rango1')
+        .map((x) => ({ id: x.id.slice(0, 80), nombre: x.nombre.slice(0, 80), tipo: x.categoria.slice(0, 20), nivel: Math.min(20, Math.max(1, x.nivel)) })),
+    ],
     inventario,
     monedas: { oro: Math.floor(restante / 10), plata: Math.floor(restante % 10), cobre: Math.round((restante * 10) % 10) },
     ...(c && e.atributoClave ? { claseCD: { atributo: e.atributoClave, rango: 1 as Rango } } : {}),

@@ -14,6 +14,27 @@ const TIPOS_IMAGEN: Record<string, string> = {
 };
 const MAX_IMAGEN = 15 * 1024 * 1024;
 
+// Las imágenes van a R2 si la cuenta lo tiene configurado; si no, a Workers KV
+function bucket(env: Env): R2Bucket | undefined {
+  return (env as unknown as { IMAGENES?: R2Bucket }).IMAGENES;
+}
+
+async function guardarImagen(env: Env, clave: string, cuerpo: ArrayBuffer, tipo: string) {
+  const r2 = bucket(env);
+  if (r2) await r2.put(clave, cuerpo, { httpMetadata: { contentType: tipo } });
+  else await env.IMAGENES_KV.put(clave, cuerpo, { metadata: { tipo } });
+}
+
+async function leerImagen(env: Env, clave: string): Promise<{ cuerpo: ReadableStream | ArrayBuffer; tipo: string } | null> {
+  const r2 = bucket(env);
+  if (r2) {
+    const objeto = await r2.get(clave);
+    return objeto ? { cuerpo: objeto.body, tipo: objeto.httpMetadata?.contentType ?? 'application/octet-stream' } : null;
+  }
+  const { value, metadata } = await env.IMAGENES_KV.getWithMetadata<{ tipo: string }>(clave, 'arrayBuffer');
+  return value ? { cuerpo: value, tipo: metadata?.tipo ?? 'application/octet-stream' } : null;
+}
+
 // Código de sala: 6 caracteres fáciles de dictar (sin 0/o, 1/i/l)
 const ALFABETO = 'abcdefghjkmnpqrstuvwxyz23456789';
 
@@ -57,18 +78,19 @@ app.put('/api/salas/:id/imagenes', async (c) => {
   const cuerpo = await c.req.arrayBuffer();
   if (cuerpo.byteLength > MAX_IMAGEN) return c.text('La imagen pesa más de 15 MB', 413);
   const clave = `salas/${id}/${crypto.randomUUID()}.${extension}`;
-  await c.env.IMAGENES.put(clave, cuerpo, { httpMetadata: { contentType: tipo } });
+  await guardarImagen(c.env, clave, cuerpo, tipo);
   return c.json({ url: `/api/imagenes/${clave}` });
 });
 
 app.get('/api/imagenes/*', async (c) => {
   const clave = c.req.path.slice('/api/imagenes/'.length);
-  const objeto = await c.env.IMAGENES.get(clave);
-  if (!objeto) return c.notFound();
+  if (!/^salas\/[a-z0-9]{6,32}\/[0-9a-f-]{36}\.[a-z]{3,4}$/.test(clave)) return c.notFound();
+  const imagen = await leerImagen(c.env, clave);
+  if (!imagen) return c.notFound();
   // La clave lleva un UUID: una imagen nunca cambia de contenido
-  return new Response(objeto.body, {
+  return new Response(imagen.cuerpo, {
     headers: {
-      'content-type': objeto.httpMetadata?.contentType ?? 'application/octet-stream',
+      'content-type': imagen.tipo,
       'cache-control': 'public, max-age=31536000, immutable',
     },
   });

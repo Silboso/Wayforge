@@ -27,7 +27,52 @@ export interface Criatura {
   rasgos: string[];
   // Lo que hace especial (Sneak Attack, Knockdown, Slow…), en palabras
   notas: string;
+  // Lo que le hace menos (o más) daño. Opcional: las criaturas viejas no lo tienen.
+  defensas?: Defensas;
 }
+
+export interface Defensas {
+  inmunidades: string[];
+  resistencias: { tipo: string; valor: number }[];
+  debilidades: { tipo: string; valor: number }[];
+}
+
+const FISICOS = ['bludgeoning', 'piercing', 'slashing'];
+
+// ¿Una resistencia o debilidad de este tipo cubre ese daño? "physical" cubre los tres físicos y "all", todo.
+function cubre(tipoDefensa: string, tipoDano: string): boolean {
+  const t = tipoDefensa.trim().toLowerCase();
+  const d = tipoDano.trim().toLowerCase();
+  return t === d || t === 'all' || (t === 'physical' && FISICOS.includes(d));
+}
+
+// El daño que de verdad recibe: inmune → 0; si no, suma la debilidad más alta y resta la resistencia más alta
+export function danoAjustado(c: Criatura | undefined, cantidad: number, tipoDano: string | null): { total: number; nota: string | null } {
+  const def = c?.defensas;
+  if (!def || !tipoDano || cantidad <= 0) return { total: Math.max(0, cantidad), nota: null };
+  if (def.inmunidades.some((i) => cubre(i, tipoDano))) return { total: 0, nota: `inmune a ${tipoDano}` };
+  const debilidad = Math.max(0, ...def.debilidades.filter((x) => cubre(x.tipo, tipoDano)).map((x) => x.valor));
+  const resistencia = Math.max(0, ...def.resistencias.filter((x) => cubre(x.tipo, tipoDano)).map((x) => x.valor));
+  const total = Math.max(0, cantidad + debilidad - resistencia);
+  const partes = [debilidad && `+${debilidad} por debilidad`, resistencia && `−${resistencia} por resistencia`].filter(Boolean);
+  return { total, nota: partes.length ? `${partes.join(', ')} a ${tipoDano}` : null };
+}
+
+// Cómo se ve un enemigo, sin decir sus PG: lo que ven los jugadores
+export function estadoDeSalud(pg: { actual: number; max: number }): 'ileso' | 'herido' | 'muy herido' | 'casi muerto' | 'derrotado' {
+  if (pg.actual <= 0) return 'derrotado';
+  const k = pg.actual / Math.max(1, pg.max);
+  return k >= 1 ? 'ileso' : k > 0.5 ? 'herido' : k > 0.2 ? 'muy herido' : 'casi muerto';
+}
+
+// "fire 5, cold 5" ↔ lista (para escribirlas en el editor)
+export function leerValores(texto: string): { tipo: string; valor: number }[] {
+  return texto.split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
+    const m = /^([a-zA-Záéíóúñ ]+?)\s*(\d+)$/.exec(x);
+    return m ? { tipo: m[1]!.trim().toLowerCase().slice(0, 30), valor: Math.min(99, Number(m[2])) } : null;
+  }).filter((x): x is { tipo: string; valor: number } => !!x);
+}
+export const escribirValores = (xs: { tipo: string; valor: number }[]) => xs.map((x) => `${x.tipo} ${x.valor}`).join(', ');
 
 export const CRIATURA_VACIA: Criatura = {
   nivel: 0, salvaciones: { fortitude: 4, reflex: 4, will: 4 }, velocidad: 25, ataques: [], habilidades: [], rasgos: [], notas: '',
@@ -53,7 +98,17 @@ export function esCriaturaValida(valor: unknown): valor is Criatura {
     && Array.isArray(c.habilidades) && c.habilidades.length <= 20
     && c.habilidades.every((h) => typeof h === 'object' && h !== null && texto((h as Record<string, unknown>).nombre, 40) && entero((h as Record<string, unknown>).bono, -10, 60))
     && Array.isArray(c.rasgos) && c.rasgos.length <= 20 && c.rasgos.every((r) => texto(r, 30))
-    && texto(c.notas, 2000);
+    && texto(c.notas, 2000)
+    && (c.defensas === undefined || esDefensasValidas(c.defensas));
+}
+
+function esDefensasValidas(valor: unknown): boolean {
+  if (typeof valor !== 'object' || valor === null) return false;
+  const d = valor as Record<string, unknown>;
+  const valores = (xs: unknown) => Array.isArray(xs) && xs.length <= 20 && xs.every((x) => typeof x === 'object' && x !== null
+    && texto((x as Record<string, unknown>).tipo, 30) && entero((x as Record<string, unknown>).valor, 0, 99));
+  return Array.isArray(d.inmunidades) && d.inmunidades.length <= 20 && d.inmunidades.every((x) => texto(x, 30))
+    && valores(d.resistencias) && valores(d.debilidades);
 }
 
 function esAtaqueValido(valor: unknown): boolean {
