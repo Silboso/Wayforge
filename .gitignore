@@ -6,3 +6,6 @@ dist
 # Capturas de revisión de diseño: se regeneran
 .impeccable/review
 .impeccable/questions
+
+# Caché de TypeScript
+*.tsbuildinfo
