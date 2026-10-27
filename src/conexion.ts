@@ -143,6 +143,20 @@ export function useSala(salaId: string) {
             if (nuevos.length) setEventos((prev) => [...prev, ...nuevos.map((evento) => ({ id: ++contador.current, evento }))].slice(-30));
             break;
           }
+          // Con niebla: lo que ahora ve este jugador. Primero la acción (para sus animaciones), después la vista nueva
+          case 'vista': {
+            const anterior = estadoRef.current;
+            if (!anterior) break;
+            const intermedio = mensaje.accion ? aplicar(anterior, mensaje.accion) : anterior;
+            const posterior = { ...intermedio, tokens: mensaje.tokens, mapa: mensaje.mapa };
+            cambiarEstado(posterior);
+            if (mensaje.accion) {
+              const nuevos = eventosDe(anterior, mensaje.accion, posterior);
+              if (mensaje.accion.tipo === 'registrar-tirada') setPendiente(null);
+              if (nuevos.length) setEventos((prev) => [...prev, ...nuevos.map((evento) => ({ id: ++contador.current, evento }))].slice(-30));
+            }
+            break;
+          }
           case 'presentes': {
             setPresentes(mensaje.presentes);
             // Quien se fue deja de tener puntero
@@ -287,10 +301,15 @@ export function useSala(salaId: string) {
     mandar({ tipo: 'iniciar-combate', tokens });
   }, [mandar]);
 
+  // Abrir o cerrar una puerta (la sala revisa si estás al lado)
+  const puerta = useCallback((id: string) => {
+    mandar({ tipo: 'puerta', id });
+  }, [mandar]);
+
   return {
     fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales,
     enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
-    moverPuntero, apuntar, senalar,
+    moverPuntero, apuntar, senalar, puerta,
     limpiarRechazo: () => setRechazo(null),
   };
 }

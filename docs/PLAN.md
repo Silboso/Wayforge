@@ -173,8 +173,19 @@ la derecha de los botones. A la izquierda, los **compañeros en miniatura**: ret
 temporales), marquitas de efectos y condiciones, estrella si le toca, Dying en rojo; con el cursor se ve el
 detalle (PG, CA, condiciones, efectos con su duración) y tocar el retrato lleva la vista a su token.
 
+**Niebla de guerra con muros** (`compartido/vision.ts`): el GM dibuja muros, puertas y ventanas sobre las
+esquinas de la cuadrícula, o una habitación entera de un tirón (cuatro muros con su puerta). Los muros y las
+puertas cerradas frenan la vista y el paso; las ventanas dejan ver pero no pasar; las puertas se abren
+tocándolas (el GM cualquiera; un jugador, la que tiene al lado, y en combate gasta una acción); las cerradas
+con llave solo las abre el GM. El grupo comparte la visión: lo que cualquiera ve en línea de vista se ve claro,
+lo explorado antes queda en penumbra y lo demás bajo la niebla (con bordes difuminados). **La sala filtra lo
+que manda a cada jugador**: las criaturas que no se ven y los muros que todavía nadie descubrió no viajan.
+El GM ve todo, puede mirar la niebla como la ven los jugadores, volver a cubrir lo explorado o apagarla.
+
 1. Escenas: varios mapas por mesa, la activa la ven todos, el GM prepara las demás.
-2. Niebla manual: el GM revela/oculta zonas con pincel o rectángulo.
+2. Niebla: ya está con muros y visión compartida *(falta: luz y oscuridad con darkvision/low-light, visión
+   por personaje en vez de compartida, que la línea de vista limite también conjuros y ataques, y un pincel
+   para revelar a mano en mapas con imagen)*.
 3. Chat de la mesa: mensajes, susurros al GM, tiradas en el mismo registro; "tirar en secreto" del GM.
 4. Notas y handouts (imagen o texto) que el GM muestra a todos o a uno.
 

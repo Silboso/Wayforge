@@ -10,6 +10,7 @@ import { motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Aza
 import { disponibilidad, todasLasAptitudes } from '../reglas/aptitudes';
 import { claveDe, interaccionDe, VAN_ULTIMO } from '../reglas/interacciones';
 import { momentoIniciativa } from '../reglas/disparadores';
+import { alLadoDe, explorar, visionActiva, vistaJugadores } from '../compartido/vision';
 
 // Los dados de la sala, para el motor de interacciones
 const AZAR: Azar = { dado: (caras) => dado(caras), id: () => crypto.randomUUID(), ahora: () => Date.now() };
@@ -42,6 +43,8 @@ export class Sala extends DurableObject<Env> {
   private estado: EstadoSala = estadoInicial();
   private codigos: Codigos | null = null;
   private fallos = new Map<string, { n: number; hasta: number }>();
+  // Lo último que vieron los jugadores (para no mandarles la vista si no cambió)
+  private firmaJugadores: string | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -121,6 +124,8 @@ export class Sala extends DurableObject<Env> {
         return this.iniciarCombate(conexion.quien, m);
       case 'responder':
         return this.responder(conexion.quien, m.esperaId, m.aptitudId);
+      case 'puerta':
+        return this.puerta(ws, conexion.quien, m.id);
       case 'puntero':
       case 'senal':
         return this.presencia(ws, conexion, m);
@@ -523,9 +528,53 @@ export class Sala extends DurableObject<Env> {
     await this.guardarYRepartir({ tipo: 'iniciar-combate', orden });
   }
 
+  // Aplica, guarda y reparte. Con niebla, lo que el grupo ve ahora queda explorado, y a cada jugador le llega
+  // solo lo suyo: la acción tal cual si no cambia lo que ve ni toca algo oculto; si no, su vista nueva.
   private async guardarYRepartir(accion: Accion) {
     await this.guardar(accion);
-    this.repartir({ tipo: 'accion', accion });
+    const activa = visionActiva(this.estado.mapa);
+    const mascara = activa ? explorar(this.estado) : null;
+    if (mascara) await this.guardar({ tipo: 'explorar', mascara });
+    const vista = activa ? vistaJugadores(this.estado) : null;
+    const cambio = (vista?.firma ?? null) !== this.firmaJugadores;
+    this.firmaJugadores = vista?.firma ?? null;
+    const ids = idsDe(accion);
+    const oculta = !!vista && ids.some((id) => this.estado.tokens[id] && !vista.estado.tokens[id]);
+    for (const ws of this.ctx.getWebSockets()) {
+      const { quien } = ws.deserializeAttachment() as Conexion;
+      if (quien.rol === 'visitante') continue;
+      if (quien.rol === 'gm') {
+        enviar(ws, { tipo: 'accion', accion });
+        if (mascara) enviar(ws, { tipo: 'accion', accion: { tipo: 'explorar', mascara } });
+      } else if (!vista) {
+        // Se apagó la niebla: el estado entero de nuevo; si no, la acción
+        if (cambio) this.enviarEstado(ws); else enviar(ws, { tipo: 'accion', accion });
+      } else if (!cambio && !oculta) {
+        enviar(ws, { tipo: 'accion', accion });
+      } else {
+        enviar(ws, { tipo: 'vista', ...(oculta ? {} : { accion }), tokens: vista.estado.tokens, mapa: vista.estado.mapa });
+      }
+    }
+  }
+
+  // Abrir o cerrar una puerta. El GM, cualquiera (también las cerradas con llave); un jugador, la que tiene al lado,
+  // y en combate solo en su turno y gastando una acción (Interact)
+  private async puerta(ws: WebSocket, quien: Sesion, id: unknown) {
+    const m = (this.estado.mapa.muros ?? []).find((x) => x.id === id && x.tipo === 'puerta');
+    if (!m || quien.rol === 'visitante') return;
+    if (quien.rol === 'jugador') {
+      const token = tokenDePersonaje(this.estado, quien.personajeId);
+      if (!token) return;
+      if (m.conLlave) return this.negar(ws, 'Está cerrada con llave.');
+      if (!alLadoDe(token, m)) return this.negar(ws, 'Tienes que estar al lado de la puerta.');
+      const c = this.estado.combate;
+      if (c && c.orden.some((x) => x.tokenId === token.id)) {
+        const motivo = motivoParaActuar(this.estado, quien.personajeId, 1);
+        if (motivo) return this.negar(ws, motivo);
+        await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c.acciones, c.usadas + 1) });
+      }
+    }
+    await this.guardarYRepartir({ tipo: 'alternar-puerta', id: m.id, abierta: !m.abierta });
   }
 
   private async guardar(accion: Accion) {
@@ -540,9 +589,11 @@ export class Sala extends DurableObject<Env> {
     this.repartirPresentes(undefined, ws);
   }
 
+  // A un jugador con niebla le llega su vista; al GM, todo
   private enviarEstado(ws: WebSocket) {
-    const { idConexion } = ws.deserializeAttachment() as Conexion;
-    enviar(ws, { tipo: 'estado', estado: this.estado, presentes: this.presentes(), tuConexion: idConexion });
+    const { idConexion, quien } = ws.deserializeAttachment() as Conexion;
+    const estado = quien.rol === 'jugador' && visionActiva(this.estado.mapa) ? vistaJugadores(this.estado).estado : this.estado;
+    enviar(ws, { tipo: 'estado', estado, presentes: this.presentes(), tuConexion: idConexion });
   }
 
   private enviarLobby(ws: WebSocket) {
@@ -610,6 +661,13 @@ export class Sala extends DurableObject<Env> {
       enviar(ws, mensaje);
     }
   }
+}
+
+// Los tokens que nombra una acción (para saber si toca algo que un jugador no ve). Las tiradas sí le llegan:
+// si un arquero escondido le dispara, se entera del disparo aunque no vea de dónde vino.
+function idsDe(accion: Accion): string[] {
+  const a = accion as Record<string, unknown>;
+  return [a.id, a.tokenId, (a.token as { id?: unknown } | undefined)?.id].filter((x): x is string => typeof x === 'string');
 }
 
 function enviar(ws: WebSocket, mensaje: MensajeSala) {

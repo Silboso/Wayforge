@@ -19,6 +19,8 @@ import type { Evento } from '../../compartido/eventos';
 import { EfectosTablero } from './Efectos';
 import { PresenciaTablero } from './Presencia';
 import { FondoTerreno } from './Terreno';
+import { CapaNiebla, DibujoMuros, distanciaAMuro } from './Muros';
+import { habitacion, type Muro } from '../../compartido/vision';
 import type { PunteroAjeno, Senal } from '../conexion';
 
 interface Props {
@@ -57,7 +59,15 @@ interface Props {
   marcados?: string[];
   // Mientras se apunta: sobre cada token, si sirve como objetivo y qué se tira contra él (o por qué no)
   pistas?: Record<string, { valido: boolean; texto: string }> | null;
+  // La niebla de guerra: lo que se ve ahora y lo ya explorado. `opaca` para los jugadores; el GM la ve como velo
+  niebla?: { visibles: Set<string>; exploradas: Set<string>; opaca: boolean } | null;
+  // Tocar una puerta la abre o la cierra
+  onPuerta?: (id: string) => void;
+  // El GM dibujando muros: con qué herramienta, y qué hacer con lo dibujado
+  editorMuros?: { herramienta: HerramientaMuros; onAgregar: (muros: Muro[]) => void; onCambiar: (muro: Muro) => void; onBorrar: (id: string) => void } | null;
 }
+
+export type HerramientaMuros = 'muro' | 'puerta' | 'ventana' | 'habitacion' | 'llave' | 'borrar';
 
 // Mantener presionado este tiempo (sin mover) lanza una señal
 const SENAL_MS = 450;
@@ -69,7 +79,7 @@ const PASO_MS = 120;
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
   seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onSenal, enfocar = null,
-  plantilla = null, onPunto, marcados = [], pistas = null,
+  plantilla = null, onPunto, marcados = [], pistas = null, niebla = null, onPuerta, editorMuros = null,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [medida, setMedida] = useState({ ancho: 0, alto: 0 });
@@ -257,6 +267,55 @@ export function Tablero({
 
   // El punto del área bajo el puntero: una esquina para la explosión, una casilla para el cono y la línea
   const [puntoArea, setPuntoArea] = useState<Casilla | null>(null);
+  // El editor de muros: dónde empieza el tramo que se está dibujando y la esquina bajo el puntero
+  const [inicioMuro, setInicioMuro] = useState<Casilla | null>(null);
+  const [esquina, setEsquina] = useState<Casilla | null>(null);
+  useEffect(() => { setInicioMuro(null); }, [editorMuros?.herramienta]);
+  useEffect(() => {
+    if (!editorMuros) return;
+    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') setInicioMuro(null); };
+    addEventListener('keydown', alPulsar);
+    return () => removeEventListener('keydown', alPulsar);
+  }, [!!editorMuros]);
+  const murosMapa = mapa.muros ?? [];
+  // El muro más cercano a un punto (en casillas), si está a menos de `radio`
+  const muroCerca = (p: { x: number; y: number }, radio: number, filtro: (m: Muro) => boolean = () => true) => {
+    let mejor: Muro | null = null;
+    let d = radio;
+    for (const m of murosMapa) {
+      if (!filtro(m)) continue;
+      const dm = distanciaAMuro(p, m);
+      if (dm < d) { d = dm; mejor = m; }
+    }
+    return mejor;
+  };
+  const borrando = editorMuros?.herramienta === 'borrar' || editorMuros?.herramienta === 'llave';
+  const resaltado = editorMuros && esquina && borrando
+    ? muroCerca(esquina, 0.4, editorMuros.herramienta === 'llave' ? (m) => m.tipo === 'puerta' : undefined)?.id ?? null : null;
+  // Un clic del editor: empieza o termina un tramo, arma la habitación, borra o pone la llave
+  function tocarEditor(px: number, py: number) {
+    if (!editorMuros) return;
+    const m = enCasillas(px, py);
+    const h = editorMuros.herramienta;
+    if (h === 'borrar' || h === 'llave') {
+      const cerca = muroCerca(m, 0.4, h === 'llave' ? (x) => x.tipo === 'puerta' : undefined);
+      if (!cerca) return;
+      if (h === 'borrar') editorMuros.onBorrar(cerca.id);
+      else editorMuros.onCambiar({ ...cerca, conLlave: !cerca.conLlave });
+      return;
+    }
+    const c = { x: Math.round(m.x), y: Math.round(m.y) };
+    if (!inicioMuro) return setInicioMuro(c);
+    if (c.x === inicioMuro.x && c.y === inicioMuro.y) return setInicioMuro(null);
+    const id = () => crypto.randomUUID().slice(0, 12);
+    if (h === 'habitacion') {
+      editorMuros.onAgregar(habitacion(inicioMuro, c, id));
+      return setInicioMuro(null);
+    }
+    editorMuros.onAgregar([{ id: id(), a: inicioMuro, b: c, tipo: h, ...(h === 'puerta' ? { abierta: false } : {}) }]);
+    // Los muros siguen encadenados desde donde terminó el tramo; puertas y ventanas van de a una
+    setInicioMuro(h === 'muro' ? c : null);
+  }
   useEffect(() => setPuntoArea(null), [plantilla?.tokenId, plantilla?.area.forma, plantilla?.area.tamano]);
   const puntoEn = (px: number, py: number): Casilla => {
     const m = enCasillas(px, py);
@@ -276,6 +335,11 @@ export function Tablero({
     if (plantilla && e.evt.type === 'mousemove') {
       const c = puntoEn(p.x, p.y);
       if (!puntoArea || puntoArea.x !== c.x || puntoArea.y !== c.y) setPuntoArea(c);
+    }
+    if (editorMuros) {
+      const m = enCasillas(p.x, p.y);
+      const c = borrando ? { x: m.x, y: m.y } : { x: Math.round(m.x), y: Math.round(m.y) };
+      if (borrando || !esquina || esquina.x !== c.x || esquina.y !== c.y) setEsquina(c);
     }
     if (presion.current && Math.hypot(p.x - presion.current.x, p.y - presion.current.y) > 6) soltarPresion();
     if (onPuntero && e.evt.type === 'mousemove') {
@@ -304,6 +368,15 @@ export function Tablero({
       if (p) tocarConPlantilla(p.x, p.y, e.type === 'tap');
       return;
     }
+    if (editorMuros) {
+      const p = e.target.getStage()?.getPointerPosition();
+      if (p) tocarEditor(p.x, p.y);
+      return;
+    }
+    // Tocar cerca de una puerta la abre o la cierra
+    const pp = e.target.getStage()?.getPointerPosition();
+    const puerta = pp && onPuerta ? muroCerca(enCasillas(pp.x, pp.y), 0.35, (m) => m.tipo === 'puerta') : null;
+    if (puerta) return onPuerta!(puerta.id);
     if (e.target !== e.target.getStage() && e.target.name() !== 'fondo') return;
     onSeleccionar(null);
   }
@@ -337,7 +410,7 @@ export function Tablero({
 
   return (
     // Absoluto: así el canvas no empuja el tamaño de su contenedor y el tablero se puede encoger
-    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango || plantilla ? 'cursor-crosshair' : ''}`}
+    <div ref={contenedor} className={`papel-tablero absolute inset-0 overflow-hidden ${rango || plantilla || editorMuros ? 'cursor-crosshair' : ''}`}
       onMouseLeave={() => { onPuntero?.(null, null); soltarPresion(); }}>
       {medida.ancho > 0 && (
         <Stage
@@ -408,6 +481,33 @@ export function Tablero({
                 }}
               />
             )}
+            {murosMapa.length > 0 && <DibujoMuros muros={murosMapa} celda={celda} origen={origen} escala={vista.escala} colores={colores} resaltado={resaltado} />}
+            {niebla && (
+              <CapaNiebla visibles={niebla.visibles} exploradas={niebla.exploradas} columnas={mapa.columnas} filas={mapa.filas}
+                celda={celda} origen={origen} colores={colores} opaca={niebla.opaca} />
+            )}
+            {editorMuros && esquina && !borrando && (
+              <Shape listening={false} sceneFunc={(ctx) => {
+                const c = ctx._context;
+                const P = (q: Casilla) => ({ x: origen.x + q.x * celda, y: origen.y + q.y * celda });
+                const e2 = P(esquina);
+                c.save();
+                c.strokeStyle = colores.peligro;
+                c.fillStyle = colores.peligro;
+                c.lineWidth = 3 / vista.escala;
+                c.setLineDash([8 / vista.escala, 6 / vista.escala]);
+                if (inicioMuro) {
+                  const a = P(inicioMuro);
+                  c.beginPath();
+                  if (editorMuros.herramienta === 'habitacion') c.rect(a.x, a.y, e2.x - a.x, e2.y - a.y);
+                  else { c.moveTo(a.x, a.y); c.lineTo(e2.x, e2.y); }
+                  c.stroke();
+                  c.beginPath(); c.arc(a.x, a.y, 5 / vista.escala, 0, Math.PI * 2); c.fill();
+                }
+                c.beginPath(); c.arc(e2.x, e2.y, 6 / vista.escala, 0, Math.PI * 2); c.fill();
+                c.restore();
+              }} />
+            )}
             {/* Dónde termina el tablero: afuera, papel apagado y rayado; el borde, a tinta doble */}
             <Shape
               listening={false}
@@ -469,7 +569,7 @@ export function Tablero({
               return <Circle key={id} x={origen.x + t.x * celda + r} y={origen.y + t.y * celda + r} radius={r + 6} listening={false} stroke={colores.peligro} strokeWidth={4 / vista.escala} />;
             })}
           </Layer>
-          <Layer>
+          <Layer listening={!editorMuros}>
             {Object.values(estado.tokens).map((token) => (
               <FichaToken
                 key={token.id}

@@ -21,6 +21,7 @@ import {
 import { pistaObjetivo, type Pista } from '../../compartido/interacciones';
 import { OrdenRevelado, PreparacionJugador } from '../componentes/Preparacion';
 import { Companeros } from '../componentes/hud/Companeros';
+import { deMascara, visionActiva } from '../../compartido/vision';
 import { MenuObjetivo } from '../componentes/hud/MenuObjetivo';
 import { aAlcance, type Evento } from '../../compartido/eventos';
 import { textoTirada } from '../../compartido/tiradas';
@@ -499,6 +500,11 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     }
     return salen;
   })();
+  // La niebla como la manda la sala: lo que el grupo ve ahora y lo ya explorado
+  const { columnas, filas, visibles: mascaraVisibles, exploradas: mascaraExploradas } = estado.mapa;
+  const niebla = useMemo(() => (visionActiva(estado.mapa) && mascaraVisibles
+    ? { visibles: deMascara(mascaraVisibles, columnas, filas), exploradas: deMascara(mascaraExploradas, columnas, filas), opaca: true }
+    : null), [mascaraVisibles, mascaraExploradas, columnas, filas, estado.mapa.niebla]);
   const lanzarA = (punto?: { x: number; y: number }) => {
     if (!aptitudEligiendo) return;
     if (usarAptitud(aptitudEligiendo, undefined, punto ? { punto } : { objetivos: marcados })) { setEligiendo(null); setMarcados([]); }
@@ -545,6 +551,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       onPunto={(c) => lanzarA(c)}
       marcados={objetivosEligiendo?.tipo === 'varios' ? marcados : []}
       pistas={pistas}
+      niebla={niebla}
+      onPuerta={sala.puerta}
     />
   );
 

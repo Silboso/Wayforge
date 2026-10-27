@@ -16,6 +16,8 @@ export interface OpcionesMovimiento {
   // Límites del tablero (exclusivo); sin límite, Infinity
   columnas: number;
   filas: number;
+  // Si un paso de una casilla a la vecina atraviesa un muro o una puerta cerrada
+  cruzaMuro?: (de: Casilla, a: Casilla) => boolean;
 }
 
 export interface Paso {
@@ -61,6 +63,8 @@ export function alcanzables(origen: Casilla, maxPies: number, o: OpcionesMovimie
       if (pies > maxPies) continue;
       const sig = { x: actual.c.x + dx, y: actual.c.y + dy };
       if (!pasa(sig)) continue;
+      // Ninguna parte del token puede atravesar un muro (un token grande mira cada una de sus casillas)
+      if (o.cruzaMuro && huella(actual.c, lado).some((k) => { const c = desdeClave(k); return o.cruzaMuro!(c, { x: c.x + dx, y: c.y + dy }); })) continue;
       const k = clave(sig);
       const diagonales = actual.diagonales + (diagonal ? 1 : 0);
       const previo = mejor.get(k);

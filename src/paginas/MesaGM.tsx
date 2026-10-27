@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   BookOpenTextIcon, CopyIcon, DiceFiveIcon, PawPrintIcon, SwordIcon, UsersThreeIcon, WrenchIcon, XIcon,
 } from '@phosphor-icons/react';
@@ -26,6 +26,9 @@ import { EditorCriatura } from '../componentes/gm/EditorCriatura';
 import { HojaCriatura, MenuCriatura } from '../componentes/gm/HojaCriatura';
 import { BandaElegir, Cabecera, OrdenEscrito } from './MesaJugador';
 import { OrdenRevelado } from '../componentes/Preparacion';
+import { BarraMuros, SeccionMurosNiebla } from '../componentes/gm/MurosNiebla';
+import { casillasVisibles, deMascara, visionActiva } from '../../compartido/vision';
+import type { HerramientaMuros } from '../componentes/Tablero';
 import { Companeros } from '../componentes/hud/Companeros';
 
 type Tema = ReturnType<typeof useTema>;
@@ -72,6 +75,16 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [ayuda, setAyuda] = useState(false);
   const [codigos, setCodigos] = useState(false);
   const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
+  // Dibujando muros (con qué herramienta) y mirando la niebla como la ven los jugadores
+  const [herramientaMuros, setHerramientaMuros] = useState<HerramientaMuros | null>(null);
+  const [verNiebla, setVerNiebla] = useState(false);
+  const nieblaGM = useMemo(() => {
+    if (!verNiebla || !visionActiva(estado.mapa)) return null;
+    const visibles = casillasVisibles(estado);
+    const exploradas = deMascara(estado.mapa.exploradas, estado.mapa.columnas, estado.mapa.filas);
+    for (const k of visibles) exploradas.add(k);
+    return { visibles, exploradas, opaca: false };
+  }, [verNiebla, estado.mapa, estado.tokens]);
   const [colores, setColores] = useState(leerColoresTablero);
   useEffect(() => setColores(leerColoresTablero()), [tema.tema]);
   const codigoGM = leer(almacen.gmCodigo(salaId));
@@ -298,7 +311,9 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       case 'personajes': return <PersonajesGM estado={estado} sala={sala} objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null}
         onCrear={() => setCreando(personajeNuevo(crypto.randomUUID()))} onEditar={setEditandoP} />;
       case 'mesa': return <HerramientasGM salaId={salaId} codigoGM={codigoGM} estado={estado} seleccionado={actorId} onSeleccionar={setActorId} enviar={sala.enviar}
-        onEditarPersonaje={(id) => { const p = estado.personajes[id]; if (p) setEditandoP(p); }} />;
+        onEditarPersonaje={(id) => { const p = estado.personajes[id]; if (p) setEditandoP(p); }}
+        murosNiebla={<SeccionMurosNiebla estado={estado} enviar={sala.enviar} verNiebla={verNiebla} onVerNiebla={setVerNiebla}
+          onEditar={() => { setHerramientaMuros('habitacion'); setCajon(null); }} />} />;
       case 'tiradas': return (
         <div className="flex flex-col gap-4">
           <TiradaLibre esGM objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null} onTirar={(que) => sala.tirar(undefined, que)} />
@@ -337,7 +352,20 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           seleccionado={actorId}
           onSeleccionar={seleccionar}
           onMover={(id, x, y) => sala.mover(id, x, y)}
+          onPuerta={sala.puerta}
+          niebla={nieblaGM}
+          editorMuros={herramientaMuros ? {
+            herramienta: herramientaMuros,
+            onAgregar: (nuevos) => sala.enviar({ tipo: 'editar-mapa', cambios: { muros: [...(estado.mapa.muros ?? []), ...nuevos] } }),
+            onCambiar: (muro) => sala.enviar({ tipo: 'editar-mapa', cambios: { muros: (estado.mapa.muros ?? []).map((m) => (m.id === muro.id ? muro : m)) } }),
+            onBorrar: (id) => sala.enviar({ tipo: 'editar-mapa', cambios: { muros: (estado.mapa.muros ?? []).filter((m) => m.id !== id) } }),
+          } : null}
         />
+        {herramientaMuros && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-4">
+            <BarraMuros herramienta={herramientaMuros} onElegir={setHerramientaMuros} onListo={() => setHerramientaMuros(null)} />
+          </div>
+        )}
         {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => { setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 })); }} />}
         {eligiendo && actor && <BandaElegir fila={{ nombre: `${actor.nombre}: ${eligiendo.nombre}` }} rango={rango} onCancelar={() => setEligiendo(null)}
           className={actor ? (plegada ? 'bottom-[92px]' : 'bottom-[322px]') : 'bottom-4'} />}

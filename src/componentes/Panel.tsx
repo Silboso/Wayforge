@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
 import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
 import { TERRENOS } from './Terreno';
@@ -17,6 +17,8 @@ interface Props {
   enviar: (accion: Accion) => void;
   // Abre el editor de la ficha de un personaje (desde su token)
   onEditarPersonaje?: (personajeId: string) => void;
+  // Muros y niebla: la sección la arma la mesa del GM (necesita el editor del tablero)
+  murosNiebla?: ReactNode;
 }
 
 const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
@@ -26,7 +28,7 @@ const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
 ];
 
 // Herramientas del GM: tokens, mapa y códigos de la mesa
-export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje }: Props) {
+export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje, murosNiebla }: Props) {
   const token = seleccionado ? estado.tokens[seleccionado] : undefined;
   return (
     <div className="flex flex-col gap-4">
@@ -37,6 +39,7 @@ export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSelec
         <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={onSeleccionar} />
       )}
       <EditorMapa salaId={salaId} estado={estado} enviar={enviar} />
+      {murosNiebla}
       <Codigos salaId={salaId} codigoGM={codigoGM} />
     </div>
   );

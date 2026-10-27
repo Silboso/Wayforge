@@ -14,6 +14,7 @@ import { descansar, disponibilidad, todasLasAptitudes, usar, type Aptitud, type 
 import { momentoIniciativa, tieneMomento, type Momento, type MomentoIniciativa } from '../reglas/disparadores';
 import { alcanzables, caminoA, distanciaEntre, huella, type Casilla, type OpcionesMovimiento } from '../reglas/movimiento';
 import { esClaveIniciativa, type ClaveIniciativa } from './tiradas';
+import { cruzaMuro, esMurosValido, type Muro } from './vision';
 
 export type TipoToken = 'personaje' | 'enemigo' | 'npc';
 
@@ -60,6 +61,12 @@ export const TERRENOS_VALIDOS: Terreno[] = ['claro', 'mazmorra', 'ninguno'];
 export interface Mapa {
   imagen?: string;
   terreno?: Terreno;
+  // Muros, puertas y ventanas (ver compartido/vision.ts) y la niebla de guerra (prendida salvo que el GM la apague)
+  muros?: Muro[];
+  niebla?: boolean;
+  // Lo que el grupo ya exploró, como máscara de casillas; `visibles` solo viaja en la vista de un jugador
+  exploradas?: string;
+  visibles?: string;
   // Medidas de la cuadrícula sobre la imagen, en píxeles de la imagen
   tamanoCelda: number;
   desplazamientoX: number;
@@ -202,11 +209,15 @@ export type Accion =
   // PG temporales: no se suman a los que ya tenga, queda el mayor
   | { tipo: 'dar-temporales'; tokenId: string; cantidad: number }
   // Alguien usó una aptitud de "al tirar iniciativa" en la preparación; `ultimo`: va último en lugar de tirar
-  | { tipo: 'usar-preparacion'; tokenId: string; aptitudId: string; nombre: string; ultimo?: boolean };
+  | { tipo: 'usar-preparacion'; tokenId: string; aptitudId: string; nombre: string; ultimo?: boolean }
+  // Abrir o cerrar una puerta (la sala revisa quién puede y si está al lado)
+  | { tipo: 'alternar-puerta'; id: string; abierta: boolean }
+  // Lo que el grupo vio queda explorado
+  | { tipo: 'explorar'; mascara: string };
 
 const SOLO_SALA: Accion['tipo'][] = [
   'registrar-tirada', 'iniciar-combate', 'contar-ataque', 'abrir-espera', 'cerrar-espera', 'mover-turno', 'sostener', 'mostrar-area',
-  'dar-temporales', 'usar-preparacion',
+  'dar-temporales', 'usar-preparacion', 'alternar-puerta', 'explorar',
 ];
 
 // Quién eres en la mesa. El visitante aún no entra: solo ve la lista de personajes.
@@ -267,7 +278,9 @@ export type MensajeCliente =
   // Dónde está mi puntero en el tablero (en casillas; null si salió) y a quién apunto. No se guarda.
   | { tipo: 'puntero'; x: number | null; y: number | null; apunta: string | null }
   // "¡Aquí!": una señal en un punto del tablero que ven todos
-  | { tipo: 'senal'; x: number; y: number };
+  | { tipo: 'senal'; x: number; y: number }
+  // Abrir o cerrar una puerta: el GM cualquiera; un jugador, la que tiene al lado (en combate gasta una acción)
+  | { tipo: 'puerta'; id: string };
 
 // Alguien más en el tablero: su puntero y su objetivo (efímero: viaja por el socket, no toca el estado)
 export interface Puntero {
@@ -287,6 +300,8 @@ export type MensajeSala =
   | { tipo: 'rechazo'; motivo: string }
   | { tipo: 'estado'; estado: EstadoSala; presentes: Presente[]; tuConexion: string }
   | { tipo: 'accion'; accion: Accion }
+  // Con niebla, a un jugador: la acción (si no revela nada oculto) y lo que ahora ve (tokens y mapa)
+  | { tipo: 'vista'; accion?: Accion; tokens: Record<string, Token>; mapa: Mapa }
   | { tipo: 'presentes'; presentes: Presente[] }
   // La sala no dejó hacer algo: el motivo, para mostrarlo
   | { tipo: 'negado'; motivo: string }
@@ -310,6 +325,8 @@ export function estadoInicial(): EstadoSala {
       filas: 16,
       mostrarCuadricula: true,
       terreno: 'claro',
+      muros: [],
+      niebla: true,
     },
     tokens: {},
     personajes: {},
@@ -745,6 +762,13 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     }
     case 'mostrar-area':
       return estado;
+    case 'alternar-puerta': {
+      const muros = estado.mapa.muros ?? [];
+      if (!muros.some((m) => m.id === accion.id && m.tipo === 'puerta')) return estado;
+      return { ...estado, mapa: { ...estado.mapa, muros: muros.map((m) => (m.id === accion.id ? { ...m, abierta: accion.abierta } : m)) } };
+    }
+    case 'explorar':
+      return { ...estado, mapa: { ...estado.mapa, exploradas: accion.mascara } };
     case 'contar-ataque': {
       const c = estado.combate;
       if (!c || tokenEnTurno(estado)?.id !== accion.tokenId) return estado;
@@ -815,10 +839,12 @@ export function opcionesMovimiento(estado: EstadoSala, t: Token): OpcionesMovimi
     if (esEnemigoDe(t, otro)) casillas.forEach((k) => bloqueadas.add(k));
   }
   const conLimites = !estado.mapa.imagen;
+  const muros = estado.mapa.muros ?? [];
   return {
     lado: ladoDe(t), bloqueadas, ocupadas,
     columnas: conLimites ? estado.mapa.columnas : Infinity,
     filas: conLimites ? estado.mapa.filas : Infinity,
+    ...(muros.length ? { cruzaMuro: (de: Casilla, a: Casilla) => cruzaMuro(muros, de, a) } : {}),
   };
 }
 
@@ -992,5 +1018,10 @@ function esMapaValido(m: Record<string, unknown>): boolean {
     && esNumero(m.desplazamientoX) && esNumero(m.desplazamientoY)
     && entre(m.columnas, 1, 200) && entre(m.filas, 1, 200)
     && typeof m.mostrarCuadricula === 'boolean'
-    && (m.terreno === undefined || TERRENOS_VALIDOS.includes(m.terreno as Terreno));
+    && (m.terreno === undefined || TERRENOS_VALIDOS.includes(m.terreno as Terreno))
+    && (m.muros === undefined || esMurosValido(m.muros))
+    && (m.niebla === undefined || typeof m.niebla === 'boolean')
+    && (m.exploradas === undefined || (typeof m.exploradas === 'string' && m.exploradas.length <= 20_000 && /^[0-9a-f]*$/.test(m.exploradas)))
+    // Lo visible lo calcula la sala para cada jugador: nadie lo manda
+    && m.visibles === undefined;
 }

@@ -114,10 +114,22 @@ const criatura = (ataques) => ({
 });
 const dogslicer = { id: 'dogslicer', nombre: 'Dogslicer', bono: 8, dano: '1d6+2', tipoDano: 'slashing', agil: true, rasgos: ['agile', 'finesse'] };
 const shortbow = { id: 'shortbow', nombre: 'Shortbow', bono: 8, dano: '1d6', tipoDano: 'piercing', agil: false, rasgos: ['deadly d10'], distancia: 60 };
-for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 9, 7, [dogslicer, shortbow]], ['goblin-3', 'Goblin guerrero', 10, 8, [dogslicer]], ['goblin-2', 'Goblin arquero', 13, 5, [shortbow, dogslicer]]]) {
+for (const [id, nombre, x, y, ataques] of [['goblin-1', 'Goblin', 9, 7, [dogslicer, shortbow]], ['goblin-3', 'Goblin guerrero', 10, 8, [dogslicer]], ['goblin-2', 'Goblin arquero', 18, 6, [shortbow, dogslicer]]]) {
   enviar({ tipo: 'accion', accion: { tipo: 'crear-token', token: { id, nombre, tipo: 'enemigo', tamano: 'Small', x, y, color: '#c8392b', ca: 15, pg: { actual: 20, max: 20 }, percepcion: 5, criatura: criatura(ataques) } } });
   await esperar(150);
 }
+// Una cabaña con el arquero adentro: muros, una puerta abajo y una ventana al oeste (la niebla la tapa hasta entrar)
+const tramo = (id, a, b, tipo = 'muro') => ({ id, a, b, tipo, ...(tipo === 'puerta' ? { abierta: false } : {}) });
+enviar({ tipo: 'accion', accion: { tipo: 'editar-mapa', cambios: { muros: [
+  tramo('c-norte', { x: 15, y: 3 }, { x: 22, y: 3 }),
+  tramo('c-este', { x: 22, y: 3 }, { x: 22, y: 10 }),
+  tramo('c-oeste-1', { x: 15, y: 3 }, { x: 15, y: 5 }),
+  tramo('c-ventana', { x: 15, y: 5 }, { x: 15, y: 6 }, 'ventana'),
+  tramo('c-oeste-2', { x: 15, y: 6 }, { x: 15, y: 10 }),
+  tramo('c-sur-1', { x: 15, y: 10 }, { x: 18, y: 10 }),
+  tramo('c-puerta', { x: 18, y: 10 }, { x: 19, y: 10 }, 'puerta'),
+  tramo('c-sur-2', { x: 19, y: 10 }, { x: 22, y: 10 }),
+] } } });
 await esperar(300);
 ws.close();
 
@@ -130,8 +142,9 @@ Mesa de prueba lista
     Kyra  (Human Fighter 3: Demoralize, Trip, Power Attack; lista para subir a nivel 4)   código 1234
     Ezren (Human Wizard 3: Electric Arc, Caustic Blast, Grease, Fear, Shield…)          código 5678
     Korakai (Human Oracle 3: Oracular Warning al empezar el combate, Heal, Bless, Daze) código 9012
-  Enemigos: tres goblins (CA 15, 20 PG, con dogslicer y arco; el compendio tiene 6.500 más)
+  Enemigos: tres goblins (CA 15, 20 PG); el arquero espera dentro de la cabaña, bajo la niebla
   Para ver la preparación: el GM abre Combate → Preparar combate; a cada jugador le llega su hoja
   (Korakai puede usar Oracular Warning antes de tirar). Para ver el motor: Ezren lanza Caustic Blast entre el Goblin y el Goblin guerrero.
+  Para ver la niebla: acércate a la cabaña; mira por la ventana o abre la puerta (tócala estando al lado).
 
 Para jugar GM y jugador a la vez en la misma PC, abre al jugador en una ventana de incógnito.`);
