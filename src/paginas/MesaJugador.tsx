@@ -16,8 +16,7 @@ import type { EfectoActivo } from '../../reglas/efectos';
 const SIN_EFECTOS: EfectoActivo[] = [];
 import { ASPECTO_POR_DANO, tintaDe } from '../componentes/aspectos';
 import {
-  aptitudesDePreparacion, aptitudesPara, motivoAlcance, motivoParaActuar, reaccionesPara, tokenEnTurno, type Combate, type EstadoSala, type QueTirar, type Token,
-} from '../../compartido/sala';
+  aptitudesDePreparacion, aptitudesPara, motivoAlcance, motivoParaActuar, reaccionesPara, tokenEnTurno, type Combate, type EstadoSala, type QueTirar, type Token, BLOQUEO_ESCUDO } from '../../compartido/sala';
 import { pistaObjetivo, type Pista } from '../../compartido/interacciones';
 import { OrdenRevelado, PreparacionJugador } from '../componentes/Preparacion';
 import { Companeros } from '../componentes/hud/Companeros';
@@ -265,9 +264,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     sala.tirar(p.id, { tipo: 'dano', golpe: golpeId, ...(critico ? { critico } : {}), ...(objetivoId ? { objetivo: objetivoId } : {}) },
       critico ? 'Daño crítico' : 'Daño', golpe ? leerDados(golpe.dados)?.caras : undefined);
   };
-  const restarPG = (n: number) => {
-    const deTemporales = Math.min(p.pgTemporales, n);
-    sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { pgTemporales: p.pgTemporales - deTemporales, pgActual: Math.max(0, p.pgActual - (n - deTemporales)) } });
+  // El daño lo aplica la sala: PG temporales primero, Shield Block si lo usaste, Dying a 0 PG
+  const restarPG = (n: number, critico = false) => {
+    if (miToken) sala.enviar({ tipo: 'danar', tokenId: miToken.id, cantidad: n, ...(critico ? { critico } : {}) });
   };
 
   // Lo que pasa en la mesa, convertido en avisos para este personaje: el momento justo de cada aptitud
@@ -386,9 +385,13 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       } else if (t.objetivo.grado) {
         avisos.push({ id: id(), tono: 'bueno', titulo: `${t.quien} te atacó y falló`, cuerpo: `${t.total} contra tu CA ${t.objetivo.cd}.`, dura: 6000 });
       } else {
+        // Con Shield Block puesto, el escudo frena tanto como su Dureza
+        const bloquea = miToken.efectos?.some((x) => x.clave === BLOQUEO_ESCUDO) && p.escudo && p.escudo.pgActual > 0 ? p.escudo : null;
+        const recibe = bloquea ? Math.max(0, t.total - bloquea.dureza) : t.total;
         avisos.push({
-          id: id(), tono: 'peligro', titulo: `${t.quien} te hace ${t.total} de daño`, cuerpo: t.etiqueta,
-          botones: [{ etiqueta: `Restar ${t.total} PG`, principal: true, hacer: () => restarPG(t.total) }],
+          id: id(), tono: 'peligro', titulo: `${t.quien} te hace ${t.total} de daño`,
+          cuerpo: bloquea ? `${t.etiqueta}. Tu escudo frena ${Math.min(t.total, bloquea.dureza)} (Dureza); recibes ${recibe}, y el escudo también.` : t.etiqueta,
+          botones: [{ etiqueta: recibe ? `Restar ${recibe} PG` : 'El escudo lo frena todo', principal: true, hacer: () => restarPG(t.total, /crítico/i.test(t.etiqueta)) }],
         });
       }
     }

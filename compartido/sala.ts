@@ -138,6 +138,9 @@ export interface Handout {
 
 export const MAX_HANDOUTS = 40;
 
+// El efecto que deja Shield Block: el próximo daño que reciba lo frena el escudo
+export const BLOQUEO_ESCUDO = 'shield-block';
+
 export function puedeVerHandout(h: Handout, quien: Sesion): boolean {
   if (quien.rol === 'gm') return true;
   if (quien.rol !== 'jugador') return false;
@@ -983,9 +986,19 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
       if (!token || accion.cantidad <= 0) return estado;
       const p = token.personajeId ? estado.personajes[token.personajeId] : undefined;
       if (p) {
-        const deTemporales = Math.min(p.pgTemporales, accion.cantidad);
-        const pgActual = Math.max(0, p.pgActual - (accion.cantidad - deTemporales));
-        const personajes = { ...estado.personajes, [p.id]: { ...p, pgTemporales: p.pgTemporales - deTemporales, pgActual } };
+        // Shield Block: el escudo absorbe tanto como su Dureza; lo que sobra lo reciben él y el escudo
+        const bloqueo = (token.efectos ?? []).find((e) => e.clave === BLOQUEO_ESCUDO);
+        const escudo = bloqueo && p.escudo && p.escudo.pgActual > 0 ? p.escudo : undefined;
+        const cantidad = escudo ? Math.max(0, accion.cantidad - escudo.dureza) : accion.cantidad;
+        const deTemporales = Math.min(p.pgTemporales, cantidad);
+        const pgActual = Math.max(0, p.pgActual - (cantidad - deTemporales));
+        const personajes = {
+          ...estado.personajes,
+          [p.id]: { ...p, pgTemporales: p.pgTemporales - deTemporales, pgActual, ...(escudo ? { escudo: { ...escudo, pgActual: Math.max(0, escudo.pgActual - cantidad) } } : {}) },
+        };
+        if (bloqueo) {
+          estado = { ...estado, tokens: { ...estado.tokens, [token.id]: { ...token, efectos: (token.efectos ?? []).filter((e) => e !== bloqueo) } } };
+        }
         if (pgActual > 0) return { ...estado, personajes };
         // A 0 PG: Dying 1 más lo que tenga de Wounded (2 con un crítico); si ya estaba Dying, sube
         const condiciones = token.condiciones ?? [];
@@ -994,7 +1007,8 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
         const golpe = accion.critico ? 2 : 1;
         const nuevo = Math.min(4, dying ? dying + golpe : golpe + wounded);
         const puestas = ponerCondicion(ponerCondicion(condiciones, 'dying', nuevo), 'unconscious', 1);
-        return { ...estado, personajes, tokens: { ...estado.tokens, [token.id]: { ...token, condiciones: puestas } } };
+        const actual = estado.tokens[token.id]!;
+        return { ...estado, personajes, tokens: { ...estado.tokens, [token.id]: { ...actual, condiciones: puestas } } };
       }
       if (!token.pg) return estado;
       const actual = Math.max(0, token.pg.actual - accion.cantidad);
@@ -1067,6 +1081,9 @@ export function puede(quien: Sesion, accion: Accion, estado: EstadoSala): boolea
     case 'poner-condicion':
       return esMio(accion.tokenId);
     case 'usar-reaccion':
+      return esMio(accion.tokenId);
+    // Restarse el daño que le hicieron (con la regla de Dying y su Shield Block)
+    case 'danar':
       return esMio(accion.tokenId);
     // Un jugador puede quitarse un efecto de encima (terminar un Shield, apagar lo que ya no aplica)
     case 'quitar-efecto':

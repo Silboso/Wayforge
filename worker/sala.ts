@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { calcular, gradoDeExito, leerExpresion, type Personaje } from '../reglas/pf2e';
 import {
-  aplicar, caDeToken, casillaLibre, puedeVerMensaje, puedeVerTirada, dentroDelTablero, ladoDe, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, preparacionDe, puede,
+  aplicar, BLOQUEO_ESCUDO, caDeToken, casillaLibre, puedeVerMensaje, puedeVerTirada, dentroDelTablero, ladoDe, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, preparacionDe, puede,
   puedeMoverToken, reaccionesPara, resumen, tokenDePersonaje, tokenEnTurno,
   type Accion, type Combatiente, type Espera, type EstadoSala, type MensajeSala, type Presente, type QueTirar, type Sesion, type Tirada, type Token,
 } from '../compartido/sala';
@@ -13,6 +13,7 @@ import { momentoIniciativa } from '../reglas/disparadores';
 import { conDying, curarHeridas, NIVELES_CURAR, recuperacion } from '../reglas/muerte';
 import type { Condicion } from '../reglas/condiciones';
 import { distanciaEntre } from '../reglas/movimiento';
+import { crearEfecto } from '../reglas/efectos';
 import { alLadoDe, conCobertura, explorar, iluminacion, visibilidad, visionActiva, vistaDeJugador } from '../compartido/vision';
 
 // Los dados de la sala, para el motor de interacciones
@@ -525,6 +526,12 @@ export class Sala extends DurableObject<Env> {
     if (a.costo === 'reaccion' && c) await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: token.id, usada: true });
     if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
     if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });
+    // Shield Block: el próximo daño lo frena el escudo (lo aplica la sala al restar)
+    if (/shield block/i.test(a.nombre) && p.escudo) {
+      await this.guardarYRepartir({ tipo: 'poner-efecto', tokenId: token.id, efecto: crearEfecto({
+        clave: BLOQUEO_ESCUDO, nombre: `Shield Block (Dureza ${p.escudo.dureza})`, beneficioso: true, modificadores: [], rondas: 1,
+      }, crypto.randomUUID(), { tokenId: token.id, nombre: a.nombre }, token.id, undefined) });
+    }
     if (a.id === 'basica:sustain' && c) await this.guardarYRepartir({ tipo: 'sostener', tokenId: token.id });
     if (alEmpezar) {
       const ultimo = VAN_ULTIMO.has(claveDe(a.nombre));

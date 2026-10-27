@@ -169,10 +169,9 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
     if (!t) return;
     const p = t.personajeId ? estado.personajes[t.personajeId] : undefined;
     if (p) {
-      // El daño se come primero los PG temporales
+      // El daño lo aplica la sala: PG temporales primero, Shield Block si lo usó, Dying a 0 PG
       if (delta < 0) {
-        const deTemporales = Math.min(p.pgTemporales, -delta);
-        sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { pgTemporales: p.pgTemporales - deTemporales, pgActual: Math.max(0, p.pgActual - (-delta - deTemporales)) } });
+        sala.enviar({ tipo: 'danar', tokenId: t.id, cantidad: -delta });
       } else {
         sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { pgActual: p.pgActual + delta } });
       }
