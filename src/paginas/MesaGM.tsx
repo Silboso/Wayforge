@@ -339,6 +339,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       case 'mesa': return <HerramientasGM salaId={salaId} codigoGM={codigoGM} estado={estado} seleccionado={actorId} onSeleccionar={setActorId} enviar={sala.enviar}
         onEditarPersonaje={(id) => { const p = estado.personajes[id]; if (p) setEditandoP(p); }}
         escenas={<PanelEscenas estado={estado} enviar={sala.enviar} />}
+        onExportar={sala.exportar}
         murosNiebla={<SeccionMurosNiebla estado={estado} enviar={sala.enviar} verNiebla={verNiebla} onVerNiebla={setVerNiebla}
           onEditar={() => { setHerramientaMuros('habitacion'); setCajon(null); }} />} />;
       case 'tiradas': return (

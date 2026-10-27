@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { estadoImportable, MAX_TAMANO_ESTADO, type MesaExportada } from '../compartido/sala';
 
 export { Sala } from './sala';
 
@@ -48,6 +49,41 @@ app.post('/api/salas', async (c) => {
     const codigo = codigoSala();
     const codigoGM = await c.env.SALAS.get(c.env.SALAS.idFromName(codigo)).inicializar();
     if (codigoGM) return c.json({ codigo, codigoGM });
+  }
+  return c.text('No se pudo crear la partida', 500);
+});
+
+// Abre una mesa exportada (Fase 7: campañas) en una sala nueva: sube sus imágenes, cambia las direcciones y
+// le pasa el estado a la sala. Devuelve el código de la mesa y el código de GM nuevo
+app.post('/api/salas/importar', async (c) => {
+  let mesa: MesaExportada;
+  try { mesa = await c.req.json<MesaExportada>(); } catch { return c.text('Ese archivo no es una mesa de Wayforge', 400); }
+  if (mesa?.formato !== 'wayforge-mesa' || mesa.version !== 1 || typeof mesa.codigos?.sal !== 'string' || typeof mesa.codigos.personajes !== 'object') {
+    return c.text('Ese archivo no es una mesa de Wayforge', 400);
+  }
+  const personajes = Object.entries(mesa.codigos.personajes ?? {}).filter(([id, h]) => typeof id === 'string' && typeof h === 'string' && h.length <= 200);
+  for (let intento = 0; intento < 5; intento++) {
+    const codigo = codigoSala();
+    const sala = c.env.SALAS.get(c.env.SALAS.idFromName(codigo));
+    const codigoGM = await sala.inicializar();
+    if (!codigoGM) continue;
+    // Las imágenes: cada data URL se vuelve un archivo de esta sala, y su dirección vieja se reemplaza en el estado
+    let texto = JSON.stringify(mesa.estado ?? null);
+    for (const [vieja, dato] of Object.entries(mesa.imagenes ?? {}).slice(0, 300)) {
+      const m = /^data:(image\/(?:png|jpeg|webp|gif|avif));base64,([A-Za-z0-9+/=]+)$/.exec(dato);
+      if (!m || !vieja.startsWith('/api/imagenes/')) continue;
+      const cuerpo = Uint8Array.from(atob(m[2]!), (ch) => ch.charCodeAt(0));
+      if (cuerpo.byteLength > MAX_IMAGEN) continue;
+      const clave = `salas/${codigo}/${crypto.randomUUID()}.${TIPOS_IMAGEN[m[1]!]}`;
+      await guardarImagen(c.env, clave, cuerpo.buffer, m[1]!);
+      texto = texto.split(JSON.stringify(vieja).slice(1, -1)).join(`/api/imagenes/${clave}`);
+    }
+    if (texto.length > MAX_TAMANO_ESTADO) return c.text('La mesa es demasiado grande', 413);
+    const estado = estadoImportable(JSON.parse(texto));
+    if (!estado) return c.text('Algo en la mesa no cuadra: no se pudo abrir', 400);
+    const ok = await sala.importar(estado, { sal: mesa.codigos.sal, personajes: Object.fromEntries(personajes) });
+    if (!ok) return c.text('No se pudo abrir la mesa', 500);
+    return c.json({ codigo, codigoGM });
   }
   return c.text('No se pudo crear la partida', 500);
 });

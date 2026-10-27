@@ -210,6 +210,8 @@ export interface Escena {
 }
 
 export interface EstadoSala {
+  // El nombre de la mesa o campaña (lo pone el GM; sale en su lista de mesas)
+  nombre?: string;
   mapa: Mapa;
   tokens: Record<string, Token>;
   personajes: Record<string, Personaje>;
@@ -256,6 +258,7 @@ export type Accion =
   | { tipo: 'telon'; bajo: boolean }
   // Un mensaje del chat (lo arma la sala con quién lo mandó)
   | { tipo: 'chat'; mensaje: MensajeChat }
+  | { tipo: 'nombrar-mesa'; nombre: string }
   // Handouts: el GM los crea o edita (sin mostrarlos), los muestra a quien quiera, o los borra
   | { tipo: 'guardar-handout'; handout: Pick<Handout, 'id' | 'titulo' | 'texto' | 'imagen'> }
   | { tipo: 'mostrar-handout'; id: string; para: Handout['para']; cuando: number }
@@ -380,6 +383,8 @@ export type MensajeCliente =
   | { tipo: 'puntero'; x: number | null; y: number | null; apunta: string | null; regla?: Regla | null }
   // "¡Aquí!": una señal en un punto del tablero que ven todos
   | { tipo: 'senal'; x: number; y: number }
+  // El GM pide la mesa entera para guardarla en un archivo (con los códigos de los personajes, cifrados)
+  | { tipo: 'exportar' }
   // Hablar en el chat; `para` lo vuelve susurro ("gm" o el id de un personaje)
   | { tipo: 'decir'; texto: string; para?: string }
   // Abrir o cerrar una puerta: el GM cualquiera; un jugador, la que tiene al lado (en combate gasta una acción)
@@ -411,6 +416,8 @@ export type MensajeSala =
   // Con niebla, a un jugador: la acción (si no revela nada oculto) y lo que ahora ve (tokens y mapa)
   | { tipo: 'vista'; accion?: Accion; tokens: Record<string, Token>; mapa: Mapa }
   | { tipo: 'presentes'; presentes: Presente[] }
+  // Al GM: la mesa entera para exportarla
+  | { tipo: 'exportacion'; mesa: MesaExportada }
   // La sala no dejó hacer algo: el motivo, para mostrarlo
   | { tipo: 'negado'; motivo: string }
   | ({ tipo: 'puntero' } & Puntero)
@@ -781,6 +788,8 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
       return { ...estado, telon: accion.bajo };
     case 'chat':
       return { ...estado, chat: [...(estado.chat ?? []), accion.mensaje].slice(-MAX_CHAT) };
+    case 'nombrar-mesa':
+      return { ...estado, nombre: accion.nombre.trim() };
     case 'guardar-handout': {
       const handouts = estado.handouts ?? [];
       const ya = handouts.find((h) => h.id === accion.handout.id);
@@ -1226,6 +1235,8 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
       return esTexto(a.id, 60) && esNombre(a.nombre);
     case 'telon':
       return typeof a.bajo === 'boolean';
+    case 'nombrar-mesa':
+      return esTexto(a.nombre, 60);
     case 'guardar-handout': {
       const h = a.handout as Record<string, unknown>;
       return esObjeto(h) && esTexto(h.id, 60) && esTexto(h.titulo, 80) && (h.titulo as string).trim().length > 0 && esTexto(h.texto, 4000)
@@ -1336,4 +1347,53 @@ function esMapaValido(m: Record<string, unknown>): boolean {
     && (m.luces === undefined || esLucesValido(m.luces))
     // Lo visible lo calcula la sala para cada jugador: nadie lo manda
     && m.visibles === undefined && m.penumbra === undefined;
+}
+
+// ---------- Campañas: exportar e importar una mesa ----------
+
+// El archivo de una mesa: el estado completo (escenas, personajes, handouts…), los códigos de los personajes
+// cifrados (así siguen entrando con el mismo código) y las imágenes, como data URLs, para que viaje entera
+export interface MesaExportada {
+  formato: 'wayforge-mesa';
+  version: 1;
+  exportada: number;
+  estado: EstadoSala;
+  codigos: { sal: string; personajes: Record<string, string> };
+  imagenes?: Record<string, string>;
+}
+
+export const MAX_TAMANO_ESTADO = 1_800_000;
+
+// ¿Se puede abrir este estado en una mesa nueva? Revisa todo lo que importa (como si llegara del navegador).
+// El combate, la preparación y las esperas no viajan: la mesa importada empieza tranquila
+export function estadoImportable(valor: unknown): EstadoSala | null {
+  if (!esObjeto(valor)) return null;
+  const e = valor as Record<string, unknown>;
+  const personajes = e.personajes;
+  const tokens = e.tokens;
+  if (!esObjeto(personajes) || !esObjeto(tokens) || !esObjeto(e.mapa)) return null;
+  if (!Object.values(personajes).every((p) => esPersonajeValido(p))) return null;
+  if (!Object.values(tokens).every(esTokenValido)) return null;
+  if (!esMapaValido({ ...(e.mapa as Record<string, unknown>), visibles: undefined, penumbra: undefined })) return null;
+  const escenas = Array.isArray(e.escenas) ? e.escenas : [];
+  if (escenas.length > MAX_ESCENAS || !escenas.every((x) => esObjeto(x) && esTexto((x as Escena).id, 60) && esTexto((x as Escena).nombre, 60)
+    && esObjeto((x as Escena).mapa) && esMapaValido({ ...(x as Escena).mapa, visibles: undefined, penumbra: undefined })
+    && Array.isArray((x as Escena).tokens) && (x as Escena).tokens.every(esTokenValido))) return null;
+  const handouts = Array.isArray(e.handouts) ? (e.handouts as Record<string, unknown>[]).filter((h) => esObjeto(h) && esTexto(h.id, 60) && esTexto(h.titulo, 80) && esTexto(h.texto, 4000)).slice(0, MAX_HANDOUTS) : [];
+  const base = estadoInicial();
+  const { visibles: _v, penumbra: _p, ...mapa } = e.mapa as Mapa;
+  return {
+    ...base,
+    ...(esTexto(e.nombre, 60) ? { nombre: e.nombre as string } : {}),
+    mapa,
+    tokens: tokens as Record<string, Token>,
+    personajes: personajes as EstadoSala['personajes'],
+    tiradas: [],
+    escena: esObjeto(e.escena) && esTexto((e.escena as { id: unknown }).id, 60) && esTexto((e.escena as { nombre: unknown }).nombre, 60) ? e.escena as EstadoSala['escena'] : base.escena,
+    escenas: escenas as Escena[],
+    telon: false,
+    chat: Array.isArray(e.chat) ? (e.chat as MensajeChat[]).slice(-MAX_CHAT) : [],
+    handouts: handouts as unknown as Handout[],
+    reloj: typeof e.reloj === 'number' && Number.isFinite(e.reloj) && e.reloj >= 0 ? e.reloj : 0,
+  };
 }

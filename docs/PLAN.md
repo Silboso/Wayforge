@@ -236,7 +236,10 @@ objetivo (−2 a su CA) y te delata; un Stride también.
 
 ### Fase 7 — Campañas y publicación
 
-1. Campañas: el GM guarda sus mesas, las reabre, exporta e importa (JSON + imágenes).
+1. ~~Campañas~~ (hecho: cada navegador recuerda sus mesas, como GM o como jugador, y las muestra en el inicio
+   para volver a abrirlas; el GM le pone nombre a la mesa y la **exporta** a un archivo con escenas, personajes,
+   handouts e imágenes adentro; **importarla** desde el inicio abre una mesa nueva con un código de GM nuevo y los
+   personajes siguen entrando con sus códigos de siempre).
 2. Publicar en Cloudflare (`npm run deploy`) con dominio propio; límites de tamaño de imágenes.
 3. Rendimiento con mapas grandes y 20+ tokens; accesibilidad (teclado, lector de pantalla, contraste).
 4. Tests de punta a punta de una ronda completa (los guiones de captura convertidos en pruebas).

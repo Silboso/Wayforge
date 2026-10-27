@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { leerExpresion, type Personaje } from '../reglas/pf2e';
 import {
   aplicar,
-  type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type Puntero, type Regla, type QueTirar,
+  type Accion, type EstadoSala, type MensajeCliente, type MensajeSala, type Presente, type MesaExportada, type Puntero, type Regla, type QueTirar,
   type ResumenPersonaje, type Sesion,
 } from '../compartido/sala';
 import { eventosDe, type Evento } from '../compartido/eventos';
+import { recordarMesa } from './campanas';
 
 export type Fase = 'conectando' | 'entrada' | 'dentro';
 
@@ -42,6 +43,9 @@ export function useSala(salaId: string) {
   const [fase, setFase] = useState<Fase>('conectando');
   const [lobby, setLobby] = useState<ResumenPersonaje[]>([]);
   const [quien, setQuien] = useState<Sesion>({ rol: 'visitante' });
+  const quienRef = useRef<Sesion>({ rol: 'visitante' });
+  // El GM pidió exportar la mesa: se resuelve cuando la sala la manda
+  const exportando = useRef<((m: MesaExportada) => void) | null>(null);
   const [estado, setEstado] = useState<EstadoSala | null>(null);
   const [presentes, setPresentes] = useState<Presente[]>([]);
   const [conectado, setConectado] = useState(false);
@@ -117,6 +121,7 @@ export function useSala(salaId: string) {
             reanudando = false;
             guardar(almacen.sesion(salaId), mensaje.sesion);
             setQuien(mensaje.quien);
+            quienRef.current = mensaje.quien;
             setRechazo(null);
             setFase('dentro');
             break;
@@ -133,6 +138,14 @@ export function useSala(salaId: string) {
             // Si lo mandó una acción (pasar de escena, el telón), también se avisa como evento
             const anterior = estadoRef.current;
             cambiarEstado(mensaje.estado);
+            // La mesa queda en la lista de este navegador, para volver a abrirla
+            const q = quienRef.current;
+            if (q.rol === 'gm' || q.rol === 'jugador') {
+              recordarMesa({
+                codigo: salaId, rol: q.rol, ...(mensaje.estado.nombre ? { nombre: mensaje.estado.nombre } : {}),
+                ...(q.rol === 'jugador' && mensaje.estado.personajes[q.personajeId] ? { personaje: mensaje.estado.personajes[q.personajeId]!.nombre } : {}),
+              });
+            }
             setPresentes(mensaje.presentes);
             const nuevos = mensaje.por && anterior ? eventosDe(anterior, mensaje.por, mensaje.estado) : [];
             if (nuevos.length) setEventos((prev) => [...prev, ...nuevos.map((evento) => ({ id: ++contador.current, evento }))].slice(-30));
@@ -181,6 +194,10 @@ export function useSala(salaId: string) {
             setTimeout(() => setSenales((prev) => prev.filter((s) => s.id !== senal.id)), 2400);
             break;
           }
+          case 'exportacion':
+            exportando.current?.(mensaje.mesa);
+            exportando.current = null;
+            break;
           case 'negado':
             setPendiente(null);
             setNegaciones((prev) => [...prev, { id: ++contador.current, motivo: mensaje.motivo }].slice(-10));
@@ -305,6 +322,13 @@ export function useSala(salaId: string) {
     mandarPuntero();
   }, [mandarPuntero]);
 
+  // Pedir la mesa entera para exportarla (solo el GM)
+  const exportar = useCallback(() => new Promise<MesaExportada>((ok, mal) => {
+    exportando.current = ok;
+    mandar({ tipo: 'exportar' });
+    setTimeout(() => { if (exportando.current === ok) { exportando.current = null; mal(new Error('La mesa no respondió')); } }, 15_000);
+  }), [mandar]);
+
   // Lo que mido con la regla: los demás la ven con mi nombre
   const medir = useCallback((regla: Regla | null) => {
     const r = miPuntero.current.regla;
@@ -334,7 +358,7 @@ export function useSala(salaId: string) {
   }, [mandar]);
 
   return {
-    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales, medir,
+    fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales, medir, exportar,
     enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
     moverPuntero, apuntar, senalar, puerta, decir, heroico,
     limpiarRechazo: () => setRechazo(null),

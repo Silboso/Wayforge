@@ -32,6 +32,8 @@ interface Codigos {
   sal: string;
   gm: string;
   personajes: Record<string, string>;
+  // Una mesa importada trae los códigos de sus personajes cifrados con la sal de la mesa original
+  salPersonajes?: string;
 }
 
 // Los clientes mandan ping cada 25 s; una conexión que calla más que esto se da por perdida
@@ -77,6 +79,18 @@ export class Sala extends DurableObject<Env> {
 
   async existe(): Promise<boolean> {
     return this.codigos !== null;
+  }
+
+  // Abre una mesa exportada en esta sala recién creada: su estado y los códigos de sus personajes (el GM es el nuevo)
+  async importar(estado: EstadoSala, codigos: { sal: string; personajes: Record<string, string> }): Promise<boolean> {
+    if (!this.codigos || Object.keys(this.estado.personajes).length > 0 || Object.keys(this.codigos.personajes).length > 0) return false;
+    // Los códigos de los personajes se guardaron con la sal de la mesa vieja: se queda esa sal y se rehace el del GM
+    this.codigos = { ...this.codigos, personajes: Object.fromEntries(Object.entries(codigos.personajes).filter(([id]) => estado.personajes[id])) };
+    this.codigos.salPersonajes = codigos.sal;
+    this.estado = estado;
+    await this.ctx.storage.put('codigos', this.codigos);
+    await this.ctx.storage.put('estado', this.estado);
+    return true;
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -139,6 +153,14 @@ export class Sala extends DurableObject<Env> {
       case 'puntero':
       case 'senal':
         return this.presencia(ws, conexion, m);
+      case 'exportar':
+        if (conexion.quien.rol !== 'gm' || !this.codigos) return;
+        return enviar(ws, {
+          tipo: 'exportacion', mesa: {
+            formato: 'wayforge-mesa', version: 1, exportada: Date.now(), estado: this.estado,
+            codigos: { sal: this.codigos.salPersonajes ?? this.codigos.sal, personajes: this.codigos.personajes },
+          },
+        });
     }
   }
 
@@ -174,7 +196,7 @@ export class Sala extends DurableObject<Env> {
     const registro = this.fallos.get(objetivo);
     if (registro && registro.hasta > ahora) return enviar(ws, { tipo: 'rechazo', motivo: 'bloqueado' });
 
-    if (!esperado || (await hash(codigos.sal, codigo)) !== esperado) {
+    if (!esperado || (await hash(quien.rol === 'jugador' ? codigos.salPersonajes ?? codigos.sal : codigos.sal, codigo)) !== esperado) {
       const n = (registro?.n ?? 0) + 1;
       this.fallos.set(objetivo, n >= MAX_FALLOS ? { n: 0, hasta: ahora + BLOQUEO_MS } : { n, hasta: 0 });
       return enviar(ws, { tipo: 'rechazo', motivo: n >= MAX_FALLOS ? 'bloqueado' : 'codigo' });
@@ -198,7 +220,7 @@ export class Sala extends DurableObject<Env> {
     }
     if (this.estado.personajes[accion.personaje.id]) return enviar(ws, { tipo: 'rechazo', motivo: 'ficha-invalida' });
 
-    this.codigos!.personajes[accion.personaje.id] = await hash(this.codigos!.sal, codigo);
+    this.codigos!.personajes[accion.personaje.id] = await hash(this.codigos!.salPersonajes ?? this.codigos!.sal, codigo);
     await this.ctx.storage.put('codigos', this.codigos);
     await this.guardar(accion);
     this.repartir({ tipo: 'accion', accion });

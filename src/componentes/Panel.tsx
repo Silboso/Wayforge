@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { CopyIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
-import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
+import { CopyIcon, DownloadSimpleIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
+import { descargarMesa } from '../campanas';
+import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type MesaExportada, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
 import { TERRENOS } from './Terreno';
 import { ElegirLuz } from './Luz';
 import { SeccionTiempo } from './Descanso';
@@ -24,6 +25,8 @@ interface Props {
   murosNiebla?: ReactNode;
   // Escenas: van primero
   escenas?: ReactNode;
+  // Pide a la sala la mesa entera (para el archivo de la campaña)
+  onExportar?: () => Promise<MesaExportada>;
 }
 
 const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
@@ -33,7 +36,7 @@ const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
 ];
 
 // Herramientas del GM: tokens, mapa y códigos de la mesa
-export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje, murosNiebla, escenas }: Props) {
+export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje, murosNiebla, escenas, onExportar }: Props) {
   const token = seleccionado ? estado.tokens[seleccionado] : undefined;
   return (
     <div className="flex flex-col gap-4">
@@ -48,8 +51,41 @@ export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSelec
       <SeccionTiempo estado={estado} enviar={enviar} />
       <EditorMapa salaId={salaId} estado={estado} enviar={enviar} />
       {murosNiebla}
+      <Campana estado={estado} enviar={enviar} {...(onExportar ? { onExportar } : {})} />
       <Codigos salaId={salaId} codigoGM={codigoGM} />
     </div>
+  );
+}
+
+// La campaña: el nombre de la mesa (sale en la lista de mesas) y guardarla entera en un archivo
+function Campana({ estado, enviar, onExportar }: { estado: EstadoSala; enviar: (accion: Accion) => void; onExportar?: () => Promise<MesaExportada> }) {
+  const [nombre, setNombre] = useState(estado.nombre ?? '');
+  const [progreso, setProgreso] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  async function exportar() {
+    if (!onExportar) return;
+    setError('');
+    setProgreso('Preparando…');
+    try {
+      await descargarMesa(await onExportar(), (n, total) => setProgreso(`Juntando imágenes ${n + 1} de ${total}…`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo exportar');
+    } finally {
+      setProgreso(null);
+    }
+  }
+  return (
+    <Seccion titulo="Campaña">
+      <label className="flex flex-col gap-1 text-sm text-texto-suave">Nombre de la mesa
+        <input className={claseEntrada} value={nombre} maxLength={60} placeholder="La maldición del molino"
+          onChange={(e) => setNombre(e.target.value)} onBlur={() => { if (nombre.trim() !== (estado.nombre ?? '')) enviar({ tipo: 'nombrar-mesa', nombre: nombre.trim() }); }} />
+      </label>
+      <p className="text-sm text-texto-suave">Exporta la mesa a un archivo (escenas, personajes con sus códigos, handouts e imágenes) para guardarla o abrirla en otra mesa desde la página de inicio.</p>
+      <button className={claseBotonSecundario} disabled={!!progreso || !onExportar} onClick={exportar}>
+        <DownloadSimpleIcon size={18} aria-hidden /> {progreso ?? 'Exportar la mesa'}
+      </button>
+      {error && <p className="text-sm text-peligro">{error}</p>}
+    </Seccion>
   );
 }
 
