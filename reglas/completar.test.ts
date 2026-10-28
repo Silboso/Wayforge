@@ -40,3 +40,11 @@ describe('Elegir por mí en el creador', () => {
     expect(completarPaso(ELECCION_VACIA, 'clase')).toEqual({});
   });
 });
+
+describe('los conjuros que elige', () => {
+  it('a un wizard le da primero los que más rinden (Electric Arc, Shield; Force Barrage, Fear)', () => {
+    const e = completar({ ...ELECCION_VACIA, ascendencia: ASCENDENCIAS[0]!.id, trasfondo: TRASFONDOS[0]!.id, clase: 'wizard' });
+    expect(e.trucos.slice(0, 2)).toEqual(['electric-arc', 'shield']);
+    expect(e.conjuros).toContain('force-barrage');
+  });
+});

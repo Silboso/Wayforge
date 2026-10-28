@@ -18,6 +18,15 @@ export function prioridadAtributos(e: Eleccion): Atributo[] {
   return [...new Set<Atributo>([clave, ...resto])];
 }
 
+// Los conjuros que más rinden al empezar, de más a menos; los demás van después, en el orden de la lista
+const PREFERIDOS = [
+  'electric-arc', 'shield', 'divine-lance', 'frostbite', 'ignition', 'telekinetic-projectile', 'vitality-lash', 'caustic-blast', 'daze',
+  'needle-darts', 'detect-magic', 'guidance', 'stabilize', 'light',
+  'heal', 'force-barrage', 'fear', 'bless', 'grease', 'sleep', 'command', 'soothe', 'runic-weapon', 'mystic-armor', 'sure-strike', 'harm',
+];
+const preferencia = (id: string) => { const i = PREFERIDOS.indexOf(id); return i < 0 ? PREFERIDOS.length : i; };
+const mejores = (ids: string[]) => [...ids].sort((x, y) => preferencia(x) - preferencia(y));
+
 export function completarPaso(e: Eleccion, paso: Paso): Partial<Eleccion> {
   const a = ASCENDENCIAS.find((x) => x.id === e.ascendencia);
   const c = CLASES.find((x) => x.id === e.clase);
@@ -99,11 +108,11 @@ export function completarPaso(e: Eleccion, paso: Paso): Partial<Eleccion> {
       const cambios: Partial<Eleccion> = {};
       const faltanTrucos = pide.trucos - trucosElegidos(e);
       if (faltanTrucos > 0) {
-        cambios.trucos = [...e.trucos, ...conjurosDisponibles(e, 0).map((x) => x.id).filter((id) => !e.trucos.includes(id)).slice(0, faltanTrucos)];
+        cambios.trucos = [...e.trucos, ...mejores(conjurosDisponibles(e, 0).map((x) => x.id).filter((id) => !e.trucos.includes(id))).slice(0, faltanTrucos)];
       }
       const faltan1 = pide.rango1 - conjurosElegidos(e);
       if (faltan1 > 0) {
-        cambios.conjuros = [...e.conjuros, ...conjurosDisponibles(e, 1).map((x) => x.id).filter((id) => !e.conjuros.includes(id)).slice(0, faltan1)];
+        cambios.conjuros = [...e.conjuros, ...mejores(conjurosDisponibles(e, 1).map((x) => x.id).filter((id) => !e.conjuros.includes(id))).slice(0, faltan1)];
       }
       return cambios;
     }
