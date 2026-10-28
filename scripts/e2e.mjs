@@ -27,7 +27,9 @@ async function conectar(codigo, entrar) {
   });
   await new Promise((r, f) => { ws.addEventListener('open', r); ws.addEventListener('error', f); });
   ws.send(JSON.stringify(entrar));
-  await esperar(500);
+  // Hasta que la sala conteste (en producción, a veces tarda más de medio segundo)
+  for (let i = 0; i < 50 && !yo.estado && !yo.rechazo && !yo.bienvenida; i++) await esperar(100);
+  await esperar(300);
   yo.mandar = (m) => ws.send(JSON.stringify(m));
   yo.accion = (accion) => yo.mandar({ tipo: 'accion', accion });
   return yo;
