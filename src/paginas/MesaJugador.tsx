@@ -339,11 +339,15 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     }
     if (e.tipo === 'movimiento') {
       const t = estado.tokens[e.tokenId];
-      if (!t || t.personajeId || !miToken || !aAlcance(miToken, t, e.desde)) return [];
-      const sirven = reaccionesPara(estado, p.id, 'enemigo-se-mueve');
+      if (!t || t.personajeId || t.tipo !== 'enemigo' || !miToken) return [];
+      // Reactive Strike: se movía estando a tu alcance. Un Strike preparado (Ready): llega a tu alcance
+      const salia = aAlcance(miToken, t, e.desde);
+      const llega = !salia && aAlcance(miToken, t, e.hasta);
+      if (!salia && !llega) return [];
+      const sirven = reaccionesPara(estado, p.id, 'enemigo-se-mueve').filter((a) => (a.id === 'basica:ready-strike' ? llega || salia : salia));
       if (sirven.length === 0) return [];
       return [{
-        id: id(), tono: 'peligro', titulo: `${t.nombre} se mueve a tu lado`, cuerpo: 'Puedes castigarlo con tu reacción.', dura: 15000,
+        id: id(), tono: 'peligro', titulo: llega ? `${t.nombre} llega a tu alcance` : `${t.nombre} se mueve a tu lado`, cuerpo: 'Puedes castigarlo con tu reacción.', dura: 15000,
         botones: sirven.map((a, i) => ({ etiqueta: `Usar ${a.verbo || a.nombre}`, principal: i === 0, hacer: () => usarReaccion(a, t.id) })),
       }];
     }
@@ -400,6 +404,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       if (e.persistente) {
         return [{ id: id(), tono: e.quitado ? 'bueno' : 'malo', titulo: e.quitado ? `Se apagó ${e.nombre}` : `Ahora tienes ${e.nombre}`,
           cuerpo: e.quitado ? 'Ya no te hace daño.' : `Al terminar cada turno tuyo te hace ${e.persistente.dano} ${e.persistente.tipo}; con 15 o más en el chequeo plano se apaga. Alguien puede ayudarte a quitártelo.`, dura: 7000 }];
+      }
+      if (e.nombre === 'Strike preparado') {
+        return e.quitado ? [] : [{ id: id(), tono: 'bueno', titulo: 'Strike preparado', cuerpo: 'Si un enemigo llega a tu alcance antes de tu próximo turno, te ofrecemos pegarle con tu reacción.', dura: 6000 }];
       }
       return [{ id: id(), tono: e.beneficioso ? 'bueno' : 'malo', titulo: e.quitado ? `Se te acabó ${e.nombre}` : `Ahora tienes ${e.nombre}`, cuerpo: e.quitado ? 'Ya no cuenta en tus tiradas.' : 'Ya cuenta en tus tiradas: míralo en tu ficha.', dura: 5000 }];
     }

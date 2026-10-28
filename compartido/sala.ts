@@ -13,7 +13,7 @@ import {
   accionesAlEmpezar, alEmpezarTurno, alTerminarTurno, CONDICIONES, esCondicionesValida, penalizaciones, ponerCondicion,
   type ClaveCondicion, type Condicion,
 } from '../reglas/condiciones';
-import { descansar, disponibilidad, todasLasAptitudes, usar, type Aptitud, type Descanso } from '../reglas/aptitudes';
+import { descansar, disponibilidad, PREPARADO, todasLasAptitudes, usar, type Aptitud, type Descanso } from '../reglas/aptitudes';
 import { momentoIniciativa, tieneMomento, type Momento, type MomentoIniciativa } from '../reglas/disparadores';
 import { alcanzables, caminoA, distanciaEntre, huella, type Casilla, type OpcionesMovimiento } from '../reglas/movimiento';
 import { esClaveIniciativa, type ClaveIniciativa } from './tiradas';
@@ -534,8 +534,10 @@ export function reaccionesPara(estado: EstadoSala, personajeId: string, momento:
   const token = tokenDePersonaje(estado, personajeId);
   if (!p || !token) return [];
   if (estado.combate?.reacciones.includes(token.id)) return [];
+  const preparado = (token.efectos ?? []).some((e) => e.clave === PREPARADO);
   return todasLasAptitudes(p).filter((a) =>
     a.costo === 'reaccion' && tieneMomento(a, momento) && disponibilidad(p, a).puede
+    && (a.id !== 'basica:ready-strike' || preparado)
     && (!a.requiere || (token.condiciones ?? []).some((c) => c.clave === a.requiere)));
 }
 

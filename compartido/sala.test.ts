@@ -232,3 +232,13 @@ describe('sumarse al combate', () => {
     expect(tokenEnTurno(estado)?.id).toBe('g2');
   });
 });
+
+describe('Ready', () => {
+  it('el golpe preparado solo se ofrece mientras está el efecto de Ready', async () => {
+    const { reaccionesPara } = await import('./sala');
+    let estado = conKyra();
+    expect(reaccionesPara(estado, 'kyra', 'enemigo-se-mueve').map((a) => a.id)).not.toContain('basica:ready-strike');
+    estado = aplicar(estado, { tipo: 'poner-efecto', tokenId: 'kyra', efecto: { id: 'r1', clave: 'ready', nombre: 'Strike preparado', beneficioso: true, modificadores: [], duracion: { tipo: 'rondas', rondas: 1 } } });
+    expect(reaccionesPara(estado, 'kyra', 'enemigo-se-mueve').map((a) => a.id)).toContain('basica:ready-strike');
+  });
+});

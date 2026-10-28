@@ -8,7 +8,7 @@ import {
 } from '../compartido/sala';
 import { iniciativaDe, queSeTira, queTiraCriatura, type QueSeTira } from '../compartido/tiradas';
 import { modificadorDefensa, motivoInmune, objetivosDe, persistenteAlTerminar, resolverUso, type Azar } from '../compartido/interacciones';
-import { disponibilidad, recursosDe, todasLasAptitudes } from '../reglas/aptitudes';
+import { disponibilidad, PREPARADO, recursosDe, todasLasAptitudes } from '../reglas/aptitudes';
 import { claveDe, interaccionDe, potenciar, rangoDeLanzamiento, VAN_ULTIMO } from '../reglas/interacciones';
 import { momentoIniciativa } from '../reglas/disparadores';
 import { conDying, curarHeridas, NIVELES_CURAR, recuperacion } from '../reglas/muerte';
@@ -494,6 +494,7 @@ export class Sala extends DurableObject<Env> {
     if (a.id === 'basica:aid' && (!objetivoAid(this.estado, m.objetivo, token))) {
       return this.negar(ws, 'Toca al aliado al que quieres ayudar.');
     }
+    if (a.id === 'basica:ready-strike' && !(token.efectos ?? []).some((e) => e.clave === PREPARADO)) return this.negar(ws, 'No tienes un Strike preparado (usa Ready en tu turno).');
     if (a.id === 'basica:escape' && !(token.condiciones ?? []).some((c) => c.clave === 'grabbed' || c.clave === 'restrained')) {
       return this.negar(ws, 'Nadie te tiene agarrado: no hace falta escapar.');
     }
@@ -568,6 +569,16 @@ export class Sala extends DurableObject<Env> {
     if (a.costo === 'reaccion' && c) await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: token.id, usada: true });
     if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
     if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });
+    // Ready: queda un Strike preparado hasta tu próximo turno; al usarlo, se gasta
+    if (a.id === 'basica:ready') {
+      await this.guardarYRepartir({ tipo: 'poner-efecto', tokenId: token.id, efecto: crearEfecto({
+        clave: PREPARADO, nombre: 'Strike preparado', beneficioso: true, modificadores: [], rondas: 1,
+      }, crypto.randomUUID(), { tokenId: token.id, nombre: 'Ready' }, token.id, this.estado.combate?.ronda) });
+    }
+    if (a.id === 'basica:ready-strike') {
+      const e = (token.efectos ?? []).find((x) => x.clave === PREPARADO);
+      if (e) await this.guardarYRepartir({ tipo: 'quitar-efecto', tokenId: token.id, efectoId: e.id });
+    }
     // Stand y Drop Prone: quitan o ponen Prone
     if (a.id === 'basica:stand') await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'prone', valor: 0 });
     if (a.id === 'basica:drop-prone') await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'prone', valor: 1 });

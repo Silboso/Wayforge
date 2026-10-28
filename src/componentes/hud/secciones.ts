@@ -1,5 +1,5 @@
 import {
-  ACCIONES_COMUNES, disponibilidad, GRUPOS, grupoDe, recursosDe, todasLasAptitudes,
+  ACCIONES_COMUNES, disponibilidad, PREPARADO, GRUPOS, grupoDe, recursosDe, todasLasAptitudes,
   type Aptitud, type Disponibilidad, type Grupo,
 } from '../../../reglas/aptitudes';
 import { calcular, HABILIDADES, signo, type FichaCalculada, type Golpe, type Personaje, type Valor } from '../../../reglas/pf2e';
@@ -87,7 +87,9 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
     || (p.aptitudes ?? []).some((x) => /shield block/i.test(x.nombre));
   const comunes = ACCIONES_COMUNES.filter((id) => id !== 'basica:raise-shield' || conEscudo)
     .map((id) => todas.find((a) => a.id === id)).filter((a): a is Aptitud => !!a);
-  const resto = todas.filter((a) => !ACCIONES_COMUNES.includes(a.id));
+  // El golpe preparado solo existe mientras Ready lo tiene listo
+  const preparado = efectos.some((e) => e.clave === PREPARADO);
+  const resto = todas.filter((a) => !ACCIONES_COMUNES.includes(a.id) && (a.id !== 'basica:ready-strike' || preparado));
 
   const basicas = [...golpes, ...comunes.map((a) => filaAptitud(p, a, ficha))];
   const lista: Seccion[] = [{

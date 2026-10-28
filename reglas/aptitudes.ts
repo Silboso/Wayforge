@@ -125,12 +125,17 @@ export const ACCIONES_BASICAS: Aptitud[] = [
   basica('sneak', 'Sneak', 'Moverte sin ser visto', 1, 'Te mueves a la mitad de tu Velocidad intentando seguir escondido. Tiras Stealth.', ['move', 'secret'], { tipo: 'skill', clave: 'stealth' }),
   basica('drop-prone', 'Drop Prone', 'Tirarte al suelo', 1, 'Te tiras al suelo: quedas Prone.', ['move']),
   basica('stand', 'Stand', 'Levantarte', 1, 'Te levantas si estás Prone.', ['move']),
-  basica('ready', 'Ready', 'Preparar', 2, 'Preparas una acción para un momento: "si se acerca, le pego". Cuando pasa, la usas como reacción.', ['concentrate']),
+  basica('ready', 'Ready', 'Preparar', 2, 'Preparas un Strike: si un enemigo se mueve a tu alcance antes de tu próximo turno, la mesa te ofrece pegarle con tu reacción.', ['concentrate']),
   basica('sustain', 'Sustain', 'Mantener', 1, 'Mantienes activo un conjuro o efecto que lo pida.', ['concentrate']),
   basica('aid', 'Aid', 'Ayudar', 'reaccion', 'Ayudas a un aliado con algo que preparaste antes: le das un bono a su tirada.'),
   basica('delay', 'Delay', 'Esperar', 'libre', 'Pasas tu turno para actuar más tarde en la ronda.'),
+  // La otra mitad de Ready: solo aparece mientras lo tienes preparado
+  { ...basica('ready-strike', 'Readied Strike', 'Golpe preparado', 'reaccion', 'El Strike que preparaste con Ready: cuando un enemigo se mueve a tu alcance.', [], { tipo: 'golpe' }), disparadores: ['enemigo-se-mueve'] },
   basica('treat-wounds', 'Treat Wounds', 'Curar heridas', 'larga', 'Fuera de combate, 10 minutos: curas a un aliado con Medicine (necesitas herramientas de sanador).', ['exploration', 'healing'], { tipo: 'skill', clave: 'medicine' }),
 ];
+
+// El efecto que deja Ready mientras espera su momento
+export const PREPARADO = 'ready';
 
 // Hasta dónde llegan las que van contra alguien (en pies): Demoralize a 30 ft, las de agarre al lado
 const DISTANCIAS: Record<string, number> = {
