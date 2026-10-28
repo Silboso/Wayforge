@@ -319,6 +319,16 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         botones: [{ etiqueta: 'Responder', principal: true, hacer: () => setCajon('chat') }],
       }];
     }
+    // El GM hizo descansar al grupo: qué recuperó
+    if (e.tipo === 'descanso') {
+      return [{
+        id: id(), tono: 'bueno', titulo: e.descanso === 'noche' ? 'Durmieron la noche (8 horas)' : 'Descanso corto (10 minutos)',
+        cuerpo: e.descanso === 'noche'
+          ? 'Recuperas PG, espacios de conjuro y foco; Doomed baja 1 y se va la fatiga.'
+          : 'Recuperas 1 punto de foco; si estás a vida completa, se va Wounded.',
+        dura: 6000,
+      }];
+    }
     // Se viene un combate: no hace falta aviso, ya se abre la hoja de preparación con todo
     if (e.tipo === 'preparativo') {
       if (e.tokenId === miToken?.id) return [];
@@ -625,6 +635,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       menu={eligiendo ? null : menu}
       rango={rango}
       enfocar={enfoque}
+      seguir={miToken?.id}
       presencia={{ punteros: Object.values(sala.punteros), senales: sala.senales }}
       onPuntero={sala.moverPuntero}
       onMedir={sala.medir}

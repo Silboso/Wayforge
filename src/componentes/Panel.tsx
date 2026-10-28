@@ -44,12 +44,12 @@ export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSelec
   const ir = (id: string) => document.getElementById(`mesa-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   return (
     <div className="flex flex-col gap-4">
-      <nav aria-label="Partes de la mesa" className="sticky -top-4 z-10 -mx-4 -mt-4 flex flex-wrap gap-1.5 border-b border-dashed border-borde bg-fondo px-4 py-2.5">
+      <nav aria-label="Partes de la mesa" className="sticky -top-4 z-10 -mx-4 -mt-4 flex gap-1.5 overflow-x-auto border-b border-dashed border-borde bg-fondo px-4 py-2.5">
         {partes.map(([id, nombre]) => (
-          <button key={id} onClick={() => ir(id)} className="rounded-full border border-borde px-2.5 py-1 font-titulo text-[13px] hover:border-acento hover:text-acento">{nombre}</button>
+          <button key={id} onClick={() => ir(id)} className="shrink-0 rounded-full border border-borde px-2.5 py-1 font-titulo text-[13px] whitespace-nowrap hover:border-acento hover:text-acento">{nombre}</button>
         ))}
       </nav>
-      <div id="mesa-escenas" className="scroll-mt-14">{escenas}</div>
+      <div id="mesa-escenas" className="scroll-mt-16">{escenas}</div>
       {token ? (
         <EditorToken key={token.id} salaId={salaId} token={token} enviar={enviar} onCerrar={() => onSeleccionar(null)}
           onEditarPersonaje={token.personajeId && onEditarPersonaje ? () => onEditarPersonaje(token.personajeId!) : undefined} />
@@ -60,11 +60,11 @@ export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSelec
           <PlusIcon size={16} aria-hidden /> Poner un token a mano
         </button>
       )}
-      <div id="mesa-handouts" className="scroll-mt-14"><SeccionHandouts salaId={salaId} estado={estado} enviar={enviar} /></div>
-      <div id="mesa-tiempo" className="scroll-mt-14"><SeccionTiempo estado={estado} enviar={enviar} /></div>
-      <div id="mesa-mapa" className="scroll-mt-14"><EditorMapa salaId={salaId} estado={estado} enviar={enviar} /></div>
-      <div id="mesa-niebla" className="scroll-mt-14">{murosNiebla}</div>
-      <div id="mesa-campana" className="scroll-mt-14 flex flex-col gap-4">
+      <div id="mesa-handouts" className="scroll-mt-16"><SeccionHandouts salaId={salaId} estado={estado} enviar={enviar} /></div>
+      <div id="mesa-tiempo" className="scroll-mt-16"><SeccionTiempo estado={estado} enviar={enviar} /></div>
+      <div id="mesa-mapa" className="scroll-mt-16"><EditorMapa salaId={salaId} estado={estado} enviar={enviar} /></div>
+      <div id="mesa-niebla" className="scroll-mt-16">{murosNiebla}</div>
+      <div id="mesa-campana" className="scroll-mt-16 flex flex-col gap-4">
         <Campana estado={estado} enviar={enviar} {...(onExportar ? { onExportar } : {})} />
         <Codigos salaId={salaId} codigoGM={codigoGM} />
       </div>

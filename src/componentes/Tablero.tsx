@@ -56,6 +56,8 @@ interface Props {
   onSenal?: (x: number, y: number) => void;
   // Centrar la vista en un token (cada pedido nuevo trae otro `n`)
   enfocar?: { tokenId: string; n: number } | null;
+  // Un token que la vista sigue: si sale de lo que se ve, se centra en él
+  seguir?: string;
   // Un área por colocar (Fireball): sigue al puntero y marca a quién toca; tocar el tablero la lanza ahí
   // `aliados`: solo alcanza a los del bando de quien la lanza (y `soloOtros`: no a él mismo)
   plantilla?: { tokenId: string; area: Area; alcance?: number; etiqueta: string; color?: string; aliados?: boolean; soloOtros?: boolean } | null;
@@ -94,7 +96,7 @@ const PASO_MS = 120;
 
 export function Tablero({
   estado, colores, quien, margenInferior = 0, movimiento = null, apunta = null, eventos = [], menu = null,
-  seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onMedir, onSenal, enfocar = null,
+  seleccionado, onSeleccionar, onMover, onNegar, rango = null, presencia, onPuntero, onMedir, onSenal, enfocar = null, seguir,
   plantilla = null, onPunto, marcados = [], pistas = null, niebla = null, onPuerta, editorMuros = null, oscuridad = null,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
@@ -214,6 +216,10 @@ export function Tablero({
   useEffect(() => {
     if (enfocar) irA(enfocar.tokenId);
   }, [enfocar?.n]);
+  const seguido = seguir ? estado.tokens[seguir] : undefined;
+  useEffect(() => {
+    if (seguido) irA(seguido.id, true);
+  }, [seguido?.x, seguido?.y]); // eslint-disable-line react-hooks/exhaustive-deps
   // La cámara sigue el turno: si le toca a alguien que no se ve, va hacia él
   const turnoVisto = useRef(eventos.at(-1)?.id ?? 0);
   useEffect(() => {

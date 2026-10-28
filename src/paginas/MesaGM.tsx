@@ -522,13 +522,13 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:w-[340px] ${combate ? 'lg:top-[118px]' : 'lg:top-[72px]'} ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
 
       {/* Preparando un combate: cuántos están listos y tirar sin abrir el panel; al empezar, el orden de juego */}
-      <div className="pointer-events-none fixed inset-x-0 top-[60px] z-30 flex flex-col items-center gap-2 px-4">
+      <div className={`pointer-events-none fixed left-0 top-[60px] z-30 flex flex-col items-center gap-2 px-4 ${cajon ? 'right-0 lg:right-[440px]' : 'right-0'}`}>
         {estado.preparacion && !estado.combate && (() => {
           const pr = estado.preparacion;
           const jugadores = pr.tokens.filter((id) => estado.tokens[id]?.personajeId);
           const listos = jugadores.filter((id) => pr.listos.includes(id)).length;
           return (
-            <div className="tarjeta-cae tarjeta pointer-events-auto flex items-center gap-3 px-4 py-2" role="status">
+            <div className="tarjeta-cae tarjeta pointer-events-auto flex items-center gap-3 px-4 py-2 lg:ml-[296px]" role="status">
               <SwordIcon size={18} weight="bold" className="text-peligro" aria-hidden />
               <p className="font-titulo text-[15px]">Preparando combate · {listos} de {jugadores.length} listos</p>
               <button className="boli h-9 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10" onClick={() => sala.iniciarCombate(pr.tokens)}>
@@ -538,9 +538,9 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           );
         })()}
         {estado.telon && (
-          <div className="tarjeta-cae tarjeta pointer-events-auto flex items-center gap-3 px-4 py-2" role="status">
-            <p className="font-titulo text-[15px]"><b>Telón bajo</b> · los jugadores no ven el tablero ({estado.escena?.nombre ?? 'Primera escena'})</p>
-            <button className="boli h-9 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10" onClick={() => sala.enviar({ tipo: 'telon', bajo: false })}>
+          <div className="tarjeta-cae tarjeta pointer-events-auto flex items-center gap-3 px-4 py-2 lg:ml-[296px]" role="status">
+            <p className="font-titulo text-[15px] whitespace-nowrap" title="Los jugadores no ven el tablero"><b>Telón bajo</b> · {estado.escena?.nombre ?? 'Primera escena'}</p>
+            <button className="boli h-9 shrink-0 whitespace-nowrap border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10" onClick={() => sala.enviar({ tipo: 'telon', bajo: false })}>
               Subir el telón
             </button>
           </div>

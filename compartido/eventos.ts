@@ -24,6 +24,8 @@ export type Evento =
   // Alguien habló en el chat (solo llega a quien lo puede ver)
   | { tipo: 'chat'; mensaje: MensajeChat }
   | { tipo: 'telon'; bajo: boolean }
+  // El GM hizo descansar al grupo
+  | { tipo: 'descanso'; descanso: 'diez' | 'noche' }
   // El GM mostró un handout (a quien lo recibe se le abre)
   | { tipo: 'handout'; id: string; titulo: string }
   // Empezó el combate: el orden en que se juega, para mostrarlo a todos
@@ -69,6 +71,8 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
       return posterior.escena && posterior.escena.id !== anterior.escena?.id ? [{ tipo: 'escena', nombre: posterior.escena.nombre }] : [];
     case 'telon':
       return !!anterior.telon !== accion.bajo ? [{ tipo: 'telon', bajo: accion.bajo }] : [];
+    case 'descanso-grupo':
+      return [{ tipo: 'descanso', descanso: accion.descanso }];
     case 'mostrar-handout': {
       // Solo si lo puede ver (al jugador le llega su estado filtrado: si no se lo mostraron, no está)
       const h = (posterior.handouts ?? []).find((x) => x.id === accion.id);

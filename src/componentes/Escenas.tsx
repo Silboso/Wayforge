@@ -79,7 +79,7 @@ export function PanelEscenas({ estado, enviar }: { estado: EstadoSala; enviar: (
 export function Telon() {
   return (
     <div className="absolute inset-0 z-[5] flex items-center justify-center overflow-hidden"
-      style={{ background: 'repeating-linear-gradient(90deg, #6e1f22 0 34px, #85272b 34px 52px, #5e1a1d 52px 70px)' }} role="status">
+      style={{ background: 'repeating-linear-gradient(90deg, #6e1f22 0 34px, #85272b 34px 52px, #5e1a1d 52px 70px)', paddingBottom: 'var(--alto-hoja, 0px)' }} role="status">
       <div aria-hidden className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(#3d1012,transparent)]" />
       <div className="tarjeta-cae max-w-sm rounded-xl border-2 border-borde bg-superficie px-6 py-5 text-center font-titulo shadow-[0_20px_40px_-18px_rgba(0,0,0,0.6)]">
         <FilmSlateIcon size={32} className="mx-auto text-acento" aria-hidden />
