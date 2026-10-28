@@ -1146,11 +1146,12 @@ export function OrdenEscrito({ estado, combate, onEnfocar, conPanel = false }: {
         const hecho = i < combate.turno;
         const enemigo = !t.personajeId;
         const espera = (combate.demorados ?? []).includes(c.tokenId);
+        const llega = !!c.desde && c.desde > combate.ronda;
         return (
           <li key={c.tokenId} className="shrink-0">
             <button onClick={() => onEnfocar(c.tokenId)} title={`Ver a ${t.nombre} en el tablero`}
-              className={`whitespace-nowrap rounded-sm px-0.5 transition hover:underline hover:decoration-dotted ${ahora ? 'marcatextos font-bold' : espera ? 'text-texto-suave italic' : hecho ? 'text-texto-suave line-through decoration-[1.5px]' : enemigo ? 'text-peligro' : ''}`}>
-              {t.nombre}<span className={`ml-1 text-[12.5px] ${ahora ? 'text-sobre-marca' : 'text-texto-suave'}`}>{espera ? 'espera' : Math.round(c.iniciativa)}</span>
+              className={`whitespace-nowrap rounded-sm px-0.5 transition hover:underline hover:decoration-dotted ${ahora ? 'marcatextos font-bold' : espera || llega ? 'text-texto-suave italic' : hecho ? 'text-texto-suave line-through decoration-[1.5px]' : enemigo ? 'text-peligro' : ''}`}>
+              {t.nombre}<span className={`ml-1 text-[12.5px] ${ahora ? 'text-sobre-marca' : 'text-texto-suave'}`}>{espera ? 'espera' : llega ? `ronda ${c.desde}` : Math.round(c.iniciativa)}</span>
             </button>
           </li>
         );

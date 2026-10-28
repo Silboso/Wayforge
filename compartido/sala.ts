@@ -177,6 +177,8 @@ export interface Combatiente {
   iniciativa: number;
   // Para los empates (y cuando el GM mueve a alguien en el orden): mayor va antes
   desempate?: number;
+  // Llegó con el combate empezado y su lugar ya había pasado: juega desde esta ronda
+  desde?: number;
 }
 
 // Antes de pelear: el GM eligió quiénes entran y cada jugador dice con qué tira la iniciativa,
@@ -979,7 +981,11 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     case 'agregar-a-combate': {
       const c = estado.combate;
       if (!c || !estado.tokens[accion.tokenId] || c.orden.some((x) => x.tokenId === accion.tokenId)) return estado;
-      return { ...estado, combate: reordenar(c, [...c.orden, { tokenId: accion.tokenId, iniciativa: accion.iniciativa }], estado.tokens) };
+      const conNuevo = reordenar(c, [...c.orden, { tokenId: accion.tokenId, iniciativa: accion.iniciativa }], estado.tokens);
+      // Si su lugar queda antes del turno en curso, esta ronda ya no juega
+      const i = conNuevo.orden.findIndex((x) => x.tokenId === accion.tokenId);
+      const orden = i < conNuevo.turno ? conNuevo.orden.map((x, j) => (j === i ? { ...x, desde: c.ronda + 1 } : x)) : conNuevo.orden;
+      return { ...estado, combate: { ...conNuevo, orden } };
     }
     case 'quitar-de-combate':
       return sinToken(estado, accion.tokenId);

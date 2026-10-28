@@ -219,3 +219,16 @@ describe('terminar el combate', () => {
     expect(estado.tokens.kyra?.efectos?.map((e) => e.nombre)).toEqual(['Heroism']);
   });
 });
+
+describe('sumarse al combate', () => {
+  it('quien entra con su lugar ya pasado juega desde la próxima ronda', () => {
+    let estado = aplicar(conKyra(), { tipo: 'crear-token', token: { ...goblin, id: 'g2', nombre: 'Goblin 2', x: 5 } });
+    estado = aplicar(estado, { tipo: 'iniciar-combate', orden: [{ tokenId: 'kyra', iniciativa: 20 }, { tokenId: 'g1', iniciativa: 5 }] });
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    estado = aplicar(estado, { tipo: 'agregar-a-combate', tokenId: 'g2', iniciativa: 25 });
+    expect(tokenEnTurno(estado)?.id).toBe('g1');
+    expect(estado.combate?.orden[0]).toMatchObject({ tokenId: 'g2', desde: 2 });
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(tokenEnTurno(estado)?.id).toBe('g2');
+  });
+});
