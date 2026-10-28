@@ -46,6 +46,12 @@ const BLOQUEO_MS = 60_000;
 
 // Una partida. Guarda el estado en su SQLite y lo reparte por WebSocket a quienes ya entraron.
 // Quien solo tiene el código de sala es un visitante: ve la lista de personajes y nada más.
+// Aid: a un aliado (otro personaje o un NPC de su lado), no a uno mismo
+function objetivoAid(estado: EstadoSala, id: unknown, autor: Token) {
+  const t = typeof id === 'string' ? estado.tokens[id] : undefined;
+  return !!t && t.id !== autor.id && t.tipo !== 'enemigo';
+}
+
 // Recall Knowledge necesita una criatura (con su ficha) como objetivo
 function objetivoRecordar(estado: EstadoSala, id: unknown) {
   return typeof id === 'string' && !!estado.tokens[id]?.criatura;
@@ -485,6 +491,9 @@ export class Sala extends DurableObject<Env> {
     const enElSuelo = (token.condiciones ?? []).some((c) => c.clave === 'prone');
     if (a.id === 'basica:stand' && !enElSuelo) return this.negar(ws, 'No estás en el suelo: no hace falta levantarte.');
     if (a.id === 'basica:drop-prone' && enElSuelo) return this.negar(ws, 'Ya estás en el suelo.');
+    if (a.id === 'basica:aid' && (!objetivoAid(this.estado, m.objetivo, token))) {
+      return this.negar(ws, 'Toca al aliado al que quieres ayudar.');
+    }
     if (a.id === 'basica:escape' && !(token.condiciones ?? []).some((c) => c.clave === 'grabbed' || c.clave === 'restrained')) {
       return this.negar(ws, 'Nadie te tiene agarrado: no hace falta escapar.');
     }
@@ -582,6 +591,7 @@ export class Sala extends DurableObject<Env> {
     }
     if (a.id === 'basica:treat-wounds') return this.curarHeridas(ws, token, p, objetivo ?? token, m.nivel);
     if (a.id === 'basica:escape') return this.escapar(token, p);
+    if (a.id === 'basica:aid' && objetivo) return this.ayudar(token, p, objetivo);
     if (a.id === 'basica:recall-knowledge' && objetivo?.criatura) return this.recordar(token, p, objetivo);
 
     if (inter && alcance && !('motivo' in alcance)) {
@@ -866,6 +876,33 @@ export class Sala extends DurableObject<Env> {
         ...(t.objetivo ? { objetivo: { ...t.objetivo, ...(t.objetivo.cd !== undefined && t.objetivo.grado ? { grado: gradoDeExito(total, d, t.objetivo.cd) } : {}) } } : {}),
       },
     });
+  }
+
+  // Aid: con tu mejor modificador (tu ataque o tu mejor skill) contra CD 15. Tu aliado gana +1 de circunstancia a sus
+  // chequeos (+2 con crítico; −1 si pifias) hasta el inicio de tu próximo turno.
+  private async ayudar(token: Token, p: Personaje, aliado: Token) {
+    const ficha = calcular(p, token.condiciones ?? [], token.efectos ?? []);
+    const opciones = [
+      ...ficha.golpes.map((g, i) => ({ nombre: p.golpes[i]?.nombre ?? 'ataque', total: g.ataque.total })),
+      ...HABILIDADES.map((h) => ({ nombre: h.nombre, total: ficha.habilidades[h.clave].total })),
+    ];
+    const mejor = opciones.sort((x, y) => y.total - x.total)[0] ?? { nombre: 'Perception', total: ficha.percepcion.total };
+    const d = dado(20);
+    const total = d + mejor.total;
+    const grado = gradoDeExito(total, d, 15);
+    const bono = grado === 'critico' ? 2 : grado === 'exito' ? 1 : grado === 'pifia' ? -1 : 0;
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: `Ayudar a ${aliado.nombre} (${mejor.nombre})`, dados: [d], caras: 20, modificador: mejor.total, total,
+        cuando: Date.now(), personajeId: p.id, autorTokenId: token.id, objetivo: { nombre: aliado.nombre, tokenId: aliado.id, cd: 15, grado },
+        resultado: { nota: bono > 0 ? `+${bono} a su próximo chequeo` : bono < 0 ? 'lo estorbas: −1 a su próximo chequeo' : 'no logra ayudar' },
+      },
+    });
+    if (!bono) return;
+    await this.guardarYRepartir({ tipo: 'poner-efecto', tokenId: aliado.id, efecto: crearEfecto({
+      clave: `aid:${token.id}`, nombre: bono > 0 ? `Ayuda de ${p.nombre}` : `Estorbo de ${p.nombre}`, beneficioso: bono > 0,
+      modificadores: [{ blanco: 'chequeos', tipo: 'circunstancia', valor: bono }], rondas: 1, aspecto: 'bendicion',
+    }, crypto.randomUUID(), { tokenId: token.id, nombre: 'Aid' }, token.id, this.estado.combate?.ronda) });
   }
 
   // Escape: Athletics o Acrobatics (la mejor) contra la CD de Athletics de quien te tiene (el enemigo pegado más fuerte).

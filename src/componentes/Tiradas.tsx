@@ -190,6 +190,13 @@ const SELLO: Record<Grado, { texto: string; color: string }> = {
   fallo: { texto: 'Falló', color: 'var(--texto-suave)' },
   pifia: { texto: 'Pifia', color: 'var(--peligro)' },
 };
+// Un chequeo de skill contra una CD (Escape, Aid, Treat Wounds): no se "le da" a nadie
+const SELLO_CHEQUEO: Record<Grado, { texto: string; color: string }> = {
+  critico: { texto: '¡Crítico!', color: 'var(--acento)' },
+  exito: { texto: '¡Lo logras!', color: 'var(--exito)' },
+  fallo: { texto: 'No sale', color: 'var(--texto-suave)' },
+  pifia: { texto: 'Pifia', color: 'var(--peligro)' },
+};
 // En una salvación quien tiró es el objetivo: el sello dice cómo resistió
 const SELLO_SALVACION: Record<Grado, { texto: string; color: string }> = {
   critico: { texto: 'Resiste', color: 'var(--exito)' },
@@ -216,7 +223,9 @@ function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critic
   const critico = t.etiqueta.startsWith('Daño crítico');
   const suma = t.modificador ? `${t.dados.join(' + ')} ${t.modificador > 0 ? '+' : '−'} ${Math.abs(t.modificador)}` : t.dados.join(' + ');
   const cuenta = critico ? `(${suma}) × 2` : suma;
-  const sello = t.objetivo?.grado ? (t.objetivo.salvacion ? SELLO_SALVACION : SELLO)[t.objetivo.grado] : null;
+  const sello = t.objetivo?.grado ? (t.objetivo.salvacion ? SELLO_SALVACION : siglaDe(t) === 'CD' ? SELLO_CHEQUEO : SELLO)[t.objetivo.grado] : null;
+  // "Ayudar a Kyra", "Recall Knowledge sobre Goblin": el nombre ya está en la etiqueta
+  const nombrado = !!t.objetivo && t.etiqueta.includes(t.objetivo.nombre);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
@@ -242,7 +251,7 @@ function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critic
         <div className="flex flex-wrap items-center gap-2">
           <Estampa color={sello.color}>{sello.texto}</Estampa>
           <span className="font-titulo text-[13px] text-texto-suave">
-            {t.objetivo!.salvacion ? (verCd && t.objetivo!.cd ? `contra CD ${t.objetivo!.cd}` : 'en su salvación') : `contra ${t.objetivo!.nombre}${verCd && t.objetivo!.cd ? ` (${siglaDe(t)} ${t.objetivo!.cd})` : ''}`}
+            {t.objetivo!.salvacion ? (verCd && t.objetivo!.cd ? `contra CD ${t.objetivo!.cd}` : 'en su salvación') : nombrado ? (verCd && t.objetivo!.cd ? `${siglaDe(t)} ${t.objetivo!.cd}` : '') : `contra ${t.objetivo!.nombre}${verCd && t.objetivo!.cd ? ` (${siglaDe(t)} ${t.objetivo!.cd})` : ''}`}
           </span>
         </div>
       )}

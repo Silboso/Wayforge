@@ -234,8 +234,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         return elegirObjetivo(a.id), false;
       }
     }
-    // Recall Knowledge: sobre la criatura elegida (sin una, se elige en el tablero)
-    const recordar = a.id === 'basica:recall-knowledge';
+    // Recall Knowledge y Aid: sobre quien se tocó (sin nadie, se elige en el tablero)
+    const recordar = a.id === 'basica:recall-knowledge' || a.id === 'basica:aid';
     if (recordar && !objetivoId && hayOtros && miToken) return elegirObjetivo(a.id), false;
     const fila = todasFilas.find((f) => f.clave === a.id);
     const alcance = fila ? alcanceDe(p, fila) : null;
@@ -412,7 +412,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         const r = t.resultado;
         const que = [r.dano ? `${r.dano} de daño${r.tipo ? ` ${r.tipo}` : ''}` : null, r.curacion ? `cura ${r.curacion}` : null, r.nota].filter(Boolean).join(' · ');
         const bien = t.objetivo.grado === 'critico' || t.objetivo.grado === 'exito';
-        avisos.push({ id: id(), tono: bien ? 'bueno' : 'malo', titulo: `${t.etiqueta} contra ${t.objetivo.nombre}`, cuerpo: que || (bien ? 'Funcionó.' : 'No funcionó.'), dura: 6000 });
+        avisos.push({ id: id(), tono: bien ? 'bueno' : 'malo', titulo: t.etiqueta.includes(t.objetivo.nombre) ? t.etiqueta : `${t.etiqueta} contra ${t.objetivo.nombre}`, cuerpo: que || (bien ? 'Funcionó.' : 'No funcionó.'), dura: 6000 });
       }
       return avisos;
     }
