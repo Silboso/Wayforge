@@ -57,6 +57,7 @@ const TECLAS_GM: [string, string][] = [
   ['P', 'Personajes de los jugadores'],
   ['M', 'Mesa: mapa, tokens y códigos'],
   ['D', 'Tiradas (y tirada libre)'],
+  ['V', 'Chat (y susurros)'],
   ['H', 'Reglas rápidas'],
   ['Tocar una criatura', 'La manejas: su hoja aparece abajo'],
   ['Tocar a un personaje', 'El menú de ataques de tu criatura contra él'],
