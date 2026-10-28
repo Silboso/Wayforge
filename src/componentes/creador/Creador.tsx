@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, ArrowRightIcon, CaretUpIcon, CheckIcon, PencilSimpleLineIcon, XIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, ArrowRightIcon, CaretUpIcon, CheckIcon, MagicWandIcon, PencilSimpleLineIcon, XIcon } from '@phosphor-icons/react';
+import { completarPaso } from '../../../reglas/completar';
 import { calcular, HABILIDADES, signo, ATRIBUTOS, type Atributo, type Personaje } from '../../../reglas/pf2e';
 import {
   atributosDe, conjurosAElegir, construir, ELECCION_VACIA, pendientes, type Eleccion, type Paso,
@@ -157,6 +158,13 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano, onI
           {(aviso || error) && <p className="mt-4 font-titulo text-[15px] text-peligro" role="alert">{aviso || error}</p>}
           {faltaDe(paso).length > 0 && paso !== 'codigo' && (
             <p className="mt-4 font-titulo text-[14px] text-texto-suave">Falta: {faltaDe(paso).map((f) => f.falta).join(' · ')}</p>
+          )}
+          {/* Para quien no quiere decidir cada número: lo que mejor le queda a su clase (se puede cambiar después) */}
+          {paso !== 'codigo' && faltaDe(paso).length > 0 && Object.keys(completarPaso(e, paso)).length > 0 && (
+            <button type="button" className="boli mt-2 flex h-10 items-center gap-1.5 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10"
+              onClick={() => cambiar(completarPaso(e, paso))}>
+              <MagicWandIcon size={16} aria-hidden /> Elegir por mí lo que falta
+            </button>
           )}
 
           {/* Atrás y Siguiente quedan a la vista abajo, aunque el paso sea largo */}
