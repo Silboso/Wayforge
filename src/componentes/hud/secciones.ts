@@ -118,10 +118,11 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
   }
   // Los atajos: los que eligió el jugador, o lo primero de sus acciones si nunca los cambió
   const porClave = new Map(lista.flatMap((s) => s.filas).map((f) => [f.clave, f]));
-  // Sin elegir: el arma, moverse y lo que más hace en Q W E R D F (un lanzador, sus trucos que dañan); los objetos en 1–4
+  // Sin elegir: el arma, moverse y lo que más hace en Q W E R D F (quien cura, su curación; un lanzador, sus trucos que dañan); los objetos en 1–4
   const objetos = resto.filter((a) => a.categoria === 'objeto').slice(0, 4).map((a) => a.id);
   const trucos = resto.filter((a) => (a.categoria === 'truco' || a.categoria === 'conjuro') && a.recuperacion.tipo === 'siempre' && !!interaccionDe(a)?.dano).slice(0, 2).map((a) => a.id);
-  const primeras = [...basicas.slice(0, 3).map((f) => f.clave), ...trucos, ...basicas.slice(3).map((f) => f.clave)];
+  const curas = resto.filter((a) => ['truco', 'conjuro', 'foco'].includes(a.categoria) && !!interaccionDe(a)?.curacion).slice(0, 1).map((a) => a.id);
+  const primeras = [...basicas.slice(0, 3).map((f) => f.clave), ...curas, ...trucos, ...basicas.slice(3).map((f) => f.clave)];
   const claves = p.atajos ?? [...[...new Set(primeras)].slice(0, 6), ...objetos];
   const ranuras = TECLAS.map((_, i) => (claves[i] ? porClave.get(claves[i]!) ?? null : null));
   return [{

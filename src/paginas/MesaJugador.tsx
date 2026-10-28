@@ -1390,6 +1390,16 @@ function Descansos({ p, sala }: { p: Personaje; sala: Sala }) {
 
 // El turno en el teléfono: cabecera fija, secciones una debajo de otra, la acción abierta como tarjeta,
 // y la acción grande ("Terminar turno" o descansar) siempre a mano sobre la barra de pestañas
+// El detalle de una acción en el teléfono: al abrirse se acomoda para que se vea entero (con su botón de usar)
+function TarjetaALaVista({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reducir = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    ref.current?.scrollIntoView({ block: 'nearest', behavior: reducir ? 'auto' : 'smooth' });
+  }, []);
+  return <div ref={ref} className="tarjeta relative my-2 scroll-mb-4 px-4 py-3.5">{children}</div>;
+}
+
 function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, onElegir, detalle, companeros }: {
   contexto: Contexto;
   condiciones: Condicion[];
@@ -1403,6 +1413,10 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
   companeros?: ReactNode;
 }) {
   const { p, ficha, combate, miTurno, miToken, sala, onEditar } = contexto;
+  // Una acción puede estar en "Tu turno" y en su sección: el detalle se abre solo donde se tocó
+  const [abiertaEn, setAbiertaEn] = useState<string | null>(null);
+  const seccionAbierta = elegida ? (abiertaEn && lista.find((s) => s.id === abiertaEn)?.filas.some((f) => f.clave === elegida) ? abiertaEn
+    : lista.find((s) => s.filas.some((f) => f.clave === elegida))?.id) : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {companeros && <div className="mx-3 mt-2">{companeros}</div>}
@@ -1448,8 +1462,9 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
             </div>
             {s.filas.map((f) => (
               <div key={f.clave}>
-                <ListaAcciones seccion={{ ...s, filas: [f] }} elegida={elegida} marcada={marcada} libres={libres} onElegir={onElegir} />
-                {elegida === f.clave && <div className="tarjeta relative my-2 px-4 py-3.5">{detalle(f)}</div>}
+                <ListaAcciones seccion={{ ...s, filas: [f] }} elegida={seccionAbierta === s.id ? elegida : null} marcada={marcada} libres={libres}
+                  onElegir={(x) => { setAbiertaEn(s.id); onElegir(x); }} />
+                {elegida === f.clave && seccionAbierta === s.id && <TarjetaALaVista>{detalle(f)}</TarjetaALaVista>}
               </div>
             ))}
           </section>

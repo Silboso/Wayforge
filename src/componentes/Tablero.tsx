@@ -1169,11 +1169,14 @@ function FichaToken({ token, vecinos, celda, origen, colores, escala, movible, r
   const fraccion = pg ? Math.max(0, Math.min(1, pg.actual / pg.max)) : 0;
   const tintaPG = fraccion > 0.5 ? colores.exito : fraccion > 0.2 ? '#d69a2d' : colores.peligro;
   const anchoBarra = Math.max(lado * 0.84, 34 / escala);
-  // Dónde va el nombre: debajo; si hay alguien debajo, arriba; si está entre dos, al costado libre
+  // Dónde va el nombre: debajo; si hay alguien debajo, arriba; si está entre dos, al costado libre.
+  // Dos lado a lado: el de la columna impar lo lleva arriba, así los nombres no se pisan
   const encerrado = vecinos.abajo && (vecinos.arriba || pista);
-  const nombreArriba = vecinos.abajo && !encerrado;
+  const escalonado = vecinos.lados && !vecinos.abajo && !vecinos.arriba && !pista && token.x % 2 === 1;
+  const nombreArriba = (vecinos.abajo && !encerrado) || escalonado;
   const nombreAlLado = encerrado ? (!vecinos.derecha ? 'derecha' : !vecinos.izquierda ? 'izquierda' : null) : null;
-  const nombreCorto = vecinos.lados && !nombreAlLado && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
+  const libreDeLado = escalonado || (vecinos.lados && !vecinos.abajo && !vecinos.arriba && token.x % 2 === 0);
+  const nombreCorto = vecinos.lados && !libreDeLado && !nombreAlLado && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
 
   return (
     <Group
