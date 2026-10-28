@@ -138,8 +138,12 @@ export function resolverUso(estado: EstadoSala, u: Uso, azar: Azar): Accion[] | 
   const dano = i.dano ? tirarExpresion(i.dano.formula, azar) : null;
   const curacion = i.curacion ? tirarExpresion(i.curacion, azar) : null;
   const pendientes: { tokenId: string; tirada: Accion }[] = [];
+  // Un ataque a uno solo (Ray of Frost, un Strike): el daño va después del ataque, y solo si acierta
+  const unAtaque = u.objetivos.length === 1 && i.modo.tipo === 'ataque';
+  let danoTrasAtaque: Omit<Tirada, 'id' | 'cuando'> | null = null;
   for (const [tirado, etiqueta] of [[dano, `Daño de ${nombre}${tipoDano ? ` (${tipoDano})` : ''}`], [curacion, `Curación de ${nombre}`]] as const) {
     if (!tirado) continue;
+    if (unAtaque && tirado === dano) { danoTrasAtaque = { quien: autor.nombre, etiqueta, ...tirado, personajeId: u.personaje.id, autorTokenId: autor.id }; continue; }
     const accion = tirada({ quien: autor.nombre, etiqueta, ...tirado, personajeId: u.personaje.id, autorTokenId: autor.id });
     // Sin tirada por objetivo (Force Barrage, Heal a uno), esta misma lleva el resultado
     if (solo) pendientes.push({ tokenId: solo.id, tirada: accion });
@@ -227,6 +231,9 @@ export function resolverUso(estado: EstadoSala, u: Uso, azar: Azar): Accion[] | 
       ...(tipoDano ? { tipo: tipoDano } : {}), ...(nota ? { nota } : {}),
     };
     if (porObjetivo) salen.push({ tipo: 'registrar-tirada', tirada: { ...porObjetivo, resultado } });
+    if (danoTrasAtaque && r.dano) {
+      salen.push(tirada({ ...danoTrasAtaque, etiqueta: `${danoTrasAtaque.etiqueta}${r.dano === 2 ? ' · crítico ×2' : ''}`, objetivo: { nombre: t.nombre, tokenId: t.id }, resultado }));
+    }
     const pendiente = pendientes.find((x) => x.tokenId === t.id);
     if (pendiente && pendiente.tirada.tipo === 'registrar-tirada') {
       salen.push({ ...pendiente.tirada, tirada: { ...pendiente.tirada.tirada, objetivo: { nombre: t.nombre, tokenId: t.id }, resultado } });

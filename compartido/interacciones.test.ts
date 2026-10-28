@@ -221,3 +221,21 @@ describe('el motor de interacciones', () => {
     expect(interaccionDe(vieja)).toMatchObject({ modo: { tipo: 'salvacion', salvacion: 'reflex', basica: true }, objetivos: { tipo: 'area', area: { forma: 'explosion', tamano: 20 } }, dano: { formula: '1d12', tipo: 'electricity' } });
   });
 });
+
+describe('un ataque a uno solo', () => {
+  const rayo = conjuro('Ray of Frost', { tirada: { tipo: 'ataque-conjuro' } });
+
+  it('si falla no hay tirada de daño; si acierta, el daño va después del ataque', () => {
+    const e = mesa(goblin('g1', 3, 0));
+    const i = interaccionDe(rayo)!;
+    const uso = { autor: e.tokens.ezren!, personaje: ezren, aptitud: rayo, interaccion: i, objetivos: [e.tokens.g1!], numero: 0 as const };
+    // Daño 2d4 (1 y 1), después el d20 del ataque: un 2 falla contra CA 16
+    const falla = resolverUso(e, uso, azar(1, 1, 2)) as Accion[];
+    const tiradas = falla.filter((a) => a.tipo === 'registrar-tirada').map((a) => (a.tipo === 'registrar-tirada' ? a.tirada.etiqueta : ''));
+    expect(tiradas.some((t) => t.startsWith('Daño'))).toBe(false);
+    const acierta = resolverUso(e, uso, azar(3, 3, 19)) as Accion[];
+    const etiquetas = acierta.filter((a) => a.tipo === 'registrar-tirada').map((a) => (a.tipo === 'registrar-tirada' ? a.tirada.etiqueta : ''));
+    expect(etiquetas[0]).toContain('ataque de conjuro');
+    expect(etiquetas[1]).toMatch(/^Daño/);
+  });
+});
