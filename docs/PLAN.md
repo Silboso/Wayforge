@@ -274,7 +274,11 @@ Rondas de juego con varios navegadores a la vez (GM, jugadores, teléfono, table
   ahora hacen lo suyo: Stand quita Prone y Drop Prone lo pone; Escape tira contra la CD de quien te agarra y te
   suelta; Take Cover da +2 a la CA; Aid tira contra CD 15 y le da +1 (o +2) al aliado; Ready prepara un Strike
   que la mesa ofrece cuando un enemigo llega a tu alcance. Cada personaje empieza con 1 Hero Point. El GM da
-  botín desde el compendio (un objeto a un jugador) y reparte monedas entre todos.
+  botín desde el compendio (un objeto a un jugador) y reparte monedas entre todos. Dying mortal mata aunque lo
+  ponga el GM a mano, y la muerte se avisa. Las criaturas llegan lo que dicen sus rasgos (thrown-30, reach-10) y
+  su hoja muestra los números con sus condiciones; el GM tira sus skills con un toque. Un ataque de conjuro a uno
+  solo tira el daño después, y solo si acierta.
+- **Carga:** cada mesa y el creador se descargan solo cuando hacen falta (la carga inicial bajó de 442 KB a 90 KB).
 - **Creador:** "Elegir por mí" en cada paso llena lo que falta con lo que mejor le queda a la clase (atributos,
   skills, dotes, los conjuros que más rinden), sin tocar lo elegido.
 - **GM:** bienvenida en una mesa nueva (códigos, link y tres pasos); se entera de los bloqueos con escudo; en el
