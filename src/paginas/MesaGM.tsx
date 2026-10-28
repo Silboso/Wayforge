@@ -6,7 +6,7 @@ import { personajeNuevo, leerExpresion, type Personaje } from '../../reglas/pf2e
 import { danoAjustado, type AtaqueCriatura } from '../../reglas/criaturas';
 import { motivoAlcance, motivoParaActuarToken, tokenEnTurno, type EstadoSala } from '../../compartido/sala';
 import type { Evento } from '../../compartido/eventos';
-import { almacen, leer, type Sala } from '../conexion';
+import { almacen, guardar, leer, type Sala } from '../conexion';
 import { leerColoresTablero, type useTema } from '../tema';
 import { Tablero } from '../componentes/Tablero';
 import { AvisoTirada, ListaTiradas, TiradaLibre } from '../componentes/Tiradas';
@@ -71,6 +71,10 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [asomado, setAsomado] = useState<AtaqueCriatura | null>(null);
   const [plegada, setPlegada] = useState(false);
   const [cajon, setCajon] = useState<CajonGM | null>(null);
+  // La pista de "toca una criatura": se va al cerrarla o al tocar la primera, y no vuelve
+  const [pistaVista, setPistaVista] = useState(() => leer('wayforge:pista-gm') === '1');
+  const verPista = () => { setPistaVista(true); guardar('wayforge:pista-gm', '1'); };
+  useEffect(() => { if (actorId && !pistaVista) verPista(); }, [actorId]); // eslint-disable-line react-hooks/exhaustive-deps
   // En pantallas bajas, abrir un panel pliega la hoja de la criatura para que el panel tenga lugar
   useEffect(() => {
     if (cajon && innerHeight < 800) setPlegada(true);
@@ -409,7 +413,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
             <BarraMuros herramienta={herramientaMuros} onElegir={setHerramientaMuros} onListo={() => setHerramientaMuros(null)} />
           </div>
         )}
-        {combate && <OrdenEscrito estado={estado} combate={combate} onEnfocar={(tokenId) => { setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 })); }} />}
+        {combate && <OrdenEscrito estado={estado} combate={combate} conPanel={!!cajon} onEnfocar={(tokenId) => { setEnfoque((x) => ({ tokenId, n: (x?.n ?? 0) + 1 })); }} />}
         {eligiendo && actor && <BandaElegir fila={{ nombre: `${actor.nombre}: ${eligiendo.nombre}` }} rango={rango} onCancelar={() => setEligiendo(null)}
           className={actor ? (plegada ? 'bottom-[92px]' : 'bottom-[322px]') : 'bottom-4'} />}
 
@@ -440,12 +444,17 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           </nav>
         )}
 
-        {!actor && !cajon && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center px-4 lg:bottom-6">
-            <p className="tarjeta pointer-events-auto max-w-md px-4 py-2.5 text-center font-titulo text-[14.5px] text-texto-suave">
+        {!actor && !cajon && !pistaVista && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center px-4 lg:bottom-4">
+            <p className="tarjeta pointer-events-auto flex max-w-md items-center gap-2 py-2 pr-2 pl-4 text-center font-titulo text-[14px] text-texto-suave">
+              <span>
               Toca una criatura para manejarla. {tokens.some((t) => !t.personajeId) ? '' : 'Pon algunas desde el '}
               {!tokens.some((t) => !t.personajeId) && <button className="font-bold text-acento underline decoration-dotted" onClick={() => setCajon('bestiario')}>Compendio</button>}
               {combate ? '' : ' · Para pelear, abre Combate.'}
+              </span>
+              <button className="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-superficie-2" aria-label="No mostrar más" onClick={verPista}>
+                <XIcon size={14} aria-hidden />
+              </button>
             </p>
           </div>
         )}
@@ -499,7 +508,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         lugar={`top-[120px] lg:top-auto lg:inset-x-auto lg:right-6 ${actor ? (plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[340px]') : 'lg:bottom-6'}`} />
       <TituloEscena eventos={sala.eventos} />
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
-        className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:top-[72px] lg:w-[340px] ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
+        className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:w-[340px] ${combate ? 'lg:top-[118px]' : 'lg:top-[72px]'} ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
 
       {/* Preparando un combate: cuántos están listos y tirar sin abrir el panel; al empezar, el orden de juego */}
       <div className="pointer-events-none fixed inset-x-0 top-[60px] z-30 flex flex-col items-center gap-2 px-4">
@@ -525,7 +534,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
             </button>
           </div>
         )}
-        <OrdenRevelado estado={estado} eventos={sala.eventos} className="mt-10" />
+        <OrdenRevelado estado={estado} eventos={sala.eventos} className="mt-10 lg:mt-14 lg:ml-[180px] lg:self-start" />
       </div>
 
       {/* Un jugador está decidiendo si reacciona: el GM lo ve y puede seguir sin esperar */}

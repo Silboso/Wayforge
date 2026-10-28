@@ -171,7 +171,7 @@ describe('pistas al apuntar', () => {
   });
 
   it('lo lejano, lo que no es aliado y uno mismo no sirven, con el motivo', () => {
-    expect(pistaObjetivo(e, kyra, null, { modo: { tipo: 'ataque' }, objetivos: { tipo: 'uno' } }, e.tokens.ora!, 5)).toEqual({ valido: false, texto: 'a 10 ft · llega a 5' });
+    expect(pistaObjetivo(e, kyra, null, { modo: { tipo: 'ataque' }, objetivos: { tipo: 'uno' } }, e.tokens.ora!, 5)).toEqual({ valido: false, texto: 'lejos: a 10 ft (llegas a 5)' });
     const heal = dote('Heal', '');
     expect(pistaObjetivo(e, kyra, heal, interaccionDe(heal), e.tokens.goblin!, 30).texto).toBe('no es tu aliado');
     expect(pistaObjetivo(e, kyra, heal, interaccionDe(heal), kyra, 30)).toEqual({ valido: true, texto: 'lo curas' });

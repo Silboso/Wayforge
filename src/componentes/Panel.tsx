@@ -38,21 +38,36 @@ const TIPOS: { valor: TipoToken; etiqueta: string }[] = [
 // Herramientas del GM: tokens, mapa y códigos de la mesa
 export function HerramientasGM({ salaId, codigoGM, estado, seleccionado, onSeleccionar, enviar, onEditarPersonaje, murosNiebla, escenas, onExportar }: Props) {
   const token = seleccionado ? estado.tokens[seleccionado] : undefined;
+  const [aMano, setAMano] = useState(false);
+  // Atajos a cada parte: el panel es largo y así no hay que bajar buscando
+  const partes: [string, string][] = [['escenas', 'Escenas'], ['handouts', 'Handouts'], ['tiempo', 'Tiempo'], ['mapa', 'Mapa'], ['niebla', 'Niebla y luz'], ['campana', 'Campaña']];
+  const ir = (id: string) => document.getElementById(`mesa-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   return (
     <div className="flex flex-col gap-4">
-      {escenas}
+      <nav aria-label="Partes de la mesa" className="sticky -top-4 z-10 -mx-4 -mt-4 flex flex-wrap gap-1.5 border-b border-dashed border-borde bg-fondo px-4 py-2.5">
+        {partes.map(([id, nombre]) => (
+          <button key={id} onClick={() => ir(id)} className="rounded-full border border-borde px-2.5 py-1 font-titulo text-[13px] hover:border-acento hover:text-acento">{nombre}</button>
+        ))}
+      </nav>
+      <div id="mesa-escenas" className="scroll-mt-14">{escenas}</div>
       {token ? (
         <EditorToken key={token.id} salaId={salaId} token={token} enviar={enviar} onCerrar={() => onSeleccionar(null)}
           onEditarPersonaje={token.personajeId && onEditarPersonaje ? () => onEditarPersonaje(token.personajeId!) : undefined} />
+      ) : aMano ? (
+        <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={(id) => { onSeleccionar(id); setAMano(false); }} />
       ) : (
-        <NuevoToken salaId={salaId} estado={estado} enviar={enviar} onCreado={onSeleccionar} />
+        <button className={claseBotonSecundario} onClick={() => setAMano(true)} title="Las criaturas con su ficha completa se ponen desde el Compendio">
+          <PlusIcon size={16} aria-hidden /> Poner un token a mano
+        </button>
       )}
-      <SeccionHandouts salaId={salaId} estado={estado} enviar={enviar} />
-      <SeccionTiempo estado={estado} enviar={enviar} />
-      <EditorMapa salaId={salaId} estado={estado} enviar={enviar} />
-      {murosNiebla}
-      <Campana estado={estado} enviar={enviar} {...(onExportar ? { onExportar } : {})} />
-      <Codigos salaId={salaId} codigoGM={codigoGM} />
+      <div id="mesa-handouts" className="scroll-mt-14"><SeccionHandouts salaId={salaId} estado={estado} enviar={enviar} /></div>
+      <div id="mesa-tiempo" className="scroll-mt-14"><SeccionTiempo estado={estado} enviar={enviar} /></div>
+      <div id="mesa-mapa" className="scroll-mt-14"><EditorMapa salaId={salaId} estado={estado} enviar={enviar} /></div>
+      <div id="mesa-niebla" className="scroll-mt-14">{murosNiebla}</div>
+      <div id="mesa-campana" className="scroll-mt-14 flex flex-col gap-4">
+        <Campana estado={estado} enviar={enviar} {...(onExportar ? { onExportar } : {})} />
+        <Codigos salaId={salaId} codigoGM={codigoGM} />
+      </div>
     </div>
   );
 }

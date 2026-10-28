@@ -41,21 +41,31 @@ const COLOR: Record<Tono, string> = {
 
 // Convierte los eventos nuevos en avisos con `generar`, y quita los que vencen.
 // Cada evento se procesa una sola vez aunque el componente se vuelva a dibujar.
-// "Ezren entró a la mesa" / "Ezren salió": un aviso corto cuando cambia quién está (sin contarse a uno mismo)
+// "Ezren entró a la mesa" / "Ezren salió": un aviso corto cuando cambia quién está (sin contarse a uno mismo).
+// Se avisa unos segundos después: quien se reconecta (sale y vuelve enseguida) no genera ruido
 export function useLlegadas(presentes: { nombre: string }[], miNombre: string, agregar: (a: Aviso) => void) {
   const antes = useRef<Set<string> | null>(null);
+  const pendientes = useRef(new Map<string, { tipo: 'entro' | 'salio'; espera: ReturnType<typeof setTimeout> }>());
   useEffect(() => {
     const ahora = new Set(presentes.map((x) => x.nombre));
     const previos = antes.current;
     antes.current = ahora;
     // La primera lista es la de los que ya estaban: no se anuncia
     if (!previos) return;
-    for (const n of ahora) {
-      if (!previos.has(n) && n !== miNombre) agregar({ id: crypto.randomUUID(), tono: 'nota', titulo: `${n} entró a la mesa`, cuerpo: '', dura: 3500 });
-    }
-    for (const n of previos) {
-      if (!ahora.has(n) && n !== miNombre) agregar({ id: crypto.randomUUID(), tono: 'nota', titulo: `${n} salió de la mesa`, cuerpo: '', dura: 3500 });
-    }
+    const anunciar = (n: string, tipo: 'entro' | 'salio') => {
+      if (n === miNombre) return;
+      const ya = pendientes.current.get(n);
+      // Salió y volvió (o al revés) antes de avisar: no pasó nada
+      if (ya && ya.tipo !== tipo) { clearTimeout(ya.espera); pendientes.current.delete(n); return; }
+      if (ya) return;
+      const espera = setTimeout(() => {
+        pendientes.current.delete(n);
+        agregar({ id: crypto.randomUUID(), tono: 'nota', titulo: tipo === 'entro' ? `${n} entró a la mesa` : `${n} salió de la mesa`, cuerpo: '', dura: 3000 });
+      }, 4000);
+      pendientes.current.set(n, { tipo, espera });
+    };
+    for (const n of ahora) if (!previos.has(n)) anunciar(n, 'entro');
+    for (const n of previos) if (!ahora.has(n)) anunciar(n, 'salio');
   }, [presentes]);
 }
 

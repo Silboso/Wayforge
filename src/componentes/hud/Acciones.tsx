@@ -223,8 +223,9 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
         </div>
       )}
 
+      {/* Los botones quedan siempre a la vista, aunque el texto de arriba sea largo */}
       {fila.tipo === 'golpe' ? (
-        <div className="grid grid-cols-[1.3fr_1fr_1fr] gap-2">
+        <div className="sticky bottom-0 z-10 -mx-4 grid grid-cols-[1.3fr_1fr_1fr] gap-2 bg-superficie px-4 pt-2 pb-1">
           <button className="boli h-12 bg-acento font-titulo text-[17px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)] transition active:scale-[0.97] disabled:bg-superficie-2 disabled:text-[15px] disabled:text-texto-suave disabled:shadow-none"
             disabled={falta > 0} onClick={() => acciones.onAtacar(n)}>
             {falta > 0 ? 'Sin acciones' : `Atacar ${fila.valor}`}
@@ -240,7 +241,7 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
         </div>
       ) : (
         <button
-          className="boli h-12 bg-acento font-titulo text-[17px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)] transition active:scale-[0.97] disabled:bg-superficie-2 disabled:text-texto-suave disabled:shadow-none"
+          className="boli sticky bottom-1 z-10 h-12 bg-acento font-titulo text-[17px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)] transition active:scale-[0.97] disabled:bg-superficie-2 disabled:text-texto-suave disabled:shadow-none"
           disabled={agotada || falta > 0}
           onClick={acciones.onUsar}
         >

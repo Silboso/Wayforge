@@ -247,7 +247,7 @@ export function pistaObjetivo(estado: EstadoSala, autor: Token, a: Aptitud | nul
   if (o && 'aliados' in o && o.aliados && bando(t) !== bando(autor)) return { valido: false, texto: 'no es tu aliado' };
   if (propio && !(o && 'aliados' in o && o.aliados)) return { valido: false, texto: 'eres tú' };
   const pies = propio ? 0 : distanciaEntre(autor, ladoDe(autor), t, ladoDe(t));
-  if (distancia !== undefined && pies > distancia) return { valido: false, texto: `a ${pies} ft · llega a ${distancia}` };
+  if (distancia !== undefined && pies > distancia) return { valido: false, texto: `lejos: a ${pies} ft (llegas a ${distancia})` };
   const vista = visibilidad(estado, autor, t);
   if (!vista.efecto) return { valido: false, texto: 'hay una pared en medio' };
   if (!vista.ve) return { valido: false, texto: vista.razon };
