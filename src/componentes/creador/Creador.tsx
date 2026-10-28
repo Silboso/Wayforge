@@ -159,20 +159,21 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano, onI
           {faltaDe(paso).length > 0 && paso !== 'codigo' && (
             <p className="mt-4 font-titulo text-[14px] text-texto-suave">Falta: {faltaDe(paso).map((f) => f.falta).join(' · ')}</p>
           )}
-          {/* Para quien no quiere decidir cada número: lo que mejor le queda a su clase (se puede cambiar después) */}
-          {paso !== 'codigo' && faltaDe(paso).length > 0 && Object.keys(completarPaso(e, paso)).length > 0 && (
-            <button type="button" className="boli mt-2 flex h-10 items-center gap-1.5 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10"
-              onClick={() => cambiar(completarPaso(e, paso))}>
-              <MagicWandIcon size={16} aria-hidden /> Elegir por mí lo que falta
-            </button>
-          )}
+
 
           {/* Atrás y Siguiente quedan a la vista abajo, aunque el paso sea largo */}
           <div className="sticky bottom-[60px] z-10 -mx-4 mt-6 flex justify-between gap-2 border-t lg:bottom-0 border-dashed border-borde bg-fondo/95 px-4 py-3 backdrop-blur-sm lg:-mx-8 lg:px-8">
-            <button type="button" className="boli flex h-11 items-center gap-2 border-[1.5px] border-borde px-4 font-titulo text-[15px] disabled:opacity-40"
-              disabled={i === 0} onClick={() => setPaso(pasos[i - 1]!)}>
-              <ArrowLeftIcon size={18} aria-hidden /> Atrás
+            <button type="button" className="boli flex h-11 shrink-0 items-center gap-2 border-[1.5px] border-borde px-3 font-titulo text-[15px] disabled:opacity-40 sm:px-4"
+              disabled={i === 0} onClick={() => setPaso(pasos[i - 1]!)} aria-label="Atrás">
+              <ArrowLeftIcon size={18} aria-hidden /> <span className="hidden sm:inline">Atrás</span>
             </button>
+            {/* Para quien no quiere decidir cada número: lo que mejor le queda a su clase (se puede cambiar después) */}
+            {paso !== 'codigo' && faltaDe(paso).length > 0 && Object.keys(completarPaso(e, paso)).length > 0 && (
+              <button type="button" className="boli flex h-11 min-w-0 items-center gap-1.5 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10"
+                onClick={() => cambiar(completarPaso(e, paso))} title="Elige lo que mejor le queda a tu clase; lo puedes cambiar">
+                <MagicWandIcon size={17} aria-hidden className="shrink-0" /> <span className="truncate">Elegir por mí</span>
+              </button>
+            )}
             {paso === 'codigo' ? (
               <button type="button" className="boli flex h-11 items-center gap-2 bg-acento px-5 font-titulo text-[16px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)]" onClick={terminar}>
                 <CheckIcon size={18} weight="bold" aria-hidden /> Crear y entrar
