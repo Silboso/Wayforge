@@ -298,7 +298,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
           id: id(), tono: 'peligro', titulo: muriendo ? `Estás muriendo (Dying ${muriendo.valor})` : 'Estás inconsciente',
           cuerpo: muriendo
             ? `La mesa tira tu salvación de recuperación. ${heroicos ? 'Puedes gastar tus Hero Points para no morir.' : 'Tus aliados pueden curarte.'}`
-            : 'No puedes actuar: tu turno pasa. Con curación te despiertas.',
+            : 'No puedes actuar: termina tu turno. Con curación te despiertas.',
           ...(muriendo && heroicos ? { botones: [{ etiqueta: `Gastar ${heroicos} Hero Point${heroicos === 1 ? '' : 's'} y no morir`, principal: true, hacer: () => sala.heroico('recuperar') }] } : {}),
           dura: 8000,
         }];
@@ -562,7 +562,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   );
   // En su turno: su alcance de movimiento y la línea a su objetivo, dibujados en el tablero
   // En su turno se marcan las casillas a las que llega; fuera de combate se mueve libre
-  const movimiento = miToken && !eligiendo ? (miTurno ? { tokenId: miToken.id, libres: libres ?? 0 } : !combate ? { tokenId: miToken.id, libres: null } : null) : null;
+  // Inconsciente no se mueve: ni zona ni "arrástrame"
+  const tirado = condiciones.some((c) => c.clave === 'unconscious' || c.clave === 'dying');
+  const movimiento = miToken && !eligiendo && !tirado ? (miTurno ? { tokenId: miToken.id, libres: libres ?? 0 } : !combate ? { tokenId: miToken.id, libres: null } : null) : null;
   // El alcance que se ve: el de la acción que espera objetivo, la que está bajo el cursor o la abierta
   const filaRango = todasFilas.find((f) => f.clave === (eligiendo?.clave ?? asomada ?? elegida)) ?? null;
   const alcanceRango = filaRango ? alcanceDe(p, filaRango) : null;
@@ -1229,7 +1231,17 @@ function ColumnaQuien({ contexto, onAbrirFicha, compacta = false }: { contexto: 
   );
 }
 
-function CabeceraTurno({ contexto: { combate, miTurno, enTurno } }: { contexto: Contexto }) {
+function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken } }: { contexto: Contexto }) {
+  const muriendo = miToken?.condiciones?.find((c) => c.clave === 'dying');
+  const caido = muriendo || miToken?.condiciones?.some((c) => c.clave === 'unconscious');
+  if (combate && miTurno && caido) {
+    return (
+      <h3 className="mb-1 font-titulo text-[19px] font-semibold text-peligro lg:text-[21px]">
+        {muriendo ? `Muriendo (Dying ${muriendo.valor})` : 'Inconsciente'}
+        <span className="text-[14px] font-normal text-texto-suave"> · {muriendo ? 'la mesa tira tu salvación de recuperación' : 'no puedes actuar: termina tu turno'}</span>
+      </h3>
+    );
+  }
   if (!combate) {
     return <h3 className="mb-1 font-titulo text-[21px] font-semibold">Fuera de combate <span className="text-[14px] font-normal text-texto-suave">· explora, habla, descansa</span></h3>;
   }

@@ -57,7 +57,7 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano, onI
     setAviso('');
     setE((x) => ({ ...x, ...(typeof cambios === 'function' ? cambios(x) : cambios) }));
   };
-  // Un paso se marca listo solo después de pasar por él y sin nada pendiente
+  // Un paso se marca listo solo después de pasar por él, sin nada pendiente y con los anteriores listos
   const [visitados, setVisitados] = useState<Set<string>>(() => new Set(['ascendencia']));
   useEffect(() => setVisitados((v) => (v.has(paso) ? v : new Set([...v, paso]))), [paso]);
   const lanza = !!CLASES.find((c) => c.id === e.clase)?.lanzador && conjurosAElegir(e).trucos > 0;
@@ -69,7 +69,7 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano, onI
     ? (codigo.length === 4 && codigo === confirmacion ? [] : [{ paso: 'detalles' as Paso, falta: 'Escribe tu código' }])
     : p === 'detalles' && !nombre.trim() ? [{ paso: p, falta: 'Ponle un nombre' }, ...faltas.filter((f) => f.paso === p)]
     : faltas.filter((f) => f.paso === p));
-  const listo = (p: Paso | 'codigo') => visitados.has(p) && faltaDe(p).length === 0;
+  const listo = (p: Paso | 'codigo') => pasos.slice(0, pasos.indexOf(p) + 1).every((q) => visitados.has(q) && faltaDe(q).length === 0);
   const i = pasos.indexOf(paso);
   const personaje = useMemo(() => construir(e, { id, nombre: nombre.trim() || 'Sin nombre', ...(retrato ? { retrato } : {}) }), [e, id, nombre, retrato]);
 

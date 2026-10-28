@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CopyIcon, DownloadSimpleIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react';
 import { descargarMesa } from '../campanas';
 import { COLORES_TOKEN, TAMANOS, casillaLibre, type Accion, type EstadoSala, type MesaExportada, type Tamano, type Terreno, type TipoToken, type Token } from '../../compartido/sala';
@@ -299,14 +299,21 @@ function EditorMapa({ salaId, estado, enviar }: {
   const { mapa } = estado;
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState('');
-  const editar = (cambios: Partial<typeof mapa>) => enviar({ tipo: 'editar-mapa', cambios });
+  // Con imagen, el tablero cubre la imagen entera: columnas y filas salen de su tamaño y de la casilla
+  const editar = (cambios: Partial<typeof mapa>) => {
+    const m = { ...mapa, ...cambios };
+    const medida = m.imagen ? tamanosImagen.get(m.imagen) : undefined;
+    enviar({ tipo: 'editar-mapa', cambios: medida ? { ...cambios, ...casillasDeImagen(medida, m) } : cambios });
+  };
 
   async function cambiarImagen(archivo: File | null) {
     if (!archivo) return;
     setSubiendo(true);
     setError('');
     try {
-      editar({ imagen: await subirImagen(salaId, archivo, 'mapa') });
+      const imagen = await subirImagen(salaId, archivo, 'mapa');
+      await medirImagen(imagen).catch(() => null);
+      editar({ imagen });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo subir la imagen');
     } finally {
@@ -321,6 +328,11 @@ function EditorMapa({ salaId, estado, enviar }: {
         {mapa.imagen && <button className={claseBotonSecundario} onClick={() => editar({ imagen: '' })}>Quitar</button>}
       </div>
       {error && <p className="text-sm text-peligro">{error}</p>}
+      {mapa.imagen && (
+        <p className="text-xs text-texto-suave">
+          El tablero cubre la imagen: {mapa.columnas} × {mapa.filas} casillas. Haz coincidir la casilla con la cuadrícula del dibujo.
+        </p>
+      )}
       <Deslizador etiqueta="Tamaño de casilla" valor={mapa.tamanoCelda} min={20} max={200} unidad="px"
         onCambio={(tamanoCelda) => editar({ tamanoCelda })} />
       <Deslizador etiqueta="Mover cuadrícula →" valor={mapa.desplazamientoX} min={0} max={mapa.tamanoCelda - 1} unidad="px"
@@ -355,6 +367,26 @@ function EditorMapa({ salaId, estado, enviar }: {
       </label>
     </Seccion>
   );
+}
+
+// Lo que mide cada imagen de mapa ya cargada (ancho y alto naturales)
+const tamanosImagen = new Map<string, { w: number; h: number }>();
+
+function medirImagen(url: string): Promise<{ w: number; h: number }> {
+  const ya = tamanosImagen.get(url);
+  if (ya) return Promise.resolve(ya);
+  return new Promise((ok, mal) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { const m = { w: img.naturalWidth, h: img.naturalHeight }; tamanosImagen.set(url, m); ok(m); };
+    img.onerror = mal;
+    img.src = url;
+  });
+}
+
+function casillasDeImagen(medida: { w: number; h: number }, m: { tamanoCelda: number; desplazamientoX: number; desplazamientoY: number }) {
+  const cuantas = (largo: number, desde: number) => Math.min(200, Math.max(1, Math.floor((largo - desde) / m.tamanoCelda)));
+  return { columnas: cuantas(medida.w, m.desplazamientoX), filas: cuantas(medida.h, m.desplazamientoY) };
 }
 
 function SelectorTipo({ valor, onCambio }: { valor: TipoToken; onCambio: (tipo: TipoToken) => void }) {

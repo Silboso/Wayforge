@@ -702,10 +702,11 @@ export function Tablero({
             })}
           </Layer>
           <Layer listening={!editorMuros}>
-            {Object.values(estado.tokens).map((token) => (
+            {ordenTokens(estado.tokens, enTurno, seleccionado).map((token) => (
               <FichaToken
                 key={token.id}
                 token={token}
+                vecinos={vecinosDe(estado.tokens, token)}
                 celda={celda}
                 origen={origen}
                 colores={colores}
@@ -1099,6 +1100,8 @@ interface PropsFicha {
   derrotado: boolean;
   enTurno: boolean;
   seleccionado: boolean;
+  // Quién tiene pegado: si hay alguien debajo, el nombre va arriba; si hay alguien al lado, se acorta
+  vecinos: { arriba: boolean; abajo: boolean; lados: boolean };
   // Mostrar "arrástrame" sobre el token propio la primera vez
   pista: boolean;
   // Lo que tiene puesto: un halo si algo lo ayuda, y una marquita por efecto
@@ -1109,7 +1112,7 @@ interface PropsFicha {
   onSoltar: (px: number, py: number) => void;
 }
 
-function FichaToken({ token, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, efectos, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
+function FichaToken({ token, vecinos, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, efectos, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
   const [imagen] = useImage(token.imagen || '', 'anonymous');
   const nodo = useRef<Konva.Group>(null);
   const lado = TAMANOS[token.tamano] * celda;
@@ -1166,6 +1169,8 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
   const fraccion = pg ? Math.max(0, Math.min(1, pg.actual / pg.max)) : 0;
   const tintaPG = fraccion > 0.5 ? colores.exito : fraccion > 0.2 ? '#d69a2d' : colores.peligro;
   const anchoBarra = Math.max(lado * 0.84, 34 / escala);
+  const nombreArriba = vecinos.abajo && !vecinos.arriba && !pista;
+  const nombreCorto = vecinos.lados && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
 
   return (
     <Group
@@ -1290,16 +1295,18 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
             ctx.strokeRect(0, 0, w, h);
           }} />
       )}
-      {/* El nombre en una etiqueta de papel */}
-      <Label x={radio} y={lado + (pg ? altoBarra + 6 : 4)} listening={false}>
-        <Tag fill={colores.superficie} opacity={0.94} cornerRadius={3 / escala} pointerDirection="up" pointerWidth={8 / escala} pointerHeight={4 / escala}
+      {/* El nombre en una etiqueta de papel: debajo, o arriba si hay otro token pegado debajo y nadie arriba.
+          Con vecinos a los lados se corta con "…" (salvo el que está en turno o elegido, que se lee entero) */}
+      <Label x={radio} y={nombreArriba ? -3 / escala : lado + (pg ? altoBarra + 6 : 4)} listening={false}>
+        <Tag fill={colores.superficie} opacity={0.94} cornerRadius={3 / escala} pointerDirection={nombreArriba ? 'down' : 'up'} pointerWidth={8 / escala} pointerHeight={4 / escala}
           shadowColor={colores.sombra} shadowBlur={4 / escala} shadowOffsetY={1.5 / escala} shadowOpacity={0.25} />
         <Text text={salud ? `${token.nombre} · ${salud}` : token.nombre} fontSize={letraNombre} fontFamily="Shantell Sans, cursive" fontStyle={enTurno ? 'bold' : 'normal'}
-          fill={token.tipo === 'enemigo' ? colores.peligro : colores.texto} padding={letraNombre * 0.28} />
+          fill={token.tipo === 'enemigo' ? colores.peligro : colores.texto} padding={letraNombre * 0.28}
+          {...(nombreCorto ? { width: nombreCorto, wrap: 'none', ellipsis: true, align: 'center' } : {})} />
       </Label>
       {/* Condiciones: un post-it pegado arriba a la derecha */}
       {token.condiciones && token.condiciones.length > 0 && (
-        <Label x={lado * 0.55} y={-letraCondicion * 1.9} rotation={4} listening={false}>
+        <Label x={lado * 0.55} y={-letraCondicion * 1.9 - (nombreArriba ? letraNombre * 1.9 : 0)} rotation={4} listening={false}>
           <Tag fill={colores.postit} shadowColor="rgba(40,50,70,.35)" shadowBlur={4} shadowOffsetY={2} />
           <Text
             text={resumenCondiciones(token.condiciones)}
@@ -1320,6 +1327,30 @@ function FichaToken({ token, celda, origen, colores, escala, movible, recorrido,
       )}
     </Group>
   );
+}
+
+// Abajo primero, y el que está en turno o elegido al final: lo de abajo tapa lo de arriba, nunca al revés
+function ordenTokens(tokens: Record<string, Token>, enTurno: string | null | undefined, seleccionado: string | null | undefined) {
+  const peso = (t: Token) => (t.id === seleccionado ? 2 : t.id === enTurno ? 1 : 0);
+  return Object.values(tokens).sort((a, b) => peso(a) - peso(b) || a.y - b.y || a.x - b.x);
+}
+
+// Si otro token toca a este por arriba, por abajo o por los lados (casillas pegadas)
+function vecinosDe(tokens: Record<string, Token>, t: Token) {
+  const lado = TAMANOS[t.tamano];
+  const v = { arriba: false, abajo: false, lados: false };
+  for (const o of Object.values(tokens)) {
+    if (o.id === t.id) continue;
+    const lo = TAMANOS[o.tamano];
+    const cruzaX = o.x < t.x + lado && o.x + lo > t.x;
+    const cruzaY = o.y < t.y + lado && o.y + lo > t.y;
+    if (cruzaX && o.y === t.y + lado) v.abajo = true;
+    if (cruzaX && o.y + lo === t.y) v.arriba = true;
+    if (cruzaY && (o.x === t.x + lado || o.x + lo === t.x)) v.lados = true;
+    // Uno en diagonal debajo también choca con la etiqueta, que es más ancha que la casilla
+    if (!cruzaX && o.y === t.y + lado && (o.x === t.x + lado || o.x + lo === t.x)) v.lados = true;
+  }
+  return v;
 }
 
 // Escala la imagen para cubrir el círculo sin deformarla (como object-fit: cover)
