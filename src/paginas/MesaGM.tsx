@@ -281,6 +281,16 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
     return [];
   };
   const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  // Un personaje que muere: el GM se entera aparte (ya no hay salvaciones que tirar)
+  const muertos = Object.values(estado.tokens).filter((t) => t.personajeId && t.condiciones?.some((c) => c.clave === 'dead')).map((t) => t.id).join(',');
+  const muertosAntes = useRef(muertos);
+  useEffect(() => {
+    const antes = new Set(muertosAntes.current.split(',').filter(Boolean));
+    for (const id of muertos.split(',').filter(Boolean)) {
+      if (!antes.has(id)) agregarAviso({ id: `muerte-${id}`, tono: 'peligro', titulo: `${estado.tokens[id]?.nombre ?? 'Un personaje'} muere`, cuerpo: 'Llegó a su Dying mortal. Si fue un error, quítale Dead desde sus condiciones.' });
+    }
+    muertosAntes.current = muertos;
+  }, [muertos]); // eslint-disable-line react-hooks/exhaustive-deps
   // El daño que ya restó otro (el GM o el jugador): su aviso se va
   const aplicadas = estado.tiradas.filter((t) => t.aplicada).map((t) => t.id).join(',');
   useEffect(() => { for (const id of aplicadas.split(',')) if (id) cerrarAviso(`dano-${id}`); }, [aplicadas]); // eslint-disable-line react-hooks/exhaustive-deps

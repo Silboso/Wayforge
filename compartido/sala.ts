@@ -8,7 +8,7 @@ import {
   contarRondas, crearEfecto, esEfectoValido, esEfectosValidos, pasarTiempo, ponerEfecto, sostener, velocidadConEfectos, vencerSostenidos, type Aspecto, type EfectoActivo,
 } from '../reglas/efectos';
 import { ACTIVIDADES, esActividad } from '../reglas/exploracion';
-import { MAX_HEROICOS } from '../reglas/muerte';
+import { dyingMortal, MAX_HEROICOS } from '../reglas/muerte';
 import {
   accionesAlEmpezar, alEmpezarTurno, alTerminarTurno, CONDICIONES, esCondicionesValida, penalizaciones, ponerCondicion,
   type ClaveCondicion, type Condicion,
@@ -766,7 +766,10 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     case 'poner-condicion': {
       const token = estado.tokens[accion.tokenId];
       if (!token) return estado;
-      const condiciones = ponerCondicion(token.condiciones ?? [], accion.clave, accion.valor, accion.hasta);
+      let condiciones = ponerCondicion(token.condiciones ?? [], accion.clave, accion.valor, accion.hasta);
+      // Dying que llega a su valor mortal (4, menos Doomed): muere, aunque el número lo haya puesto el GM a mano
+      const dying = condiciones.find((c) => c.clave === 'dying')?.valor ?? 0;
+      if (dying > 0 && dying >= dyingMortal(condiciones)) condiciones = ponerCondicion(ponerCondicion(condiciones, 'dying', 0), 'dead', 1);
       return { ...estado, tokens: { ...estado.tokens, [token.id]: { ...token, condiciones } } };
     }
     case 'registrar-tirada':

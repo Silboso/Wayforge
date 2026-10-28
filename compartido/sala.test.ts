@@ -242,3 +242,15 @@ describe('Ready', () => {
     expect(reaccionesPara(estado, 'kyra', 'enemigo-se-mueve').map((a) => a.id)).toContain('basica:ready-strike');
   });
 });
+
+describe('Dying mortal', () => {
+  it('poner Dying 4 a mano mata; con Doomed 1 alcanza Dying 3', () => {
+    let estado = aplicar(conKyra(), { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'dying', valor: 4 });
+    expect(estado.tokens.kyra?.condiciones?.map((c) => c.clave)).toContain('dead');
+    estado = aplicar(conKyra(), { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'doomed', valor: 1 });
+    estado = aplicar(estado, { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'dying', valor: 3 });
+    expect(estado.tokens.kyra?.condiciones?.map((c) => c.clave)).toContain('dead');
+    estado = aplicar(conKyra(), { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'dying', valor: 3 });
+    expect(estado.tokens.kyra?.condiciones?.map((c) => c.clave)).not.toContain('dead');
+  });
+});

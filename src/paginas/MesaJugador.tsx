@@ -480,6 +480,13 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     return avisos;
   };
   const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  // Al morir, un aviso que se queda hasta cerrarlo
+  const muerto = condiciones.some((c) => c.clave === 'dead');
+  const yaMuerto = useRef(muerto);
+  useEffect(() => {
+    if (muerto && !yaMuerto.current) agregarAviso({ id: 'muerte', tono: 'peligro', titulo: `${p.nombre} muere`, cuerpo: 'Solo una magia muy poderosa te devuelve. Habla con el GM: puedes seguir con otro personaje.' });
+    yaMuerto.current = muerto;
+  }, [muerto]); // eslint-disable-line react-hooks/exhaustive-deps
   // Al terminar mi turno, "¡Tu turno!" ya no corresponde
   useEffect(() => { if (!miTurno) cerrarAviso('mi-turno'); }, [miTurno]); // eslint-disable-line react-hooks/exhaustive-deps
   // El daño que ya restó otro (el GM o el jugador): su aviso se va
@@ -1301,6 +1308,13 @@ function ColumnaQuien({ contexto, onAbrirFicha, compacta = false }: { contexto: 
 }
 
 function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken, sala } }: { contexto: Contexto }) {
+  if (miToken?.condiciones?.some((c) => c.clave === 'dead')) {
+    return (
+      <h3 className="mb-1 font-titulo text-[19px] font-semibold text-peligro lg:text-[21px]">
+        Muerto <span className="text-[14px] font-normal text-texto-suave">· solo una magia muy poderosa te devuelve; habla con el GM</span>
+      </h3>
+    );
+  }
   if (combate && miToken && (combate.demorados ?? []).includes(miToken.id)) {
     return (
       <h3 className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-titulo text-[19px] font-semibold lg:text-[21px]">
