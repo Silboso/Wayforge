@@ -80,7 +80,7 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
           <div className="flex items-center gap-3.5">
             <FotoPegada src={actor.imagen || undefined} inicial={actor.nombre.slice(0, 1)} nombre={actor.nombre} onEditar={onEditar} />
             <div className="min-w-0">
-              <h2 className={`truncate font-titulo text-[26px] leading-none font-bold ${actor.personajeId ? 'text-acento' : 'text-peligro'}`}>{actor.nombre}</h2>
+              <h2 className={`line-clamp-2 font-titulo leading-[1.05] font-bold break-words ${actor.nombre.length > 12 ? "text-[21px]" : "text-[26px]"} ${actor.personajeId ? 'text-acento' : 'text-peligro'}`}>{actor.nombre}</h2>
               <p className="mt-1 truncate font-titulo text-[14px] text-texto-suave">
                 {personaje ? `${personaje.clase} · nivel ${personaje.nivel} · jugador` : cr ? `${actor.tipo === 'npc' ? 'NPC' : 'Criatura'} · nivel ${cr.nivel}` : 'Sin números todavía'}
               </p>
