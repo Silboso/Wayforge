@@ -338,12 +338,14 @@ export class Sala extends DurableObject<Env> {
       const leida = leerExpresion(expresion);
       if (!leida) return;
       const etiqueta = typeof que.etiqueta === 'string' ? que.etiqueta.trim().slice(0, 40) : '';
-      // El GM pone el nombre del enemigo como etiqueta: "Goblin · 1d20+7"
-      if (!personaje && etiqueta) nombre = etiqueta;
+      // El GM pone el nombre del enemigo como etiqueta: "Goblin · 1d20+7"; con "Goblin: Stealth", también qué tira
+      const [deQuien, ...que2] = etiqueta.split(': ');
+      if (!personaje && etiqueta) nombre = deQuien!;
+      const queTira = !personaje && que2.length ? que2.join(': ') : null;
       // Un crítico de daño se duplica, también en las tiradas libres (el daño de un conjuro)
       const critico = que.critico === true;
       plan = {
-        etiqueta: `${personaje && etiqueta ? `${critico ? 'Crítico: ' : ''}${etiqueta} (${expresion})` : expresion}`,
+        etiqueta: `${personaje && etiqueta ? `${critico ? 'Crítico: ' : ''}${etiqueta} (${expresion})` : queTira ? `${queTira} (${expresion})` : expresion}`,
         ...leida, multiplicador: critico ? 2 : 1, esAtaque: false,
       };
     } else if (criatura) {

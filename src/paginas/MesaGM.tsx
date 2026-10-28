@@ -504,6 +504,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
               if (p) sala.tirar(p.id, clave === 'percepcion' ? { tipo: 'percepcion' } : { tipo: 'salvacion', clave });
               else sala.tirar(undefined, { tipo: 'chequeo-criatura', tokenId: actor.id, clave });
             }}
+            onSkill={(nombre, bono) => sala.tirar(undefined, { tipo: 'libre', expresion: `1d20${bono >= 0 ? '+' : ''}${bono}`, etiqueta: `${actor.nombre}: ${nombre}` }, nombre)}
             onPG={(delta) => cambiarPG(actor.id, delta)}
             onCondiciones={() => setCondicionesDe(actor.id)}
             onEditar={() => {

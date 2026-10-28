@@ -13,7 +13,7 @@ import { EfectosActivos } from '../EfectosActivos';
 type Chequeo = 'fortitude' | 'reflex' | 'will' | 'percepcion';
 
 // La hoja del token que maneja el GM, apoyada abajo como la del jugador: quién es, qué puede hacer y su estado
-export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onPG, onCondiciones, onEditar, onTerminar, onEsperar, onVolver, onCerrar, onQuitarEfecto }: {
+export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onSkill, onPG, onCondiciones, onEditar, onTerminar, onEsperar, onVolver, onCerrar, onQuitarEfecto }: {
   // Quitar un efecto que le dejó una aptitud (el GM manda)
   onQuitarEfecto?: (efectoId: string) => void;
   estado: EstadoSala;
@@ -26,6 +26,8 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
   onAsomar: (a: AtaqueCriatura | null) => void;
   onDano: (a: AtaqueCriatura, critico: boolean) => void;
   onChequeo: (clave: Chequeo) => void;
+  // Tirar una de sus skills
+  onSkill: (nombre: string, bono: number) => void;
   // Restar (negativo) o sumar PG
   onPG: (delta: number) => void;
   onCondiciones: () => void;
@@ -157,7 +159,18 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
               <li className="flex min-h-[36px] items-center gap-2 px-1 font-titulo text-[14.5px] text-texto-suave">
                 <FootprintsIcon size={17} className="ml-3.5" aria-hidden /> Moverse: arrastra su token ({velocidadDe(estado, actor)} ft por Stride)
               </li>
-              {cr.habilidades.length > 0 && <li className="px-1 pt-1 text-[12.5px] text-texto-suave">Skills: {cr.habilidades.map((h) => `${h.nombre} ${signo(h.bono)}`).join(' · ')}</li>}
+              {/* Sus skills, para tirar con un toque (Stealth al esconderse, Athletics al agarrar) */}
+              {cr.habilidades.length > 0 && (
+                <li className="flex flex-wrap items-center gap-1.5 px-1 pt-1 text-[12.5px] text-texto-suave">
+                  Skills:
+                  {cr.habilidades.map((h) => (
+                    <button key={h.nombre} className="rounded-md border border-borde px-1.5 py-0.5 font-titulo text-[13px] text-texto hover:border-acento hover:text-acento"
+                      onClick={() => onSkill(h.nombre, h.bono)} title={`Tirar ${h.nombre}`}>
+                      {h.nombre} {signo(h.bono)}
+                    </button>
+                  ))}
+                </li>
+              )}
               {cr.defensas && (
                 <li className="px-1 pt-1 text-[12.5px]">
                   {cr.defensas.resistencias.length > 0 && <span className="mr-3"><b className="font-titulo">Resiste</b> {cr.defensas.resistencias.map((x) => `${x.tipo} ${x.valor}`).join(', ')}</span>}
