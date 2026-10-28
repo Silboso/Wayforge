@@ -19,6 +19,7 @@ import { ImportarPathbuilder } from '../componentes/ImportarPathbuilder';
 import { mensajeRechazo } from '../componentes/Entrada';
 import { PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
 import { AyudaTeclas, ModalCondiciones, PanelReglas } from '../componentes/hud/Paneles';
+import { Modal } from '../componentes/hud/Modal';
 import { Tecla } from '../componentes/hud/piezas';
 import { TECLAS } from '../componentes/hud/secciones';
 import { PersonajesGM } from '../componentes/gm/PersonajesGM';
@@ -95,6 +96,9 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [importando, setImportando] = useState(false);
   const [ayuda, setAyuda] = useState(false);
   const [codigos, setCodigos] = useState(false);
+  // Una mesa recién creada: la bienvenida con los códigos y por dónde empezar (una sola vez por mesa)
+  const [bienvenida, setBienvenida] = useState(() => leer(`wayforge:bienvenida:${salaId}`) !== '1' && Object.keys(estado.personajes).length === 0);
+  const cerrarBienvenida = () => { setBienvenida(false); guardar(`wayforge:bienvenida:${salaId}`, '1'); };
   const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
   // Dibujando muros (con qué herramienta) y mirando la niebla como la ven los jugadores
   const [herramientaMuros, setHerramientaMuros] = useState<HerramientaMuros | null>(null);
@@ -582,6 +586,10 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         </div>
       ))}
 
+      {bienvenida && (
+        <Bienvenida salaId={salaId} codigoGM={codigoGM} onCerrar={cerrarBienvenida}
+          onIr={(c) => { cerrarBienvenida(); setCajon(c); }} />
+      )}
       {codigos && (
         <div className="fixed top-[64px] right-4 z-40 w-[300px]">
           <Codigos salaId={salaId} codigoGM={codigoGM} onCerrar={() => setCodigos(false)} />
@@ -599,6 +607,51 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       )}
       {ayuda && <AyudaTeclas filas={TECLAS_GM} onCerrar={() => setAyuda(false)} />}
     </div>
+  );
+}
+
+// La primera vez en una mesa nueva: qué compartir, qué guardar y los tres pasos para empezar a jugar
+function Bienvenida({ salaId, codigoGM, onCerrar, onIr }: { salaId: string; codigoGM: string | null; onCerrar: () => void; onIr: (c: 'personajes' | 'bestiario' | 'mesa') => void }) {
+  const [copiado, setCopiado] = useState(false);
+  const pasos: ['personajes' | 'bestiario' | 'mesa', string, string][] = [
+    ['personajes', 'Personajes', 'Comparte el link: cada jugador crea el suyo (o lo importa de Pathbuilder). También puedes crearlos tú.'],
+    ['bestiario', 'Criaturas', 'Busca en el compendio y ponlas en el tablero con un toque.'],
+    ['mesa', 'Mapa', 'Sube la imagen de tu mapa, dibuja muros y puertas, y elige la luz.'],
+  ];
+  return (
+    <Modal titulo="Tu mesa está lista" subtitulo="Lo que necesitas para empezar a jugar." onCerrar={onCerrar}>
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-borde bg-superficie px-3 py-2.5">
+            <p className="font-titulo text-[13px] text-texto-suave">Para los jugadores</p>
+            <p className="font-mono text-[24px] font-bold tracking-widest">{salaId.toUpperCase()}</p>
+            <button className="boli mt-1 flex h-9 items-center gap-1.5 border-[1.5px] border-acento px-3 font-titulo text-[14px] font-semibold text-acento hover:bg-acento/10"
+              onClick={async () => { try { await navigator.clipboard.writeText(`${location.origin}/sala/${salaId}`); setCopiado(true); setTimeout(() => setCopiado(false), 2000); } catch { /* sin portapapeles */ } }}>
+              <CopyIcon size={16} aria-hidden /> {copiado ? 'Link copiado' : 'Copiar el link'}
+            </button>
+          </div>
+          {codigoGM && (
+            <div className="rounded-lg border-[1.5px] border-[var(--postit)] bg-superficie px-3 py-2.5">
+              <p className="font-titulo text-[13px] text-texto-suave">Tu código de GM: guárdalo</p>
+              <p className="font-mono text-[24px] font-bold tracking-widest">{codigoGM}</p>
+              <p className="text-[12.5px] leading-snug text-texto-suave">Lo necesitas para volver como GM desde otro aparato. En este navegador queda en «Tus mesas». No lo compartas.</p>
+            </div>
+          )}
+        </div>
+        <ol className="flex flex-col gap-2">
+          {pasos.map(([c, nombre, texto], i) => (
+            <li key={c}>
+              <button className="flex w-full items-start gap-3 rounded-lg border border-borde px-3 py-2 text-left hover:border-acento" onClick={() => onIr(c)}>
+                <span className="font-titulo text-[20px] font-bold text-acento">{i + 1}</span>
+                <span><b className="font-titulo text-[16px]">{nombre}</b><span className="block text-[13px] text-texto-suave">{texto}</span></span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <button className="boli h-11 bg-acento font-titulo text-[16px] font-bold text-sobre-acento" onClick={onCerrar}>A la mesa</button>
+        <p className="-mt-2 text-center text-[12.5px] text-texto-suave">Los códigos siguen en el botón «Códigos», arriba.</p>
+      </div>
+    </Modal>
   );
 }
 

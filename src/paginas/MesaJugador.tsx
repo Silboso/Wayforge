@@ -1509,7 +1509,7 @@ function TurnoMovil({ contexto, condiciones, lista, elegida, marcada, libres, on
         {lista.map((s) => (
           <section key={s.id} className="mb-4">
             <div className="flex items-baseline justify-between gap-2 border-b-[1.5px] border-texto/70 pb-0.5">
-              <h3 className="shrink-0 font-titulo text-[18px] font-bold">{s.titulo}</h3>
+              <h3 className="shrink-0 font-titulo text-[18px] font-bold">{s.id === 'turno' && !combate ? 'A mano' : s.titulo}</h3>
               <span className="truncate font-titulo text-[12.5px] text-texto-suave">{s.resumen ?? s.ayuda}</span>
             </div>
             {s.filas.map((f) => (
