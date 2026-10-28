@@ -23,7 +23,7 @@ const COLOR_GRADO: Record<Grado, string> = {
 
 // "Éxito contra Goblin". La CA solo la ve el GM: para los jugadores es un secreto de los enemigos.
 // Contra qué se tiró: una CD si fue con una skill ("Treat Wounds (Medicine)", "Recall Knowledge (Society)"); si no, la CA
-const CON_SKILL = /((Acrobatics|Arcana|Athletics|Crafting|Deception|Diplomacy|Intimidation|Medicine|Nature|Occultism|Performance|Religion|Society|Stealth|Survival|Thievery|Perception))/;
+const CON_SKILL = /\((Acrobatics|Arcana|Athletics|Crafting|Deception|Diplomacy|Intimidation|Medicine|Nature|Occultism|Performance|Religion|Society|Stealth|Survival|Thievery|Perception)\)/;
 function siglaDe(t: Tirada) {
   return CON_SKILL.test(t.etiqueta) ? 'CD' : 'CA';
 }
