@@ -538,7 +538,11 @@ export function Tablero({
   const pistaId = zona && !arrastrando && !yaArrastro && !rangoToken && !plantilla && !apunta ? tokenMovil?.id ?? null : null;
   // Lo que dice cada etiqueta (con "· herido" para los jugadores) y su letra en casillas, para repartirlas sin choques
   const saludDe = (t: Token) => (!pgVisible(estado, t, quien) && t.pg && !t.personajeId ? estadoDeSalud(t.pg) : null);
-  const lugares = lugaresDeNombre(estado.tokens, [seleccionado, enTurno], pistaId,
+  // Con alguien pegado encima, "arrástrame" va debajo (si no, lo tapa a él y a su nombre)
+  const pistaToken = pistaId ? estado.tokens[pistaId] : undefined;
+  const pistaAbajo = !!pistaToken && Object.values(estado.tokens).some((o) => o.id !== pistaToken.id
+    && o.y + TAMANOS[o.tamano] === pistaToken.y && o.x < pistaToken.x + TAMANOS[pistaToken.tamano] && o.x + TAMANOS[o.tamano] > pistaToken.x);
+  const lugares = lugaresDeNombre(estado.tokens, [seleccionado, enTurno], pistaAbajo ? null : pistaId,
     (t) => { const sl = saludDe(t); return sl ? `${t.nombre} · ${sl}` : t.nombre; }, Math.max(0.19, 12.5 / vista.escala / celda));
 
   return (
@@ -727,7 +731,7 @@ export function Tablero({
                 derrotado={token.personajeId ? (estado.personajes[token.personajeId]?.pgActual ?? 1) <= 0 : !!token.pg && token.pg.actual <= 0}
                 enTurno={token.id === enTurno}
                 seleccionado={token.id === seleccionado}
-                pista={token.id === pistaId}
+                pista={token.id === pistaId ? (pistaAbajo ? 'abajo' : 'arriba') : null}
                 onSeleccionar={() => {
                   if (consumirSenal()) return;
                   // Con un área por colocar, tocar un token también la lanza (en el punto que se ve)
@@ -1112,7 +1116,7 @@ interface PropsFicha {
   // Quién tiene pegado: si hay alguien debajo, el nombre va arriba; si hay alguien al lado, se acorta
   nombre: { lugar: LugarNombre; corto: boolean };
   // Mostrar "arrástrame" sobre el token propio la primera vez
-  pista: boolean;
+  pista: 'arriba' | 'abajo' | null;
   // Lo que tiene puesto: un halo si algo lo ayuda, y una marquita por efecto
   efectos: EfectoActivo[];
   onSeleccionar: () => void;
@@ -1334,8 +1338,8 @@ function FichaToken({ token, nombre, celda, origen, colores, escala, movible, re
       )}
       {/* La primera vez en tu turno: cómo se mueve */}
       {pista && (
-        <Label x={radio} y={-grosor * 3} listening={false}>
-          <Tag fill={colores.acento} cornerRadius={4 / escala} pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
+        <Label x={radio} y={pista === 'arriba' ? -grosor * 3 : lado + (pg ? altoBarra + 6 : 4) + (nombre.lugar === 'abajo' ? letraNombre * 1.9 : 0)} listening={false}>
+          <Tag fill={colores.acento} cornerRadius={4 / escala} pointerDirection={pista === 'arriba' ? 'down' : 'up'} pointerWidth={10 / escala} pointerHeight={6 / escala} />
           <Text text="Arrástrame para moverte" fontSize={Math.max(celda * 0.17, 12.5 / escala)} fontFamily="Shantell Sans, cursive" fontStyle="bold"
             fill={colores.sobreAcento} padding={Math.max(celda * 0.17, 12.5 / escala) * 0.4} />
         </Label>
