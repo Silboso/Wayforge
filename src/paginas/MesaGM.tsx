@@ -70,6 +70,14 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [eligiendo, setEligiendo] = useState<AtaqueCriatura | null>(null);
   const [asomado, setAsomado] = useState<AtaqueCriatura | null>(null);
   const [plegada, setPlegada] = useState(false);
+  // Mientras elige a quién atacar, en una pantalla baja la hoja se pliega (tapa el tablero) y vuelve al terminar
+  const plegoParaElegir = useRef(false);
+  useEffect(() => {
+    const baja = window.innerHeight < 900 || window.innerWidth < 1024;
+    if (eligiendo && baja && !plegada) { plegoParaElegir.current = true; setPlegada(true); }
+    if (!eligiendo && plegoParaElegir.current) { plegoParaElegir.current = false; setPlegada(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligiendo]);
   const [cajon, setCajon] = useState<CajonGM | null>(null);
   // La pista de "toca una criatura": se va al cerrarla o al tocar la primera, y no vuelve
   const [pistaVista, setPistaVista] = useState(() => leer('wayforge:pista-gm') === '1');
