@@ -477,6 +477,7 @@ export function Tablero({
 
   // Tocar el papel vacío: suelta la selección (moverse es solo arrastrando el token)
   function alTocarFondo(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    if (esEcoDeToque(e)) return;
     if (consumirSenal()) return;
     // Midiendo, tocar solo mide (o borra lo medido)
     if (modoRegla || ('ctrlKey' in e.evt && (e.evt.ctrlKey || e.evt.metaKey))) return;
@@ -488,6 +489,8 @@ export function Tablero({
       return;
     }
     if (plantilla) {
+      // Sobre un token, lo resuelve el token (si no, el área se lanzaría dos veces)
+      if (e.target.findAncestor('.ficha')) return;
       const p = e.target.getStage()?.getPointerPosition();
       if (p) tocarConPlantilla(p.x, p.y, e.type === 'tap');
       return;
@@ -531,6 +534,12 @@ export function Tablero({
   };
   const tokenMenu = menu ? estado.tokens[menu.tokenId] : undefined;
   const rangoToken = rango ? estado.tokens[rango.tokenId] : undefined;
+  // "Arrástrame" sobre el token propio la primera vez, salvo mientras se elige un objetivo o un área
+  const pistaId = zona && !arrastrando && !yaArrastro && !rangoToken && !plantilla && !apunta ? tokenMovil?.id ?? null : null;
+  // Lo que dice cada etiqueta (con "· herido" para los jugadores) y su letra en casillas, para repartirlas sin choques
+  const saludDe = (t: Token) => (!pgVisible(estado, t, quien) && t.pg && !t.personajeId ? estadoDeSalud(t.pg) : null);
+  const lugares = lugaresDeNombre(estado.tokens, [seleccionado, enTurno], pistaId,
+    (t) => { const sl = saludDe(t); return sl ? `${t.nombre} · ${sl}` : t.nombre; }, Math.max(0.19, 12.5 / vista.escala / celda));
 
   return (
     // Absoluto: así el canvas no empuja el tamaño de su contenedor y el tablero se puede encoger
@@ -706,7 +715,7 @@ export function Tablero({
               <FichaToken
                 key={token.id}
                 token={token}
-                vecinos={vecinosDe(estado.tokens, token)}
+                nombre={lugares.get(token.id) ?? { lugar: 'abajo', corto: false }}
                 celda={celda}
                 origen={origen}
                 colores={colores}
@@ -714,11 +723,11 @@ export function Tablero({
                 movible={puedeMoverToken(quien, token) && !modoRegla}
                 recorrido={recorridos.get(token.id) ?? null}
                 pg={pgVisible(estado, token, quien)}
-                salud={!pgVisible(estado, token, quien) && token.pg && !token.personajeId ? estadoDeSalud(token.pg) : null}
+                salud={saludDe(token)}
                 derrotado={token.personajeId ? (estado.personajes[token.personajeId]?.pgActual ?? 1) <= 0 : !!token.pg && token.pg.actual <= 0}
                 enTurno={token.id === enTurno}
                 seleccionado={token.id === seleccionado}
-                pista={!!zona && token.id === tokenMovil?.id && !arrastrando && !yaArrastro}
+                pista={token.id === pistaId}
                 onSeleccionar={() => {
                   if (consumirSenal()) return;
                   // Con un área por colocar, tocar un token también la lanza (en el punto que se ve)
@@ -989,7 +998,7 @@ function PlantillaArea({ estado, plantilla, punto, celda, origen, escala, colore
       {casillas.length > 0 && (
         <Label x={origen.x + centroX * celda} y={origen.y + arriba * celda - 4 / escala} listening={false}>
           <Tag fill={colores.superficie} stroke={tinta} strokeWidth={1.5 / escala} cornerRadius={4 / escala} pointerDirection="down" pointerWidth={10 / escala} pointerHeight={6 / escala} />
-          <Text text={lejos ? `Muy lejos: llega a ${plantilla.alcance} ft` : `${plantilla.etiqueta} · ${areaTexto(plantilla.area)} · ${tocadosAhora.length} ${tocadosAhora.length === 1 ? 'tocado' : 'tocados'}${aviso}`}
+          <Text text={lejos ? `Muy lejos: llega a ${plantilla.alcance} ft` : `${areaTexto(plantilla.area)} · ${tocadosAhora.length} ${tocadosAhora.length === 1 ? 'tocado' : 'tocados'}${aviso}`}
             fontSize={letra} fontFamily="Shantell Sans, cursive" fontStyle="bold" fill={amigos.length && !lejos ? colores.peligro : tinta} padding={letra * 0.35} />
         </Label>
       )}
@@ -1101,7 +1110,7 @@ interface PropsFicha {
   enTurno: boolean;
   seleccionado: boolean;
   // Quién tiene pegado: si hay alguien debajo, el nombre va arriba; si hay alguien al lado, se acorta
-  vecinos: { arriba: boolean; abajo: boolean; izquierda: boolean; derecha: boolean; lados: boolean };
+  nombre: { lugar: LugarNombre; corto: boolean };
   // Mostrar "arrástrame" sobre el token propio la primera vez
   pista: boolean;
   // Lo que tiene puesto: un halo si algo lo ayuda, y una marquita por efecto
@@ -1112,7 +1121,7 @@ interface PropsFicha {
   onSoltar: (px: number, py: number) => void;
 }
 
-function FichaToken({ token, vecinos, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, efectos, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
+function FichaToken({ token, nombre, celda, origen, colores, escala, movible, recorrido, pg, salud, derrotado, enTurno, seleccionado, pista, efectos, onSeleccionar, onEmpezar, onArrastrar, onSoltar }: PropsFicha) {
   const [imagen] = useImage(token.imagen || '', 'anonymous');
   const nodo = useRef<Konva.Group>(null);
   const lado = TAMANOS[token.tamano] * celda;
@@ -1171,21 +1180,19 @@ function FichaToken({ token, vecinos, celda, origen, colores, escala, movible, r
   const anchoBarra = Math.max(lado * 0.84, 34 / escala);
   // Dónde va el nombre: debajo; si hay alguien debajo, arriba; si está entre dos, al costado libre.
   // Dos lado a lado: el de la columna impar lo lleva arriba, así los nombres no se pisan
-  const encerrado = vecinos.abajo && (vecinos.arriba || pista);
-  const escalonado = vecinos.lados && !vecinos.abajo && !vecinos.arriba && !pista && token.x % 2 === 1;
-  const nombreArriba = (vecinos.abajo && !encerrado) || escalonado;
-  const nombreAlLado = encerrado ? (!vecinos.derecha ? 'derecha' : !vecinos.izquierda ? 'izquierda' : null) : null;
-  const libreDeLado = escalonado || (vecinos.lados && !vecinos.abajo && !vecinos.arriba && token.x % 2 === 0);
-  const nombreCorto = vecinos.lados && !libreDeLado && !nombreAlLado && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
+  const nombreArriba = nombre.lugar === 'arriba';
+  const nombreAlLado = nombre.lugar === 'derecha' || nombre.lugar === 'izquierda' ? nombre.lugar : null;
+  const nombreCorto = nombre.corto && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
 
   return (
     <Group
       ref={nodo}
+      name="ficha"
       x={pos.x}
       y={pos.y}
       draggable={movible}
-      onMouseDown={onSeleccionar}
-      onTap={onSeleccionar}
+      onMouseDown={(e) => { if (!esEcoDeToque(e)) onSeleccionar(); }}
+      onTap={(e) => { esEcoDeToque(e); onSeleccionar(); }}
       onMouseEnter={(e) => cursor(e, movible ? 'grab' : 'pointer')}
       onMouseLeave={(e) => cursor(e, '')}
       onDragStart={(e) => { e.target.moveToTop(); setLevantada(true); cursor(e, 'grabbing'); onEmpezar(); }}
@@ -1343,23 +1350,70 @@ function ordenTokens(tokens: Record<string, Token>, enTurno: string | null | und
   return Object.values(tokens).sort((a, b) => peso(a) - peso(b) || a.y - b.y || a.x - b.x);
 }
 
-// Si otro token toca a este por arriba, por abajo o por los lados (casillas pegadas)
-function vecinosDe(tokens: Record<string, Token>, t: Token) {
+// En una pantalla táctil el navegador repite cada toque como un clic de mouse un instante después:
+// ese eco se ignora (si no, un toque que lanza un área la lanzaría dos veces)
+let ultimoToque = 0;
+function esEcoDeToque(e: { type: string }) {
+  if (e.type === 'tap' || e.type.startsWith('touch')) { ultimoToque = Date.now(); return false; }
+  return Date.now() - ultimoToque < 800;
+}
+
+type LugarNombre = 'abajo' | 'arriba' | 'derecha' | 'izquierda';
+type Caja = { x0: number; y0: number; x1: number; y1: number };
+
+// Dónde cae, más o menos, la etiqueta del nombre (en casillas): cada letra mide como la mitad de alto de la letra
+function cajaNombre(t: Token, l: LugarNombre, texto: string, letra: number): Caja {
   const lado = TAMANOS[t.tamano];
-  const v = { arriba: false, abajo: false, izquierda: false, derecha: false, lados: false };
-  for (const o of Object.values(tokens)) {
-    if (o.id === t.id) continue;
-    const lo = TAMANOS[o.tamano];
-    const cruzaX = o.x < t.x + lado && o.x + lo > t.x;
-    const cruzaY = o.y < t.y + lado && o.y + lo > t.y;
-    if (cruzaX && o.y === t.y + lado) v.abajo = true;
-    if (cruzaX && o.y + lo === t.y) v.arriba = true;
-    if (cruzaY && o.x === t.x + lado) v.derecha = v.lados = true;
-    if (cruzaY && o.x + lo === t.x) v.izquierda = v.lados = true;
-    // Uno en diagonal debajo también choca con la etiqueta, que es más ancha que la casilla
-    if (!cruzaX && o.y === t.y + lado && (o.x === t.x + lado || o.x + lo === t.x)) v.lados = true;
+  const ancho = Math.max(lado * 0.8, texto.length * letra * 0.55 + letra * 0.6);
+  const alto = letra * 1.6;
+  const medio = { x: t.x + lado / 2, y: t.y + lado / 2 };
+  switch (l) {
+    case 'abajo': return { x0: medio.x - ancho / 2, x1: medio.x + ancho / 2, y0: t.y + lado, y1: t.y + lado + 0.15 + alto };
+    case 'arriba': return { x0: medio.x - ancho / 2, x1: medio.x + ancho / 2, y0: t.y - alto, y1: t.y };
+    case 'derecha': return { x0: t.x + lado, x1: t.x + lado + ancho, y0: medio.y - alto / 2, y1: medio.y + alto / 2 };
+    case 'izquierda': return { x0: t.x - ancho, x1: t.x, y0: medio.y - alto / 2, y1: medio.y + alto / 2 };
   }
-  return v;
+}
+
+const cruzan = (a: Caja, b: Caja) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+// Dónde va el nombre de cada token, para que no lo tape otro token ni choque con el de un vecino.
+// Se prefiere debajo, después arriba y, si los dos chocan o están tapados, un costado libre.
+// Los que van primero (el elegido, el que está en turno) eligen antes y se leen enteros; si no queda
+// lugar sin choque, el nombre se corta con "…". `sinArriba`: el token que muestra "arrástrame" encima.
+function lugaresDeNombre(tokens: Record<string, Token>, primeros: (string | null | undefined)[], sinArriba: string | null,
+  textoDe: (t: Token) => string, letra: number) {
+  const lista = Object.values(tokens);
+  // Los cuerpos de los tokens también estorban: una etiqueta debajo de otro token no se lee
+  const cuerpos = lista.map((o) => ({ id: o.id, caja: { x0: o.x + 0.1, y0: o.y + 0.1, x1: o.x + TAMANOS[o.tamano] - 0.1, y1: o.y + TAMANOS[o.tamano] - 0.1 } }));
+  const peso = (t: Token) => { const i = primeros.indexOf(t.id); return i < 0 ? 0 : primeros.length - i; };
+  const orden = [...lista].sort((a, b) => peso(b) - peso(a) || a.y - b.y || a.x - b.x);
+  const puesto = new Map<string, { lugar: LugarNombre; corto: boolean; caja: Caja }>();
+  for (const t of orden) {
+    const lado = TAMANOS[t.tamano];
+    const v = { arriba: false, abajo: false, izquierda: false, derecha: false };
+    for (const o of lista) {
+      if (o.id === t.id) continue;
+      const lo = TAMANOS[o.tamano];
+      const cruzaX = o.x < t.x + lado && o.x + lo > t.x;
+      const cruzaY = o.y < t.y + lado && o.y + lo > t.y;
+      if (cruzaX && o.y === t.y + lado) v.abajo = true;
+      if (cruzaX && o.y + lo === t.y) v.arriba = true;
+      if (cruzaY && o.x === t.x + lado) v.derecha = true;
+      if (cruzaY && o.x + lo === t.x) v.izquierda = true;
+    }
+    const verticales = ([['abajo', !v.abajo], ['arriba', !v.arriba && t.id !== sinArriba]] as const).filter(([, libre]) => libre).map(([l]) => l);
+    const costados = ([['derecha', !v.derecha], ['izquierda', !v.izquierda]] as const).filter(([, libre]) => libre).map(([l]) => l);
+    // Debajo o arriba primero; un costado libre antes que cortar el nombre
+    const candidatos: LugarNombre[] = [...verticales, ...costados];
+    const caja = (l: LugarNombre) => cajaNombre(t, l, textoDe(t), letra);
+    const choca = (l: LugarNombre) => [...puesto.values()].some((p) => cruzan(p.caja, caja(l)))
+      || cuerpos.some((c) => c.id !== t.id && cruzan(c.caja, caja(l)));
+    const libre = candidatos.find((l) => !choca(l));
+    const lugar = libre ?? candidatos[0] ?? 'abajo';
+    puesto.set(t.id, { lugar, corto: !libre, caja: caja(lugar) });
+  }
+  return puesto;
 }
 
 // Escala la imagen para cubrir el círculo sin deformarla (como object-fit: cover)

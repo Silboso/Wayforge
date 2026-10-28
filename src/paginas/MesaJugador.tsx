@@ -144,8 +144,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   // Lo que probablemente toca: en tu turno, atacar si te quedan acciones
   const marcada = miTurno && combate!.usadas < combate!.acciones ? lista[0]?.filas[0]?.clave ?? null : null;
 
-  // Los demás ven a quién apunto
-  useEffect(() => { sala.apuntar(objetivoToken?.id ?? null); }, [objetivoToken?.id]);
+  // Los demás ven a quién apunto (en combate, solo en mi turno: fuera de él sería ruido en el tablero de todos)
+  const apuntado = !combate || miTurno ? objetivoToken?.id ?? null : null;
+  useEffect(() => { sala.apuntar(apuntado); }, [apuntado]);
 
   // Si otra persona borra el token que tenía seleccionado, se deselecciona
   useEffect(() => {
@@ -634,7 +635,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const tiradas = (
     <div className="flex flex-col gap-4">
       <TiradaLibre esGM={false} objetivo={objetivo} onTirar={tirar} />
-      <ListaTiradas tiradas={estado.tiradas} verCd={false} />
+      <ListaTiradas tiradas={estado.tiradas} verCd={false} mio={miToken?.id} />
     </div>
   );
 
@@ -903,7 +904,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
 
       <TituloEscena eventos={sala.eventos} />
       <HandoutRecibido estado={estado} eventos={sala.eventos} />
-      <AvisoTirada tiradas={estado.tiradas} verCd={false} pendiente={sala.pendiente}
+      <AvisoTirada tiradas={estado.tiradas} verCd={false} mio={miToken?.id} pendiente={sala.pendiente}
         lugar="bottom-[156px] lg:inset-x-auto lg:right-6 lg:bottom-[calc(var(--alto-hoja)+40px)]" />
 
       {/* Avisos del momento: arriba a la derecha en PC, arriba en el teléfono */}
@@ -1272,11 +1273,12 @@ function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken } }: { c
 // Pestañas índice: una por cada forma de recuperar lo que usas
 function Pestanas({ lista, activa, onCambiar }: { lista: Seccion[]; activa: Seccion['id']; onCambiar: (id: Seccion['id']) => void }) {
   return (
-    <div className="relative flex flex-wrap gap-x-1 gap-y-1 pb-[3px]" role="tablist">
+    // En una sola línea: en pantallas angostas se achican y, si igual no caben, se desliza de lado
+    <div className="relative flex gap-x-0.5 overflow-x-auto pb-[3px] [scrollbar-width:none] xl:gap-x-1" role="tablist">
       <RayaAMano className="absolute inset-x-0 bottom-0 h-1.5 text-texto/70" />
       {lista.map((s) => (
         <button key={s.id} role="tab" aria-selected={activa === s.id} title={s.ayuda} onClick={() => onCambiar(s.id)}
-          className={`relative z-[1] rounded-t-md border-[1.5px] border-b-0 px-2.5 pt-1 pb-0.5 font-titulo text-[14px] transition ${activa === s.id ? 'border-texto/60 bg-superficie font-bold text-texto' : 'border-transparent text-texto-suave hover:text-texto'}`}>
+          className={`relative z-[1] shrink-0 rounded-t-md border-[1.5px] border-b-0 px-1.5 pt-1 pb-0.5 font-titulo text-[13px] whitespace-nowrap transition xl:px-2.5 xl:text-[14px] ${activa === s.id ? 'border-texto/60 bg-superficie font-bold text-texto' : 'border-transparent text-texto-suave hover:text-texto'}`}>
           {s.titulo}
           {s.id !== 'turno' && <span className="ml-1 text-[11.5px] text-texto-suave">{s.filas.length}</span>}
         </button>

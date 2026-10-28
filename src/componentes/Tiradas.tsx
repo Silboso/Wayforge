@@ -22,6 +22,11 @@ const COLOR_GRADO: Record<Grado, string> = {
 };
 
 // "Éxito contra Goblin". La CA solo la ve el GM: para los jugadores es un secreto de los enemigos.
+// La CD de una salvación contra tu propio conjuro la conoces (es tuya); la CA y la CD de los demás, solo el GM
+function cdVisible(t: Tirada, verCd: boolean, mio?: string) {
+  return verCd || (!!mio && !!t.objetivo?.salvacion && t.autorTokenId === mio);
+}
+
 function Resultado({ t, verCd }: { t: Tirada; verCd: boolean }) {
   if (!t.objetivo) return null;
   // Daño u otra tirada sin CA: solo a quién iba
@@ -35,13 +40,13 @@ function Resultado({ t, verCd }: { t: Tirada; verCd: boolean }) {
   );
 }
 
-export function ListaTiradas({ tiradas, verCd }: { tiradas: Tirada[]; verCd: boolean }) {
+export function ListaTiradas({ tiradas, verCd, mio }: { tiradas: Tirada[]; verCd: boolean; mio?: string }) {
   if (tiradas.length === 0) {
     return <p className="text-sm text-texto-suave">Las tiradas de todos aparecen aquí. Toca una skill, salvación o ataque en tu ficha para tirar.</p>;
   }
   return (
     <ul className="flex flex-col gap-2">
-      {[...tiradas].reverse().map((t) => <FilaTirada key={t.id} t={t} verCd={verCd} />)}
+      {[...tiradas].reverse().map((t) => <FilaTirada key={t.id} t={t} verCd={cdVisible(t, verCd, mio)} />)}
     </ul>
   );
 }
@@ -118,9 +123,10 @@ const DURA_MS = 5400;
 // El dado 3D empieza a girar al apretar (la tirada viene en camino), cae en su cara y entonces
 // la cuenta se escribe a tinta: el total en un círculo a mano y el resultado como un sello.
 // `lugar`: dónde flota la tarjeta (en la mesa del jugador, en escritorio, arriba para no tapar la hoja)
-export function AvisoTirada({ tiradas, verCd, pendiente = null, lugar = 'bottom-[156px] lg:bottom-6' }: {
+export function AvisoTirada({ tiradas, verCd, mio, pendiente = null, lugar = 'bottom-[156px] lg:bottom-6' }: {
   tiradas: Tirada[];
   verCd: boolean;
+  mio?: string;
   pendiente?: { etiqueta: string; desde: number; caras?: number } | null;
   lugar?: string;
 }) {
@@ -164,7 +170,7 @@ export function AvisoTirada({ tiradas, verCd, pendiente = null, lugar = 'bottom-
             {esperando || !visible ? `${pendiente!.etiqueta}…` : <><span className="text-texto">{visible.quien}</span> · {visible.etiqueta}</>}
           </p>
           {visible && !esperando && (asentada
-            ? <NotaTirada t={visible} verCd={verCd} nat={nat} />
+            ? <NotaTirada t={visible} verCd={cdVisible(visible, verCd, mio)} nat={nat} />
             : <p className="font-titulo text-[15px] text-texto-suave">rodando…</p>)}
         </div>
       </div>
@@ -223,7 +229,7 @@ function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critic
         <div className="flex flex-wrap items-center gap-2">
           <Estampa color={sello.color}>{sello.texto}</Estampa>
           <span className="font-titulo text-[13px] text-texto-suave">
-            {t.objetivo!.salvacion ? `contra CD ${verCd ? t.objetivo!.cd : '?'}` : `contra ${t.objetivo!.nombre}${verCd && t.objetivo!.cd ? ` (CA ${t.objetivo!.cd})` : ''}`}
+            {t.objetivo!.salvacion ? (verCd && t.objetivo!.cd ? `contra CD ${t.objetivo!.cd}` : 'en su salvación') : `contra ${t.objetivo!.nombre}${verCd && t.objetivo!.cd ? ` (CA ${t.objetivo!.cd})` : ''}`}
           </span>
         </div>
       )}
