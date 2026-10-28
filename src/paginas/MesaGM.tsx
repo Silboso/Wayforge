@@ -371,7 +371,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const panel = (c: CajonGM) => {
     switch (c) {
       case 'combate': return <PanelCombateGM estado={estado} quien={sala.quien} enviar={sala.enviar} onIniciar={sala.iniciarCombate} onSumar={sala.sumarACombate} />;
-      case 'bestiario': return <PanelBestiario estado={estado} enviar={sala.enviar} cerca={cerca} onCreados={(ids) => { if (ids[0]) { setActorId(ids[0]); setEnfoque((x) => ({ tokenId: ids[0]!, n: (x?.n ?? 0) + 1 })); } }} />;
+      case 'bestiario': return <PanelBestiario estado={estado} enviar={sala.enviar} onDecir={sala.decir} cerca={cerca} onCreados={(ids) => { if (ids[0]) { setActorId(ids[0]); setEnfoque((x) => ({ tokenId: ids[0]!, n: (x?.n ?? 0) + 1 })); } }} />;
       case 'personajes': return <PersonajesGM estado={estado} sala={sala} objetivo={objetivo ? { id: objetivo.id, nombre: objetivo.nombre } : null}
         onCrear={() => setCreando(personajeNuevo(crypto.randomUUID()))} onEditar={setEditandoP} />;
       case 'mesa': return <HerramientasGM salaId={salaId} codigoGM={codigoGM} estado={estado} seleccionado={actorId} onSeleccionar={setActorId} enviar={sala.enviar}

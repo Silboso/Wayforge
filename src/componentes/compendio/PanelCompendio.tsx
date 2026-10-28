@@ -22,10 +22,18 @@ export interface AccionesCompendio {
   onAgregarObjeto?: (e: EquipoCompendio) => void;
   // Comprar: false si no le alcanza el dinero
   onComprarObjeto?: (e: EquipoCompendio) => boolean;
+  // GM: dárselo a un personaje (botín, una recompensa)
+  darA?: { id: string; nombre: string }[];
+  onDarObjeto?: (e: EquipoCompendio, personajeId: string) => void;
 }
 
 // Todo Pathfinder 2e para consultar: buscar por nombre o rasgo, filtrar por nivel y abrir el detalle
-export function PanelCompendio({ acciones = {}, tipoInicial = 'criaturas' }: { acciones?: AccionesCompendio; tipoInicial?: TipoCompendio }) {
+export function PanelCompendio({ acciones = {}, tipoInicial = 'criaturas', conCriaturas }: {
+  acciones?: AccionesCompendio;
+  tipoInicial?: TipoCompendio;
+  // Lo que va arriba solo mirando criaturas (el GM: de a cuántas se ponen)
+  conCriaturas?: ReactNode;
+}) {
   const [tipo, setTipo] = useState<TipoCompendio>(tipoInicial);
   const [texto, setTexto] = useState('');
   const [nivelMin, setNivelMin] = useState('');
@@ -43,6 +51,7 @@ export function PanelCompendio({ acciones = {}, tipoInicial = 'criaturas' }: { a
 
   return (
     <div className="flex flex-col gap-3">
+      {tipo === 'criaturas' && conCriaturas}
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Tipo de contenido">
         {TIPOS_COMPENDIO.map((t) => (
           <button key={t.tipo} role="tab" aria-selected={tipo === t.tipo} title={t.ayuda} onClick={() => { setTipo(t.tipo); setAbierta(null); }}
@@ -153,6 +162,9 @@ function Detalle({ tipo, id, acciones, onVolver }: { tipo: TipoCompendio; id: st
                 Comprar ({textoPrecio((e as EquipoCompendio).precio)})
               </Boton>
             )}
+            {tipo === 'equipo' && acciones.onDarObjeto && (acciones.darA ?? []).map((p) => (
+              <Boton key={p.id} onClick={() => hacer(`Está en la mochila de ${p.nombre} (le avisamos).`, () => acciones.onDarObjeto!(e as EquipoCompendio, p.id))}>Dar a {p.nombre}</Boton>
+            ))}
             {tipo === 'equipo' && acciones.onAgregarObjeto && (
               <Boton onClick={() => hacer('Está en tu mochila.', () => acciones.onAgregarObjeto!(e as EquipoCompendio))}>{acciones.onComprarObjeto ? 'Agregar sin pagar' : 'Agregar a mi mochila'}</Boton>
             )}

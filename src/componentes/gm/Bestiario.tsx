@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { criaturaDeCompendio, type CriaturaCompendio } from '../../../reglas/compendio';
 import { COLORES_TOKEN, TAMANOS, type Accion, type EstadoSala, type Token } from '../../../compartido/sala';
 import { PanelCompendio } from '../compendio/PanelCompendio';
+import { agregarObjeto, consumibleDeCompendio, escudoDe, objetoDeCompendio } from '../../../reglas/objetos';
 
 // Dónde poner criaturas nuevas: cerca de la casilla pedida, sin pisar a nadie (todas las casillas que ocupa si es grande)
 export function casillasLibres(estado: EstadoSala, cerca: { x: number; y: number }, cuantas: number, lado = 1): { x: number; y: number }[] {
@@ -28,9 +29,11 @@ export function casillasLibres(estado: EstadoSala, cerca: { x: number; y: number
 }
 
 // El compendio del GM: todo Pathfinder para consultar, y cualquier criatura de los bestiarios al tablero (1 a 6 iguales)
-export function PanelBestiario({ estado, enviar, cerca, onCreados }: {
+export function PanelBestiario({ estado, enviar, cerca, onCreados, onDecir }: {
   estado: EstadoSala;
   enviar: (accion: Accion) => void;
+  // Para avisarle al jugador lo que le dio (un susurro)
+  onDecir?: (texto: string, para?: string) => void;
   // La casilla alrededor de la cual aparecen
   cerca: { x: number; y: number };
   onCreados: (ids: string[]) => void;
@@ -56,8 +59,7 @@ export function PanelBestiario({ estado, enviar, cerca, onCreados }: {
     onCreados(ids);
   }
 
-  return (
-    <div className="flex flex-col gap-3">
+  const deACuantas = (
       <div className="flex items-center gap-2 font-titulo text-[13.5px] text-texto-suave">
         Poner de a:
         {[1, 2, 3, 4, 6].map((n) => (
@@ -67,7 +69,19 @@ export function PanelBestiario({ estado, enviar, cerca, onCreados }: {
           </button>
         ))}
       </div>
-      <PanelCompendio tipoInicial="criaturas" acciones={{ onPonerCriatura: poner }} />
-    </div>
+  );
+  return (
+      <PanelCompendio tipoInicial="criaturas" conCriaturas={deACuantas} acciones={{
+        onPonerCriatura: poner,
+        darA: Object.values(estado.personajes).map((p) => ({ id: p.id, nombre: p.nombre })),
+        // El botín va a la mochila (los consumibles con su acción; un escudo, embrazado si no tenía) y se le avisa
+        onDarObjeto: (e, personajeId) => {
+          const p = estado.personajes[personajeId];
+          if (!p) return;
+          const escudo = !p.escudo && e.escudo ? escudoDe(e) : null;
+          enviar({ tipo: 'editar-personaje', id: p.id, cambios: { ...agregarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e)), ...(escudo ? { escudo } : {}) } });
+          onDecir?.(`Te doy ${e.nombre}: ya está en tu mochila.`, p.id);
+        },
+      }} />
   );
 }
