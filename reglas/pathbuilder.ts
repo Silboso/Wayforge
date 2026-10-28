@@ -392,6 +392,8 @@ export async function desdePathbuilder(b: BuildPathbuilder, id: string, buscar: 
     pgClase,
     pgActual: pgAscendencia + (pgClase + atributos.con) * nivel,
     pgTemporales: 0,
+    // Cada personaje empieza la sesión con 1 Hero Point
+    puntosHeroicos: 1,
     velocidad: entre((at.speed ?? 25) + (at.speedBonus ?? 0), 5, 200),
     percepcion: rangoDe(prof.perception),
     salvaciones,

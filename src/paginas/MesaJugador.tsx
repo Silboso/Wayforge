@@ -426,7 +426,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         avisos.push({
           id: id(), tono: 'malo', titulo: t.objetivo.grado === 'pifia' ? `Pifia contra ${contra}` : `Fallaste contra ${contra}`,
           cuerpo: <>{t.total} contra su defensa.{extra.length > 0 && <> Puedes: {nombres(extra)}.</>}</>, dura: 9000,
-          ...(heroicos > 0 && t.dados.length === 1 && t.caras === 20 ? { botones: [{ etiqueta: `Repetir (Hero Point, te quedan ${heroicos})`, principal: true, hacer: () => sala.heroico('repetir', t.id) }] } : {}),
+          ...(heroicos > 0 && t.dados.length === 1 && t.caras === 20 ? { botones: [{ etiqueta: `Repetir con un Hero Point (tienes ${heroicos})`, principal: true, hacer: () => sala.heroico('repetir', t.id) }] } : {}),
         });
       }
     }

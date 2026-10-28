@@ -305,6 +305,8 @@ export function personajeNuevo(id: string): Personaje {
     pgClase: 8,
     pgActual: 16,
     pgTemporales: 0,
+    // Cada personaje empieza la sesión con 1 Hero Point
+    puntosHeroicos: 1,
     velocidad: 25,
     percepcion: 1,
     salvaciones: { fortitude: 1, reflex: 1, will: 1 },

@@ -28,7 +28,7 @@ const personajes = [
   {
     codigo: '1234',
     ficha: {
-      id: 'kyra', nombre: 'Kyra', ascendencia: 'Human', clase: 'Fighter', nivel: 3, pgTemporales: 0, velocidad: 25, notas: '',
+      id: 'kyra', nombre: 'Kyra', ascendencia: 'Human', clase: 'Fighter', nivel: 3, pgTemporales: 0, puntosHeroicos: 1, velocidad: 25, notas: '',
       atributos: { str: 4, dex: 2, con: 2, int: 0, wis: 1, cha: 0 }, pgAscendencia: 8, pgClase: 10, pgActual: 44, percepcion: 2,
       salvaciones: { fortitude: 2, reflex: 2, will: 1 }, armadura: { nombre: 'Chain mail', rango: 1, bonoObjeto: 4, topeDex: 1 },
       escudo: { nombre: 'Steel Shield', ca: 2, dureza: 5, pg: 20, pgActual: 20 },
@@ -63,7 +63,7 @@ const personajes = [
   {
     codigo: '5678',
     ficha: {
-      id: 'ezren', nombre: 'Ezren', ascendencia: 'Human', clase: 'Wizard', nivel: 3, pgTemporales: 0, velocidad: 25, notas: '',
+      id: 'ezren', nombre: 'Ezren', ascendencia: 'Human', clase: 'Wizard', nivel: 3, pgTemporales: 0, puntosHeroicos: 1, velocidad: 25, notas: '',
       atributos: { str: 0, dex: 2, con: 1, int: 4, wis: 1, cha: 0 }, pgAscendencia: 8, pgClase: 6, pgActual: 29, percepcion: 1,
       salvaciones: { fortitude: 1, reflex: 1, will: 2 }, armadura: { nombre: '', rango: 1, bonoObjeto: 0, topeDex: null },
       habilidades: skills({ arcana: 2, crafting: 1, society: 1, occultism: 1 }),
@@ -95,7 +95,7 @@ const personajes = [
   {
     codigo: '9012',
     ficha: {
-      id: 'korakai', nombre: 'Korakai', ascendencia: 'Human', clase: 'Oracle', nivel: 3, pgTemporales: 0, velocidad: 25, notas: '',
+      id: 'korakai', nombre: 'Korakai', ascendencia: 'Human', clase: 'Oracle', nivel: 3, pgTemporales: 0, puntosHeroicos: 1, velocidad: 25, notas: '',
       atributos: { str: 0, dex: 1, con: 2, int: 0, wis: 2, cha: 4 }, pgAscendencia: 8, pgClase: 8, pgActual: 38, percepcion: 1,
       salvaciones: { fortitude: 1, reflex: 1, will: 2 }, armadura: { nombre: 'Leather', rango: 1, bonoObjeto: 1, topeDex: 4 },
       habilidades: skills({ religion: 2, diplomacy: 1, occultism: 1, medicine: 1 }),

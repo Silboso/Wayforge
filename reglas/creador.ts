@@ -382,6 +382,8 @@ export function construir(e: Eleccion, base: Pick<Personaje, 'id' | 'nombre'> & 
     pgClase,
     pgActual: pgAscendencia + (pgClase + attr.con) * nivel,
     pgTemporales: 0,
+    // Cada personaje empieza la sesión con 1 Hero Point
+    puntosHeroicos: 1,
     velocidad: Math.max(5, velocidad),
     percepcion: c?.percepcion ?? 1,
     salvaciones: c?.salvaciones ?? { fortitude: 1, reflex: 1, will: 1 },
