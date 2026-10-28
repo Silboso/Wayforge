@@ -545,7 +545,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         lugar={`top-[120px] lg:top-auto lg:inset-x-auto lg:right-6 ${actor ? (plegada ? 'lg:bottom-[104px]' : 'lg:bottom-[340px]') : 'lg:bottom-6'}`} />
       <TituloEscena eventos={sala.eventos} />
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
-        className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:w-[340px] ${combate ? 'lg:top-[118px]' : 'lg:top-[72px]'} ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
+        className={`fixed inset-x-3 top-[60px] z-[60] lg:inset-x-auto lg:w-[340px] ${combate ? 'lg:top-[118px]' : 'lg:top-[72px]'} ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
 
       {/* Preparando un combate: cuántos están listos y tirar sin abrir el panel; al empezar, el orden de juego */}
       <div className={`pointer-events-none fixed left-0 top-[60px] z-30 flex flex-col items-center gap-2 px-4 ${cajon ? 'right-0 lg:right-[440px]' : 'right-0'}`}>

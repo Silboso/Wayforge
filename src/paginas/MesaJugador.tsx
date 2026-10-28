@@ -380,7 +380,12 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         return [{ id: id(), tono: 'peligro', titulo: e.cayo ? `Recibes ${e.cantidad} de daño y caes` : `Recibes ${e.cantidad} de daño`,
           cuerpo: `${causa ? `${causa}. ` : ''}${e.cayo ? 'Quedas Dying e inconsciente: tus aliados pueden curarte.' : 'Ya está restado de tus PG.'}`, dura: 6000 }];
       }
-      if (e.tipo === 'curacion') return [{ id: id(), tono: 'bueno', titulo: `Te curan ${e.cantidad} PG`, cuerpo: 'Ya está sumado.', dura: 5000 }];
+      if (e.tipo === 'curacion') {
+        // Quién: si fue algo tuyo (una poción), "recuperas"; si fue un aliado, su nombre
+        const fuente = [...estado.tiradas].reverse().slice(0, 6).find((t) => t.objetivo?.tokenId === miToken.id && t.resultado?.curacion === e.cantidad);
+        const propia = !fuente || fuente.quien === miToken.nombre;
+        return [{ id: id(), tono: 'bueno', titulo: propia ? `Recuperas ${e.cantidad} PG` : `${fuente!.quien} te cura ${e.cantidad} PG`, cuerpo: 'Ya está sumado.', dura: 5000 }];
+      }
       // Lo persistente no cambia tus tiradas: hace daño al terminar cada turno tuyo, hasta que salga un 15 o más
       if (e.persistente) {
         return [{ id: id(), tono: e.quitado ? 'bueno' : 'malo', titulo: e.quitado ? `Se apagó ${e.nombre}` : `Ahora tienes ${e.nombre}`,
@@ -951,7 +956,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
 
       {/* Avisos del momento: arriba a la derecha en PC, arriba en el teléfono */}
       <PilaAvisos avisos={avisos} onCerrar={cerrarAviso}
-        className={`fixed inset-x-3 top-[60px] z-30 lg:inset-x-auto lg:w-[340px] ${combate ? 'lg:top-[118px]' : 'lg:top-[72px]'} ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
+        className={`fixed inset-x-3 top-[60px] z-[60] lg:inset-x-auto lg:w-[340px] ${combate ? 'lg:top-[118px]' : 'lg:top-[72px]'} ${cajon ? 'lg:right-[464px]' : 'lg:right-6'}`} />
       {esperaAjena && (
         <div className="fixed inset-x-0 top-[60px] z-30 flex justify-center px-4" role="status">
           <p className="tarjeta px-4 py-2 font-titulo text-[15px]">
