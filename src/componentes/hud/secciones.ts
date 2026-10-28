@@ -82,7 +82,11 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
   }));
 
   const todas = todasLasAptitudes(p);
-  const comunes = ACCIONES_COMUNES.map((id) => todas.find((a) => a.id === id)).filter((a): a is Aptitud => !!a);
+  // Levantar el escudo solo si lleva uno (en la hoja, en la mochila o con Shield Block)
+  const conEscudo = !!p.escudo || (p.inventario ?? []).some((o) => /\bshield\b|escudo/i.test(o.nombre))
+    || (p.aptitudes ?? []).some((x) => /shield block/i.test(x.nombre));
+  const comunes = ACCIONES_COMUNES.filter((id) => id !== 'basica:raise-shield' || conEscudo)
+    .map((id) => todas.find((a) => a.id === id)).filter((a): a is Aptitud => !!a);
   const resto = todas.filter((a) => !ACCIONES_COMUNES.includes(a.id));
 
   const basicas = [...golpes, ...comunes.map((a) => filaAptitud(p, a, ficha))];
@@ -114,18 +118,27 @@ export function secciones(p: Personaje, condiciones: Condicion[], ataquesHechos:
   }
   // Los atajos: los que eligió el jugador, o lo primero de sus acciones si nunca los cambió
   const porClave = new Map(lista.flatMap((s) => s.filas).map((f) => [f.clave, f]));
-  // Sin elegir: las seis primeras acciones en Q W E R D F y los objetos en 1–4
+  // Sin elegir: el arma, moverse y lo que más hace en Q W E R D F (un lanzador, sus trucos que dañan); los objetos en 1–4
   const objetos = resto.filter((a) => a.categoria === 'objeto').slice(0, 4).map((a) => a.id);
-  const claves = p.atajos ?? [...basicas.slice(0, 6).map((f) => f.clave), ...objetos];
+  const trucos = resto.filter((a) => (a.categoria === 'truco' || a.categoria === 'conjuro') && a.recuperacion.tipo === 'siempre' && !!interaccionDe(a)?.dano).slice(0, 2).map((a) => a.id);
+  const primeras = [...basicas.slice(0, 3).map((f) => f.clave), ...trucos, ...basicas.slice(3).map((f) => f.clave)];
+  const claves = p.atajos ?? [...[...new Set(primeras)].slice(0, 6), ...objetos];
   const ranuras = TECLAS.map((_, i) => (claves[i] ? porClave.get(claves[i]!) ?? null : null));
   return [{
     id: 'turno',
     titulo: 'Tu turno',
-    ayuda: 'Tus atajos: Q W E R, D F y 1–4. Arrastra acciones a la barra de habilidades para cambiarlos.',
+    ayuda: tactil()
+      ? 'Lo que más usas, a un toque. Para cambiarlo, arrastra acciones a la barra en una pantalla grande.'
+      : 'Tus atajos: Q W E R, D F y 1–4. Arrastra acciones a la barra de habilidades para cambiarlos.',
     resumen: null,
     filas: ranuras.filter((f): f is Fila => !!f),
     ranuras,
   }, ...lista];
+}
+
+// En un teléfono o tableta no hay teclas que nombrar
+function tactil() {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 }
 
 // Los atajos con una fila puesta en el espacio `i` (si ya estaba en otro, cambian de lugar)

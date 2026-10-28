@@ -1243,7 +1243,7 @@ function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken } }: { c
     );
   }
   if (!combate) {
-    return <h3 className="mb-1 font-titulo text-[21px] font-semibold">Fuera de combate <span className="text-[14px] font-normal text-texto-suave">· explora, habla, descansa</span></h3>;
+    return <h3 className="mb-1 font-titulo text-[21px] font-semibold">Fuera de combate <span className="hidden text-[14px] font-normal text-texto-suave sm:inline">· explora, habla, descansa</span></h3>;
   }
   if (!miTurno) {
     return (

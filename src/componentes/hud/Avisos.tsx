@@ -80,7 +80,7 @@ export function useAvisos(eventos: { id: number; evento: Evento }[], generar: (e
     if (nuevos.length === 0) return;
     visto.current = nuevos.at(-1)!.id;
     const creados = nuevos.flatMap((e) => generarRef.current(e.evento));
-    if (creados.length) setAvisos((prev) => [...creados.reverse(), ...prev].slice(0, 5));
+    if (creados.length) setAvisos((prev) => sumar(prev, creados.reverse()));
   }, [eventos]);
 
   useEffect(() => {
@@ -91,8 +91,15 @@ export function useAvisos(eventos: { id: number; evento: Evento }[], generar: (e
 
   const cerrar = (id: string) => setAvisos((prev) => prev.filter((a) => a.id !== id));
   // Avisos que no vienen de un evento (la sala dijo que no, una indicación)
-  const agregar = (a: Aviso) => setAvisos((prev) => [a, ...prev].slice(0, 5));
+  const agregar = (a: Aviso) => setAvisos((prev) => sumar(prev, [a]));
   return { avisos, cerrar, agregar };
+}
+
+// Los nuevos arriba; uno con el mismo id reemplaza al viejo, y un turno nuevo saca el aviso del turno anterior
+function sumar(prev: Aviso[], nuevos: Aviso[]): Aviso[] {
+  const ids = new Set(nuevos.map((a) => a.id));
+  const turno = nuevos.some((a) => a.tono === 'turno');
+  return [...nuevos, ...prev.filter((a) => !ids.has(a.id) && !(turno && a.tono === 'turno'))].slice(0, 5);
 }
 
 export function PilaAvisos({ avisos, onCerrar, className = '' }: { avisos: Aviso[]; onCerrar: (id: string) => void; className?: string }) {

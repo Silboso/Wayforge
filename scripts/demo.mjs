@@ -145,6 +145,7 @@ enviar({ tipo: 'accion', accion: { tipo: 'editar-mapa', cambios: { muros: [
 ], luz: 'tenue', luces: [{ id: 'brasero', x: 20, y: 4, brillante: 10, tenue: 10 }] } } });
 // Atardecer: Kyra lleva una antorcha; los goblins ven en la oscuridad
 enviar({ tipo: 'accion', accion: { tipo: 'llevar-luz', tokenId: 'kyra', luz: { brillante: 20, tenue: 20 } } });
+enviar({ tipo: 'accion', accion: { tipo: 'nombrar-mesa', nombre: 'Mesa de prueba' } });
 // Un handout preparado (nadie lo ve hasta que el GM lo muestre desde Mesa → Handouts)
 enviar({ tipo: 'accion', accion: { tipo: 'guardar-handout', handout: { id: 'carta-alcalde', titulo: 'La carta del alcalde', texto: 'Al grupo que limpió el camino:\n\nVengan solos al molino viejo cuando caiga la noche. No confíen en el herrero.\n\n— Alcalde Deverin' } } });
 await esperar(300);

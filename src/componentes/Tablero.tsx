@@ -1101,7 +1101,7 @@ interface PropsFicha {
   enTurno: boolean;
   seleccionado: boolean;
   // Quién tiene pegado: si hay alguien debajo, el nombre va arriba; si hay alguien al lado, se acorta
-  vecinos: { arriba: boolean; abajo: boolean; lados: boolean };
+  vecinos: { arriba: boolean; abajo: boolean; izquierda: boolean; derecha: boolean; lados: boolean };
   // Mostrar "arrástrame" sobre el token propio la primera vez
   pista: boolean;
   // Lo que tiene puesto: un halo si algo lo ayuda, y una marquita por efecto
@@ -1169,8 +1169,11 @@ function FichaToken({ token, vecinos, celda, origen, colores, escala, movible, r
   const fraccion = pg ? Math.max(0, Math.min(1, pg.actual / pg.max)) : 0;
   const tintaPG = fraccion > 0.5 ? colores.exito : fraccion > 0.2 ? '#d69a2d' : colores.peligro;
   const anchoBarra = Math.max(lado * 0.84, 34 / escala);
-  const nombreArriba = vecinos.abajo && !vecinos.arriba && !pista;
-  const nombreCorto = vecinos.lados && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
+  // Dónde va el nombre: debajo; si hay alguien debajo, arriba; si está entre dos, al costado libre
+  const encerrado = vecinos.abajo && (vecinos.arriba || pista);
+  const nombreArriba = vecinos.abajo && !encerrado;
+  const nombreAlLado = encerrado ? (!vecinos.derecha ? 'derecha' : !vecinos.izquierda ? 'izquierda' : null) : null;
+  const nombreCorto = vecinos.lados && !nombreAlLado && !enTurno && !seleccionado ? Math.max(lado + celda * 0.3, 60 / escala) : 0;
 
   return (
     <Group
@@ -1297,8 +1300,10 @@ function FichaToken({ token, vecinos, celda, origen, colores, escala, movible, r
       )}
       {/* El nombre en una etiqueta de papel: debajo, o arriba si hay otro token pegado debajo y nadie arriba.
           Con vecinos a los lados se corta con "…" (salvo el que está en turno o elegido, que se lee entero) */}
-      <Label x={radio} y={nombreArriba ? -3 / escala : lado + (pg ? altoBarra + 6 : 4)} listening={false}>
-        <Tag fill={colores.superficie} opacity={0.94} cornerRadius={3 / escala} pointerDirection={nombreArriba ? 'down' : 'up'} pointerWidth={8 / escala} pointerHeight={4 / escala}
+      <Label x={nombreAlLado === 'derecha' ? lado + 3 / escala : nombreAlLado === 'izquierda' ? -3 / escala : radio}
+        y={nombreAlLado ? radio : nombreArriba ? -3 / escala : lado + (pg ? altoBarra + 6 : 4)} listening={false}>
+        <Tag fill={colores.superficie} opacity={0.94} cornerRadius={3 / escala}
+          pointerDirection={nombreAlLado === 'derecha' ? 'left' : nombreAlLado === 'izquierda' ? 'right' : nombreArriba ? 'down' : 'up'} pointerWidth={8 / escala} pointerHeight={4 / escala}
           shadowColor={colores.sombra} shadowBlur={4 / escala} shadowOffsetY={1.5 / escala} shadowOpacity={0.25} />
         <Text text={salud ? `${token.nombre} · ${salud}` : token.nombre} fontSize={letraNombre} fontFamily="Shantell Sans, cursive" fontStyle={enTurno ? 'bold' : 'normal'}
           fill={token.tipo === 'enemigo' ? colores.peligro : colores.texto} padding={letraNombre * 0.28}
@@ -1338,7 +1343,7 @@ function ordenTokens(tokens: Record<string, Token>, enTurno: string | null | und
 // Si otro token toca a este por arriba, por abajo o por los lados (casillas pegadas)
 function vecinosDe(tokens: Record<string, Token>, t: Token) {
   const lado = TAMANOS[t.tamano];
-  const v = { arriba: false, abajo: false, lados: false };
+  const v = { arriba: false, abajo: false, izquierda: false, derecha: false, lados: false };
   for (const o of Object.values(tokens)) {
     if (o.id === t.id) continue;
     const lo = TAMANOS[o.tamano];
@@ -1346,7 +1351,8 @@ function vecinosDe(tokens: Record<string, Token>, t: Token) {
     const cruzaY = o.y < t.y + lado && o.y + lo > t.y;
     if (cruzaX && o.y === t.y + lado) v.abajo = true;
     if (cruzaX && o.y + lo === t.y) v.arriba = true;
-    if (cruzaY && (o.x === t.x + lado || o.x + lo === t.x)) v.lados = true;
+    if (cruzaY && o.x === t.x + lado) v.derecha = v.lados = true;
+    if (cruzaY && o.x + lo === t.x) v.izquierda = v.lados = true;
     // Uno en diagonal debajo también choca con la etiqueta, que es más ancha que la casilla
     if (!cruzaX && o.y === t.y + lado && (o.x === t.x + lado || o.x + lo === t.x)) v.lados = true;
   }
