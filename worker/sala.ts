@@ -241,8 +241,10 @@ export class Sala extends DurableObject<Env> {
       if (quien.rol !== 'visitante') this.enviarEstado(ws);
       return;
     }
-    // Al terminar un turno, lo persistente (fuego, ácido, sangrado) hace su daño antes de pasar al siguiente
-    if (accion.tipo === 'avanzar-turno') {
+    // Al terminar un turno, lo persistente (fuego, ácido, sangrado) hace su daño antes de pasar al siguiente.
+    // Esperar (Delay) también termina el turno; volver de esperar no
+    const pasaTurno = accion.tipo === 'avanzar-turno' || accion.tipo === 'demorar';
+    if (pasaTurno) {
       const termina = tokenEnTurno(this.estado);
       if (termina?.efectos?.some((e) => e.persistente)) {
         // Quien pasó el turno lo vio adelantado: primero se le corrige, después va todo en orden
@@ -254,7 +256,7 @@ export class Sala extends DurableObject<Env> {
     }
     // Quien la mandó ya la aplicó en su pantalla (optimista); al resto le llega filtrada (niebla, escenas, telón)
     await this.guardarYRepartir(accion, ws);
-    if (accion.tipo === 'avanzar-turno') await this.recuperacionAlEmpezar();
+    if (pasaTurno) await this.recuperacionAlEmpezar();
 
     if (accion.tipo === 'editar-personaje' || accion.tipo === 'borrar-personaje') this.repartirLobby();
     if (accion.tipo === 'borrar-personaje') {

@@ -190,6 +190,13 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       setElegida(null);
       return true;
     }
+    // Delay: deja el turno para más tarde; vuelve con "Actuar ahora"
+    if (a.id === 'basica:delay') {
+      if (!miTurno || !miToken) return sala.negarLocal('Esperar (Delay) se elige al empezar tu turno, en combate.'), false;
+      sala.enviar({ tipo: 'demorar', tokenId: miToken.id });
+      setElegida(null);
+      return true;
+    }
     if (a.id === 'basica:stride' || a.id === 'basica:step') {
       setPestana('tablero');
       setElegida(null);
@@ -1116,11 +1123,12 @@ export function OrdenEscrito({ estado, combate, onEnfocar, conPanel = false }: {
         const ahora = i === combate.turno;
         const hecho = i < combate.turno;
         const enemigo = !t.personajeId;
+        const espera = (combate.demorados ?? []).includes(c.tokenId);
         return (
           <li key={c.tokenId} className="shrink-0">
             <button onClick={() => onEnfocar(c.tokenId)} title={`Ver a ${t.nombre} en el tablero`}
-              className={`whitespace-nowrap rounded-sm px-0.5 transition hover:underline hover:decoration-dotted ${ahora ? 'marcatextos font-bold' : hecho ? 'text-texto-suave line-through decoration-[1.5px]' : enemigo ? 'text-peligro' : ''}`}>
-              {t.nombre}<span className={`ml-1 text-[12.5px] ${ahora ? 'text-sobre-marca' : 'text-texto-suave'}`}>{c.iniciativa}</span>
+              className={`whitespace-nowrap rounded-sm px-0.5 transition hover:underline hover:decoration-dotted ${ahora ? 'marcatextos font-bold' : espera ? 'text-texto-suave italic' : hecho ? 'text-texto-suave line-through decoration-[1.5px]' : enemigo ? 'text-peligro' : ''}`}>
+              {t.nombre}<span className={`ml-1 text-[12.5px] ${ahora ? 'text-sobre-marca' : 'text-texto-suave'}`}>{espera ? 'espera' : Math.round(c.iniciativa)}</span>
             </button>
           </li>
         );
@@ -1241,7 +1249,17 @@ function ColumnaQuien({ contexto, onAbrirFicha, compacta = false }: { contexto: 
   );
 }
 
-function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken } }: { contexto: Contexto }) {
+function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken, sala } }: { contexto: Contexto }) {
+  if (combate && miToken && (combate.demorados ?? []).includes(miToken.id)) {
+    return (
+      <h3 className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-titulo text-[19px] font-semibold lg:text-[21px]">
+        Esperando <span className="text-[14px] font-normal text-texto-suave">· actúas apenas termine el turno de {enTurno?.nombre ?? '…'}</span>
+        <button className="boli h-8 bg-acento px-3 font-titulo text-[14px] font-bold text-sobre-acento" onClick={() => sala.enviar({ tipo: 'volver-de-demora', tokenId: miToken.id })}>
+          Actuar ahora
+        </button>
+      </h3>
+    );
+  }
   const muriendo = miToken?.condiciones?.find((c) => c.clave === 'dying');
   const caido = muriendo || miToken?.condiciones?.some((c) => c.clave === 'unconscious');
   if (combate && miTurno && caido) {

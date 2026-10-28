@@ -203,6 +203,8 @@ export interface Combate {
   ataques: number;
   // Tokens que ya usaron su reacción; se recupera al empezar su turno
   reacciones: string[];
+  // Los que eligieron esperar (Delay): el orden los salta hasta que vuelven, justo después del turno en curso
+  demorados?: string[];
 }
 
 // Una escena guardada (no la que se está jugando): su mapa, sus criaturas y dónde quedaron los personajes
@@ -282,6 +284,9 @@ export type Accion =
   // El GM mueve a alguien en el orden (los empates los decide la mesa)
   | { tipo: 'mover-en-orden'; tokenId: string; posicion: number }
   | { tipo: 'avanzar-turno' }
+  // Delay: quien está en turno lo deja para más tarde; al volver, actúa apenas termine el turno en curso
+  | { tipo: 'demorar'; tokenId: string }
+  | { tipo: 'volver-de-demora'; tokenId: string }
   | { tipo: 'fijar-iniciativa'; tokenId: string; valor: number }
   | { tipo: 'agregar-a-combate'; tokenId: string; iniciativa: number }
   | { tipo: 'quitar-de-combate'; tokenId: string }
@@ -921,9 +926,37 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
           if (vencidos.length) tokens = { ...tokens, [t.id]: sinEfectos(t, vencidos) };
         }
       }
-      const siguiente = c.turno + 1;
-      const vuelta = siguiente >= c.orden.length;
-      return empezarTurno({ ...estado, tokens }, { ...c, turno: vuelta ? 0 : siguiente, ronda: vuelta ? c.ronda + 1 : c.ronda });
+      // Los que esperan (Delay) no tienen turno hasta que vuelvan
+      const demorados = new Set(c.demorados ?? []);
+      let siguiente = c.turno;
+      let ronda = c.ronda;
+      for (let i = 0; i < c.orden.length; i++) {
+        siguiente += 1;
+        if (siguiente >= c.orden.length) { siguiente = 0; ronda += 1; }
+        if (!demorados.has(c.orden[siguiente]!.tokenId)) break;
+      }
+      return empezarTurno({ ...estado, tokens }, { ...c, turno: siguiente, ronda });
+    }
+    case 'demorar': {
+      const c = estado.combate;
+      if (!c || tokenEnTurno(estado)?.id !== accion.tokenId) return estado;
+      // Todos esperando: no queda nadie a quien pasarle el turno
+      if (c.orden.every((x) => x.tokenId === accion.tokenId || (c.demorados ?? []).includes(x.tokenId))) return estado;
+      const conDemora = { ...estado, combate: { ...c, demorados: [...(c.demorados ?? []), accion.tokenId] } };
+      return aplicar(conDemora, { tipo: 'avanzar-turno' });
+    }
+    case 'volver-de-demora': {
+      const c = estado.combate;
+      if (!c || !(c.demorados ?? []).includes(accion.tokenId)) return estado;
+      const actual = c.orden[c.turno];
+      const suyo = c.orden.find((x) => x.tokenId === accion.tokenId);
+      if (!actual || !suyo) return estado;
+      // Queda justo detrás del que está jugando: misma iniciativa, desempate apenas menor
+      const resto = c.orden.filter((x) => x.tokenId !== accion.tokenId);
+      const i = resto.findIndex((x) => x.tokenId === actual.tokenId);
+      const nuevo = { ...suyo, iniciativa: actual.iniciativa, desempate: (actual.desempate ?? 0) - 0.001 };
+      const orden = [...resto.slice(0, i + 1), nuevo, ...resto.slice(i + 1)];
+      return { ...estado, combate: { ...c, orden, turno: i, demorados: (c.demorados ?? []).filter((x) => x !== accion.tokenId) } };
     }
     case 'fijar-iniciativa': {
       const c = estado.combate;
@@ -1104,6 +1137,10 @@ export function puede(quien: Sesion, accion: Accion, estado: EstadoSala): boolea
     case 'avanzar-turno':
     case 'gastar-acciones':
       return tokenEnTurno(estado)?.personajeId === quien.personajeId;
+    case 'demorar':
+      return esMio(accion.tokenId) && tokenEnTurno(estado)?.id === accion.tokenId;
+    case 'volver-de-demora':
+      return esMio(accion.tokenId);
     case 'usar-aptitud':
     case 'descansar':
       return accion.personajeId === quien.personajeId;
@@ -1293,6 +1330,8 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
     case 'agregar-a-combate':
       return esTexto(a.tokenId) && esEntero(a.iniciativa, -20, 100);
     case 'quitar-de-combate':
+    case 'demorar':
+    case 'volver-de-demora':
       return esTexto(a.tokenId);
     case 'gastar-acciones':
       return esEntero(a.usadas, 0, 10);

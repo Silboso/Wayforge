@@ -169,3 +169,36 @@ describe('combate', () => {
     expect(caDeToken(estado, estado.tokens.g1!)?.total).toBe(14);
   });
 });
+
+describe('Delay (esperar)', () => {
+  function tres(): EstadoSala {
+    let estado = aplicar(conKyra(), { tipo: 'crear-token', token: { ...goblin, id: 'g2', nombre: 'Goblin 2', x: 5 } });
+    estado = aplicar(estado, { tipo: 'iniciar-combate', orden: [{ tokenId: 'kyra', iniciativa: 20 }, { tokenId: 'g1', iniciativa: 10 }, { tokenId: 'g2', iniciativa: 5 }] });
+    return estado;
+  }
+
+  it('quien espera sale del orden hasta que vuelve, y vuelve justo después del turno en curso', () => {
+    let estado = aplicar(tres(), { tipo: 'demorar', tokenId: 'kyra' });
+    expect(tokenEnTurno(estado)?.id).toBe('g1');
+    expect(estado.combate?.demorados).toEqual(['kyra']);
+    // Al dar la vuelta la ronda, la sigue saltando
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(estado.combate).toMatchObject({ ronda: 2 });
+    expect(tokenEnTurno(estado)?.id).toBe('g1');
+    // Vuelve: le toca apenas termine el goblin
+    estado = aplicar(estado, { tipo: 'volver-de-demora', tokenId: 'kyra' });
+    expect(tokenEnTurno(estado)?.id).toBe('g1');
+    expect(estado.combate?.orden.map((c) => c.tokenId)).toEqual(['g1', 'kyra', 'g2']);
+    estado = aplicar(estado, { tipo: 'avanzar-turno' });
+    expect(tokenEnTurno(estado)?.id).toBe('kyra');
+    expect(estado.combate?.demorados).toEqual([]);
+  });
+
+  it('solo se espera en el propio turno, y el jugador solo con su personaje', () => {
+    const estado = tres();
+    expect(aplicar(estado, { tipo: 'demorar', tokenId: 'g1' })).toBe(estado);
+    expect(puede({ rol: 'jugador', personajeId: 'kyra' }, { tipo: 'demorar', tokenId: 'kyra' }, estado)).toBe(true);
+    expect(puede({ rol: 'jugador', personajeId: 'kyra' }, { tipo: 'demorar', tokenId: 'g1' }, estado)).toBe(false);
+  });
+});

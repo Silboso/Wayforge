@@ -80,7 +80,8 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
     }
     case 'usar-preparacion':
       return [{ tipo: 'preparativo', tokenId: accion.tokenId, nombre: accion.nombre, ultimo: !!accion.ultimo }];
-    case 'avanzar-turno': {
+    case 'avanzar-turno':
+    case 'demorar': {
       const t = tokenEnTurno(posterior);
       return t && posterior.combate ? [{ tipo: 'turno', tokenId: t.id, ronda: posterior.combate.ronda }] : [];
     }

@@ -249,6 +249,8 @@ export function Detalle({ fila, ataquesHechos, libres = null, objetivo, dano, en
             ? 'No te quedan usos'
             : falta > 0
               ? textoFalta
+            : fila.aptitud.id === 'basica:delay'
+              ? 'Esperar: actúo más tarde'
             : fila.aptitud.tirada
               ? `Usar y tirar${fila.valor ? ` ${fila.valor}` : ''}`
               : enCombate && typeof fila.aptitud.costo === 'number'

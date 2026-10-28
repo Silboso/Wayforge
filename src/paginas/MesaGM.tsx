@@ -495,6 +495,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
               else setEditandoCriatura(actor.id);
             }}
             onTerminar={() => sala.enviar({ tipo: 'avanzar-turno' })}
+            onEsperar={() => sala.enviar({ tipo: 'demorar', tokenId: actor.id })}
+            onVolver={() => sala.enviar({ tipo: 'volver-de-demora', tokenId: actor.id })}
             onCerrar={() => { setActorId(null); setObjetivoId(null); setEligiendo(null); }} />
         )}
 

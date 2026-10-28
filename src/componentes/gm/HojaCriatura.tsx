@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CaretDownIcon, CaretUpIcon, FootprintsIcon, PencilSimpleIcon, ShieldIcon, StickerIcon, XIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, CaretUpIcon, FootprintsIcon, PencilSimpleIcon, ShieldIcon, StickerIcon, XIcon, HourglassMediumIcon } from '@phosphor-icons/react';
 import { calcular, signo } from '../../../reglas/pf2e';
 import { penalizacionesAtaque, type AtaqueCriatura } from '../../../reglas/criaturas';
 import { alcanzables, desdeClave, distanciaEntre, type Casilla } from '../../../reglas/movimiento';
@@ -13,7 +13,7 @@ import { EfectosActivos } from '../EfectosActivos';
 type Chequeo = 'fortitude' | 'reflex' | 'will' | 'percepcion';
 
 // La hoja del token que maneja el GM, apoyada abajo como la del jugador: quién es, qué puede hacer y su estado
-export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onPG, onCondiciones, onEditar, onTerminar, onCerrar, onQuitarEfecto }: {
+export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onPG, onCondiciones, onEditar, onTerminar, onEsperar, onVolver, onCerrar, onQuitarEfecto }: {
   // Quitar un efecto que le dejó una aptitud (el GM manda)
   onQuitarEfecto?: (efectoId: string) => void;
   estado: EstadoSala;
@@ -31,12 +31,16 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
   onCondiciones: () => void;
   onEditar: () => void;
   onTerminar: () => void;
+  // Delay: dejar su turno para más tarde, y volver
+  onEsperar: () => void;
+  onVolver: () => void;
   onCerrar: () => void;
 }) {
   const [cantidad, setCantidad] = useState('');
   const n = Math.max(0, Math.floor(Number(cantidad) || 0));
   const c = estado.combate;
   const suTurno = !!c && tokenEnTurno(estado)?.id === actor.id;
+  const espera = !!c && (c.demorados ?? []).includes(actor.id);
   const libres = suTurno ? c!.acciones - c!.usadas : null;
   const personaje = actor.personajeId ? estado.personajes[actor.personajeId] : undefined;
   const ficha = personaje ? calcular(personaje, actor.condiciones ?? [], actor.efectos ?? []) : null;
@@ -119,7 +123,7 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
                 <span className="text-[14px] font-normal text-texto-suave">{libres === 0 ? 'sin acciones' : `le ${libres === 1 ? 'queda 1' : `quedan ${libres}`}`}</span>
               </>
             ) : (
-              <span>{actor.nombre} <span className="text-[14px] font-normal text-texto-suave">· {c ? 'fuera de su turno' : 'fuera de combate'}</span></span>
+              <span>{actor.nombre} <span className="text-[14px] font-normal text-texto-suave">· {espera ? 'esperando (Delay)' : c ? 'fuera de su turno' : 'fuera de combate'}</span></span>
             )}
           </h3>
           {personaje ? (
@@ -189,9 +193,20 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
             </button>
           )}
           {suTurno && (
-            <button className="boli mt-auto flex h-12 items-center justify-center gap-2 bg-acento font-titulo text-[17px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)] active:scale-[0.97]"
-              onClick={onTerminar}>
-              Terminar turno <Tecla sobreTinta>F</Tecla>
+            <div className="mt-auto flex gap-2">
+              <button className="boli flex size-12 shrink-0 items-center justify-center border-[1.5px] border-borde text-texto-suave hover:text-texto"
+                onClick={onEsperar} aria-label="Esperar (Delay)" title="Esperar (Delay): deja su turno para más tarde; vuelve cuando quieras, después de cualquier turno">
+                <HourglassMediumIcon size={22} aria-hidden />
+              </button>
+              <button className="boli flex h-12 flex-1 items-center justify-center gap-2 whitespace-nowrap bg-acento font-titulo text-[17px] font-bold text-sobre-acento shadow-[0_6px_12px_-6px_var(--acento)] active:scale-[0.97]"
+                onClick={onTerminar}>
+                Terminar turno <Tecla sobreTinta>F</Tecla>
+              </button>
+            </div>
+          )}
+          {espera && (
+            <button className="boli mt-auto flex h-12 items-center justify-center gap-2 bg-acento font-titulo text-[16px] font-bold text-sobre-acento" onClick={onVolver}>
+              Actuar ahora (después de este turno)
             </button>
           )}
         </div>
