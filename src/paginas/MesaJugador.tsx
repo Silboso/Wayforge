@@ -325,7 +325,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       }
       const recordar = aptitudesPara(p, 'inicio-turno');
       if (recordar.length) notas.push(`Recuerda: ${nombres(recordar)}.`);
-      return [{ id: id(), tono: 'turno', titulo: '¡Tu turno!', cuerpo: <ul className="list-disc pl-4">{notas.map((n) => <li key={n}>{n}</li>)}</ul>, dura: 4500 }];
+      return [{ id: 'mi-turno', tono: 'turno', titulo: '¡Tu turno!', cuerpo: <ul className="list-disc pl-4">{notas.map((n) => <li key={n}>{n}</li>)}</ul>, dura: 4500 }];
     }
     if (e.tipo === 'movimiento') {
       const t = estado.tokens[e.tokenId];
@@ -374,9 +374,18 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     if (e.tipo === 'dano' || e.tipo === 'curacion' || e.tipo === 'efecto') {
       if (!miToken || e.tokenId !== miToken.id) return [];
       if (e.tipo === 'dano') {
-        return [{ id: id(), tono: 'peligro', titulo: e.cayo ? `Recibes ${e.cantidad} de daño y caes` : `Recibes ${e.cantidad} de daño`, cuerpo: e.cayo ? 'Quedas Dying e inconsciente: tus aliados pueden curarte.' : 'Ya está restado de tus PG.', dura: 6000 }];
+        // De dónde vino: la última tirada contra mí con ese daño (un golpe, un conjuro, el ácido que sigue)
+        const fuente = [...estado.tiradas].reverse().slice(0, 8).find((t) => t.objetivo?.tokenId === miToken.id && t.resultado?.dano === e.cantidad);
+        const causa = fuente ? (fuente.quien === miToken.nombre ? fuente.etiqueta.split(':')[0]! : `${fuente.quien}: ${fuente.etiqueta}`) : null;
+        return [{ id: id(), tono: 'peligro', titulo: e.cayo ? `Recibes ${e.cantidad} de daño y caes` : `Recibes ${e.cantidad} de daño`,
+          cuerpo: `${causa ? `${causa}. ` : ''}${e.cayo ? 'Quedas Dying e inconsciente: tus aliados pueden curarte.' : 'Ya está restado de tus PG.'}`, dura: 6000 }];
       }
       if (e.tipo === 'curacion') return [{ id: id(), tono: 'bueno', titulo: `Te curan ${e.cantidad} PG`, cuerpo: 'Ya está sumado.', dura: 5000 }];
+      // Lo persistente no cambia tus tiradas: hace daño al terminar cada turno tuyo, hasta que salga un 15 o más
+      if (e.persistente) {
+        return [{ id: id(), tono: e.quitado ? 'bueno' : 'malo', titulo: e.quitado ? `Se apagó ${e.nombre}` : `Ahora tienes ${e.nombre}`,
+          cuerpo: e.quitado ? 'Ya no te hace daño.' : `Al terminar cada turno tuyo te hace ${e.persistente.dano} ${e.persistente.tipo}; con 15 o más en el chequeo plano se apaga. Alguien puede ayudarte a quitártelo.`, dura: 7000 }];
+      }
       return [{ id: id(), tono: e.beneficioso ? 'bueno' : 'malo', titulo: e.quitado ? `Se te acabó ${e.nombre}` : `Ahora tienes ${e.nombre}`, cuerpo: e.quitado ? 'Ya no cuenta en tus tiradas.' : 'Ya cuenta en tus tiradas: míralo en tu ficha.', dura: 5000 }];
     }
     if (e.tipo !== 'tirada') return [];
@@ -449,6 +458,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     return avisos;
   };
   const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  // Al terminar mi turno, "¡Tu turno!" ya no corresponde
+  useEffect(() => { if (!miTurno) cerrarAviso('mi-turno'); }, [miTurno]); // eslint-disable-line react-hooks/exhaustive-deps
   // El daño que ya restó otro (el GM o el jugador): su aviso se va
   const aplicadas = estado.tiradas.filter((t) => t.aplicada).map((t) => t.id).join(',');
   useEffect(() => { for (const id of aplicadas.split(',')) if (id) cerrarAviso(`dano-${id}`); }, [aplicadas]); // eslint-disable-line react-hooks/exhaustive-deps

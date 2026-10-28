@@ -297,6 +297,7 @@ export function persistenteAlTerminar(estado: EstadoSala, t: Token, azar: Azar):
     salen.push({
       tipo: 'registrar-tirada', tirada: {
         id: azar.id(), cuando: azar.ahora(), quien: t.nombre, etiqueta: `Chequeo plano para quitarse ${e.nombre} (CD 15)`, dados: [d], caras: 20, modificador: 0, total: d,
+        resultado: { nota: d >= 15 ? 'se apaga' : 'sigue: vuelve a hacer daño al terminar su próximo turno' },
       },
     });
     if (d >= 15) salen.push({ tipo: 'quitar-efecto', tokenId: t.id, efectoId: e.id });

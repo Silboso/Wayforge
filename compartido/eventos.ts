@@ -13,7 +13,7 @@ export type Evento =
   | { tipo: 'area'; casillas: { x: number; y: number }[]; aspecto?: Aspecto; tipoDano?: string; autorTokenId?: string }
   | { tipo: 'dano'; tokenId: string; cantidad: number; critico: boolean; cayo: boolean }
   | { tipo: 'curacion'; tokenId: string; cantidad: number }
-  | { tipo: 'efecto'; tokenId: string; nombre: string; beneficioso: boolean; aspecto?: Aspecto; quitado: boolean }
+  | { tipo: 'efecto'; tokenId: string; nombre: string; beneficioso: boolean; aspecto?: Aspecto; quitado: boolean; persistente?: { dano: string; tipo: string } }
   // Se viene un combate: quiénes entran (cada jugador elige su tirada y lo que usa antes de tirar)
   | { tipo: 'preparacion'; tokens: string[] }
   // Alguien usó algo "al tirar iniciativa" en la preparación
@@ -118,11 +118,11 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
       const e = accion.efecto;
       // La inmunidad no se anuncia: es solo una marca
       if (e.inmuneA || !anterior.tokens[accion.tokenId]) return [];
-      return [{ tipo: 'efecto', tokenId: accion.tokenId, nombre: e.nombre, beneficioso: e.beneficioso, ...(e.aspecto ? { aspecto: e.aspecto } : {}), quitado: false }];
+      return [{ tipo: 'efecto', tokenId: accion.tokenId, nombre: e.nombre, beneficioso: e.beneficioso, ...(e.aspecto ? { aspecto: e.aspecto } : {}), quitado: false, ...(e.persistente ? { persistente: e.persistente } : {}) }];
     }
     case 'quitar-efecto': {
       const e = anterior.tokens[accion.tokenId]?.efectos?.find((x) => x.id === accion.efectoId);
-      return e && !e.inmuneA ? [{ tipo: 'efecto', tokenId: accion.tokenId, nombre: e.nombre, beneficioso: e.beneficioso, ...(e.aspecto ? { aspecto: e.aspecto } : {}), quitado: true }] : [];
+      return e && !e.inmuneA ? [{ tipo: 'efecto', tokenId: accion.tokenId, nombre: e.nombre, beneficioso: e.beneficioso, ...(e.aspecto ? { aspecto: e.aspecto } : {}), quitado: true, ...(e.persistente ? { persistente: e.persistente } : {}) }] : [];
     }
     default:
       return [];
