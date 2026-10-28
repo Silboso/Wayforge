@@ -178,9 +178,12 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     sala.usar(a.id, objetivo, etiqueta, mas);
   };
   const usarAptitud = (a: Aptitud, objetivoId?: string, mas?: { objetivos?: string[]; punto?: { x: number; y: number }; nivel?: number }): boolean => {
-    // Treat Wounds: a quién (al lado, o a ti) y con qué dificultad
+    // Treat Wounds: a quién (de entrada, el elegido o el más herido del grupo) y con qué dificultad
     if (a.id === 'basica:treat-wounds' && !mas?.nivel) {
-      const destino = objetivoId ? estado.tokens[objetivoId] : miToken;
+      const masHerido = Object.values(estado.tokens).filter((t) => t.personajeId && estado.personajes[t.personajeId])
+        .map((t) => { const x = estado.personajes[t.personajeId!]!; return { t, falta: calcular(x).pgMax.total - x.pgActual }; })
+        .sort((a1, a2) => a2.falta - a1.falta)[0];
+      const destino = objetivoId ? estado.tokens[objetivoId] : masHerido && masHerido.falta > 0 ? masHerido.t : miToken;
       if (!destino) return false;
       if (motivoParaActuar(estado, p.id, a.costo)) return sala.negarLocal(motivoParaActuar(estado, p.id, a.costo)!), false;
       setCurando(destino.id);
@@ -873,8 +876,12 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       {curando && miToken && (
         <ElegirCurar p={p} medicina={ficha.habilidades.medicine.total} inicial={curando}
           candidatos={Object.values(estado.tokens)
-            .filter((t) => t.personajeId && (t.id === miToken.id || !motivoAlcance(miToken, t, 5)))
-            .map((t) => ({ id: t.id, nombre: t.id === miToken.id ? `${t.nombre} (tú)` : t.nombre }))}
+            // Fuera de combate, todo el grupo (hay 10 minutos para ir hasta él); en combate, los que están a tu lado
+            .filter((t) => t.personajeId && estado.personajes[t.personajeId] && (t.id === miToken.id || !combate || !motivoAlcance(miToken, t, 5)))
+            .map((t) => {
+              const x = estado.personajes[t.personajeId!]!;
+              return { id: t.id, nombre: `${t.id === miToken.id ? `${t.nombre} (tú)` : t.nombre} · ${x.pgActual}/${calcular(x).pgMax.total}` };
+            })}
           onCerrar={() => setCurando(null)}
           onElegir={(objetivoId, nivel) => {
             sala.usar('basica:treat-wounds', objetivoId === miToken.id ? undefined : objetivoId, 'Curando heridas', { nivel });

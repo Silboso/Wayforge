@@ -31,6 +31,7 @@ const personajes = [
       id: 'kyra', nombre: 'Kyra', ascendencia: 'Human', clase: 'Fighter', nivel: 3, pgTemporales: 0, velocidad: 25, notas: '',
       atributos: { str: 4, dex: 2, con: 2, int: 0, wis: 1, cha: 0 }, pgAscendencia: 8, pgClase: 10, pgActual: 44, percepcion: 2,
       salvaciones: { fortitude: 2, reflex: 2, will: 1 }, armadura: { nombre: 'Chain mail', rango: 1, bonoObjeto: 4, topeDex: 1 },
+      escudo: { nombre: 'Steel Shield', ca: 2, dureza: 5, pg: 20, pgActual: 20 },
       habilidades: skills({ athletics: 1, intimidation: 1 }),
       golpes: [{ id: 'espada', nombre: 'Longsword', atributo: 'str', rango: 2, bonoObjeto: 1, dados: '1d8', tipoDano: 'slashing', sumarFuerza: true, agil: false }],
       aptitudes: [

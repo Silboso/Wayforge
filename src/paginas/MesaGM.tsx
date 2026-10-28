@@ -4,7 +4,7 @@ import {
 } from '@phosphor-icons/react';
 import { personajeNuevo, leerExpresion, type Personaje } from '../../reglas/pf2e';
 import { danoAjustado, type AtaqueCriatura } from '../../reglas/criaturas';
-import { motivoAlcance, motivoParaActuarToken, tokenEnTurno, type EstadoSala } from '../../compartido/sala';
+import { BLOQUEO_ESCUDO, motivoAlcance, motivoParaActuarToken, tokenEnTurno, type EstadoSala } from '../../compartido/sala';
 import type { Evento } from '../../compartido/eventos';
 import { almacen, guardar, leer, type Sala } from '../conexion';
 import { leerColoresTablero, type useTema } from '../tema';
@@ -194,6 +194,10 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       if (!t || t.personajeId) return [];
       return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
     }
+    if (e.tipo === 'efecto' && !e.quitado && e.nombre.startsWith('Shield Block')) {
+      const t = estado.tokens[e.tokenId];
+      return t ? [{ id: id(), tono: 'nota', titulo: `${t.nombre} bloquea con el escudo`, cuerpo: `${e.nombre.replace('Shield Block ', '')}: al aplicar el daño, la mesa resta la Dureza y daña el escudo.`, dura: 7000 }] : [];
+    }
     // Lo que dicen los jugadores (si el chat no está abierto)
     if (e.tipo === 'chat') {
       if (e.mensaje.rol === 'gm' || cajon === 'chat') return [];
@@ -247,10 +251,13 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       const tipo = /\(([^)]+)\)/.exec(t.etiqueta)?.[1] ?? null;
       const ajuste = p ? { total: t.total, nota: null } : danoAjustado(objetivo.criatura, t.total, tipo);
       if (t.aplicada) return [];
+      // Si bloqueó con el escudo, que se vea antes de restar (la mesa descuenta la Dureza al aplicar)
+      const bloqueo = p?.escudo && (objetivo.efectos ?? []).some((x) => x.clave === BLOQUEO_ESCUDO)
+        ? ` El escudo frena ${Math.min(p.escudo.dureza, ajuste.total)}.` : '';
       return [{
         // Con el id de la tirada: si el jugador ya lo restó, el aviso se cierra solo
         id: `dano-${t.id}`, tono: 'peligro', titulo: `${t.quien} le hace ${t.total} de daño a ${objetivo.nombre}`,
-        cuerpo: `${ajuste.nota ? `Recibe ${ajuste.total} (${ajuste.nota}). ` : ''}${objetivo.nombre} tiene ${pg.actual} PG${p ? ' (también le avisamos al jugador)' : ''}.`,
+        cuerpo: `${ajuste.nota ? `Recibe ${ajuste.total} (${ajuste.nota}). ` : ''}${objetivo.nombre} tiene ${pg.actual} PG${p ? ' (también le avisamos al jugador)' : ''}.${bloqueo}`,
         botones: [{ etiqueta: ajuste.total ? `Restar ${ajuste.total} PG` : 'No le hace nada', principal: true, hacer: () => (p ? sala.enviar({ tipo: 'danar', tokenId: objetivo.id, cantidad: ajuste.total, tiradaId: t.id, ...(/crítico/i.test(t.etiqueta) ? { critico: true } : {}) }) : cambiarPG(objetivo.id, -ajuste.total)) }],
       }];
     }
@@ -569,7 +576,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         <EditorCriatura salaId={salaId} token={estado.tokens[editandoCriatura]!} enviar={sala.enviar} onCerrar={() => setEditandoCriatura(null)} />
       )}
       {condicionesDe && estado.tokens[condicionesDe] && (
-        <ModalCondiciones condiciones={estado.tokens[condicionesDe]!.condiciones ?? []} onCerrar={() => setCondicionesDe(null)}
+        <ModalCondiciones condiciones={estado.tokens[condicionesDe]!.condiciones ?? []} de={estado.tokens[condicionesDe]!.nombre} onCerrar={() => setCondicionesDe(null)}
           onPoner={(clave, valor) => sala.enviar({ tipo: 'poner-condicion', tokenId: condicionesDe, clave, valor: Math.max(0, valor) })} />
       )}
       {editandoP && estado.personajes[editandoP.id] && (

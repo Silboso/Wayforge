@@ -471,19 +471,23 @@ export class Sala extends DurableObject<Env> {
     if (preparando && alEmpezar && preparando.usadas.includes(a.id)) return this.negar(ws, `${a.verbo || a.nombre}: ya la usaste para este combate.`);
     const disp = disponibilidad(p, a);
     if (!disp.puede) return this.negar(ws, `${a.verbo || a.nombre}: ${disp.texto}.`);
+    // Shield Block sin un escudo en la hoja no frenaría nada: mejor decirlo antes de gastar la reacción
+    if (/shield block/i.test(a.nombre) && !p.escudo) return this.negar(ws, 'Para bloquear necesitas un escudo en tu hoja (ponlo al editar tu personaje).');
     if (a.requiere && !(token.condiciones ?? []).some((c) => c.clave === a.requiere)) {
       return this.negar(ws, a.requiere === 'shield-raised' ? 'Primero tienes que levantar el escudo.' : `Necesitas ${a.requiere}.`);
     }
     const objetivo = typeof m.objetivo === 'string' ? this.estado.tokens[m.objetivo] : undefined;
     const distancia = a.tirada?.tipo === 'golpe' ? (p.golpes[0]?.distancia ?? 5) : a.distancia;
-    if (objetivo && a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') {
+    // Treat Wounds fuera de combate son 10 minutos: da tiempo de ir hasta el herido, esté donde esté
+    const explorando = a.id === 'basica:treat-wounds' && !this.estado.combate;
+    if (objetivo && !explorando && a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') {
       const lejos = distancia !== undefined ? motivoAlcance(token, objetivo, distancia) : null;
       if (lejos) return this.negar(ws, lejos);
     }
 
     // Contra alguien: que lo vea y que no haya nada sólido en medio
     let inter = interaccionDe(a);
-    const contra = objetivo && objetivo.id !== token.id && (a.tirada || inter) ? visibilidad(this.estado, token, objetivo) : null;
+    const contra = objetivo && !explorando && objetivo.id !== token.id && (a.tirada || inter) ? visibilidad(this.estado, token, objetivo) : null;
     if (contra && (!contra.efecto || !contra.ve)) return this.negar(ws, !contra.efecto ? `Hay algo sólido entre tú y ${objetivo!.nombre}.` : `${objetivo!.nombre}: ${contra.razon}.`);
     // Hide pide sombra o algo detrás de qué cubrirse, si alguien te está viendo
     const observan = a.id === 'basica:hide'
@@ -825,7 +829,8 @@ export class Sala extends DurableObject<Env> {
   private async curarHeridas(ws: WebSocket, token: Token, p: Personaje, objetivo: Token, pedido: unknown) {
     const destino = objetivo.personajeId ? this.estado.personajes[objetivo.personajeId] : undefined;
     if (!destino) return this.negar(ws, 'Treat Wounds es para personajes (los tuyos o tus aliados).');
-    if (objetivo.id !== token.id && motivoAlcance(token, objetivo, 5)) return this.negar(ws, `Tienes que estar al lado de ${objetivo.nombre}.`);
+    // En combate, al lado; fuera de combate son 10 minutos y da tiempo de ir hasta el herido
+    if (this.estado.combate && objetivo.id !== token.id && motivoAlcance(token, objetivo, 5)) return this.negar(ws, `Tienes que estar al lado de ${objetivo.nombre}.`);
     const rango = p.habilidades.medicine;
     const nivel = NIVELES_CURAR.find((n) => n.rango === pedido) ?? [...NIVELES_CURAR].reverse().find((n) => n.rango <= rango);
     if (!nivel || nivel.rango > rango) return this.negar(ws, 'Necesitas Medicine en Trained (o más, para las dificultades altas).');

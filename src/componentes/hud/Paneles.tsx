@@ -279,15 +279,18 @@ export function PanelReglas() {
 }
 
 // Poner y quitar condiciones: las que tienes arriba (con su número), y todas las demás como post-its para pegar
-export function ModalCondiciones({ condiciones, onPoner, onCerrar }: {
+export function ModalCondiciones({ condiciones, de, onPoner, onCerrar }: {
   condiciones: Condicion[];
+  // Para el GM: de quién son (sin esto, son las tuyas)
+  de?: string;
   onPoner: (clave: ClaveCondicion, valor: number) => void;
   onCerrar: () => void;
 }) {
   const tiene = (k: ClaveCondicion) => condiciones.find((c) => c.clave === k);
   const resto = (Object.keys(CONDICIONES) as ClaveCondicion[]).filter((k) => !tiene(k));
   return (
-    <Modal titulo="Condiciones" subtitulo="Lo que te pasa ahora. La mesa ya aplica sus números a tus tiradas y tu CA." onCerrar={onCerrar} ancho="max-w-2xl">
+    <Modal titulo={de ? `Condiciones de ${de}` : 'Condiciones'} onCerrar={onCerrar} ancho="max-w-2xl"
+      subtitulo={de ? 'Lo que le pasa ahora. La mesa ya aplica sus números a sus tiradas, su CA y sus CDs.' : 'Lo que te pasa ahora. La mesa ya aplica sus números a tus tiradas y tu CA.'}>
       {condiciones.length > 0 && (
         <section className="mb-5">
           <h3 className="mb-2 font-titulo text-[17px] font-bold">Tienes</h3>
