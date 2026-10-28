@@ -2,7 +2,7 @@ import { bonoDeDano, calcular, HABILIDADES, leerDados, leerExpresion, SALVACIONE
 import { todasLasAptitudes } from '../reglas/aptitudes';
 import { penalizaciones, type Condicion, type Contexto } from '../reglas/condiciones';
 import { apilar, candidatosDe, type EfectoActivo } from '../reglas/efectos';
-import { penalizacionesAtaque } from '../reglas/criaturas';
+import { alcanceAtaque, penalizacionesAtaque } from '../reglas/criaturas';
 import type { QueTirar, Token } from './sala';
 
 export interface QueSeTira {
@@ -104,7 +104,7 @@ export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'p
       const a = cr.ataques.find((x) => x.id === que.ataque);
       if (!a || ![0, 1, 2].includes(que.numero)) return null;
       const cual = ['', ' (2.º ataque)', ' (3.º ataque)'][que.numero];
-      const atributo = a.distancia && a.distancia > 10 ? 'dex' : 'str';
+      const atributo = alcanceAtaque(a) > 10 && !a.rasgos.some((r) => /^reach/i.test(r)) ? 'dex' : 'str';
       return d20(`${a.nombre}${cual}`, penalizacionesAtaque(a)[que.numero] + resta({ tipo: 'ataque', atributo }), true);
     }
     case 'dano-criatura': {
@@ -114,7 +114,7 @@ export function queTiraCriatura(token: Pick<Token, 'nombre' | 'condiciones' | 'p
       return {
         etiqueta: `${que.critico ? 'Daño crítico' : 'Daño'} de ${a.nombre}${a.tipoDano ? ` (${a.tipoDano})` : ''}`,
         dados: leida.dados,
-        modificador: leida.modificador + resta({ tipo: 'dano', conFuerza: !(a.distancia && a.distancia > 10) }),
+        modificador: leida.modificador + resta({ tipo: 'dano', conFuerza: !(alcanceAtaque(a) > 10 && !a.rasgos.some((r) => /^(reach|thrown)/i.test(r))) }),
         multiplicador: que.critico ? 2 : 1,
         esAtaque: false,
       };

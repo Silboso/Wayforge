@@ -14,6 +14,7 @@ import { momentoIniciativa } from '../reglas/disparadores';
 import { conDying, curarHeridas, NIVELES_CURAR, recuperacion } from '../reglas/muerte';
 import type { Condicion } from '../reglas/condiciones';
 import { distanciaEntre } from '../reglas/movimiento';
+import { alcanceAtaque } from '../reglas/criaturas';
 import { crearEfecto } from '../reglas/efectos';
 import { alLadoDe, conCobertura, explorar, iluminacion, visibilidad, visionActiva, vistaDeJugador } from '../compartido/vision';
 
@@ -326,7 +327,7 @@ export class Sala extends DurableObject<Env> {
       const a = criatura.criatura!.ataques.find((x) => x.id === que.ataque);
       const objetivo = typeof que.objetivo === 'string' ? this.estado.tokens[que.objetivo] : undefined;
       if (a && objetivo) {
-        const lejos = motivoAlcance(criatura, objetivo, a.distancia ?? 5);
+        const lejos = motivoAlcance(criatura, objetivo, alcanceAtaque(a));
         if (lejos) return ws && this.negar(ws, lejos);
       }
     }

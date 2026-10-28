@@ -3,7 +3,7 @@ import {
   BookOpenTextIcon, ChatCircleDotsIcon, CopyIcon, DiceFiveIcon, PawPrintIcon, SwordIcon, UsersThreeIcon, WrenchIcon, XIcon,
 } from '@phosphor-icons/react';
 import { personajeNuevo, leerExpresion, type Personaje } from '../../reglas/pf2e';
-import { danoAjustado, type AtaqueCriatura } from '../../reglas/criaturas';
+import { alcanceAtaque, danoAjustado, type AtaqueCriatura } from '../../reglas/criaturas';
 import { BLOQUEO_ESCUDO, motivoAlcance, motivoParaActuarToken, tokenEnTurno, type EstadoSala } from '../../compartido/sala';
 import type { Evento } from '../../compartido/eventos';
 import { almacen, guardar, leer, type Sala } from '../conexion';
@@ -175,7 +175,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       return;
     }
     const destino = objetivo ? estado.tokens[objetivo] : undefined;
-    const lejos = destino ? motivoAlcance(actor, destino, a.distancia ?? 5) : null;
+    const lejos = destino ? motivoAlcance(actor, destino, alcanceAtaque(a)) : null;
     if (lejos) return sala.negarLocal(lejos.replace('tienes que estar', `${actor.nombre} tiene que estar`).replace('Acércate', 'Acércalo').replace('tu alcance', 'su alcance'));
     ultimoAtaque.current = { tokenId: actor.id, ataque: a };
     sala.tirar(undefined, { tipo: 'criatura', tokenId: actor.id, ataque: a.id, numero, ...(objetivo ? { objetivo } : {}) }, `${actor.nombre}: ${a.nombre}`);
@@ -351,7 +351,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
     : { x: 3, y: 3 };
   const filaEligiendo = eligiendo ?? asomado;
   const rango = actor && filaEligiendo
-    ? { tokenId: actor.id, pies: filaEligiendo.distancia ?? 5, etiqueta: `${actor.nombre}: ${filaEligiendo.nombre} · ${(filaEligiendo.distancia ?? 5) <= 5 ? 'cuerpo a cuerpo' : `${filaEligiendo.distancia} ft`}` }
+    ? { tokenId: actor.id, pies: alcanceAtaque(filaEligiendo), etiqueta: `${actor.nombre}: ${filaEligiendo.nombre} · ${alcanceAtaque(filaEligiendo) <= 5 ? 'cuerpo a cuerpo' : `${alcanceAtaque(filaEligiendo)} ft`}` }
     : null;
   const objetivo = objetivoId ? estado.tokens[objetivoId] : undefined;
   const menu = actor?.criatura && objetivo && !eligiendo && menuObjetivo ? {

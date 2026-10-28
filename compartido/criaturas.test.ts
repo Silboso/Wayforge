@@ -87,3 +87,13 @@ describe('defensas de las criaturas', () => {
     expect(escribirValores([{ tipo: 'fire', valor: 5 }])).toBe('fire 5');
   });
 });
+
+describe('alcance de un ataque', () => {
+  it('lo cargado, o sus rasgos (thrown, range, reach); si no, al lado', async () => {
+    const { alcanceAtaque } = await import('../reglas/criaturas');
+    expect(alcanceAtaque({ distancia: 60, rasgos: [] })).toBe(60);
+    expect(alcanceAtaque({ rasgos: ['thrown-30'] })).toBe(30);
+    expect(alcanceAtaque({ rasgos: ['deadly-d10', 'reach-10'] })).toBe(10);
+    expect(alcanceAtaque({ rasgos: ['agile'] })).toBe(5);
+  });
+});

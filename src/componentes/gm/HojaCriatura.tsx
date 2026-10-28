@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CaretDownIcon, CaretUpIcon, FootprintsIcon, PencilSimpleIcon, ShieldIcon, StickerIcon, XIcon, HourglassMediumIcon } from '@phosphor-icons/react';
 import { calcular, signo } from '../../../reglas/pf2e';
-import { penalizacionesAtaque, type AtaqueCriatura } from '../../../reglas/criaturas';
+import { alcanceAtaque, penalizacionesAtaque, type AtaqueCriatura } from '../../../reglas/criaturas';
 import { queTiraCriatura } from '../../../compartido/tiradas';
 import { alcanzables, desdeClave, distanciaEntre, type Casilla } from '../../../reglas/movimiento';
 import {
@@ -155,7 +155,7 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
                       <span className="flex justify-center"><Rombo className="size-3.5" lleno={!sinAcciones} tachado={sinAcciones} /></span>
                       <span className="min-w-0 truncate">
                         <span className="font-titulo text-[16px] font-semibold">{numero ? 'Otra vez con' : 'Atacar con'} {a.nombre}</span>
-                        <span className="ml-2 text-[12.5px] text-texto-suave">{a.dano} {a.tipoDano}{a.distancia && a.distancia > 5 ? ` · ${a.distancia} ft` : ''}{a.rasgos.length ? ` · ${a.rasgos.join(', ')}` : ''}</span>
+                        <span className="ml-2 text-[12.5px] text-texto-suave">{a.dano} {a.tipoDano}{alcanceAtaque(a) > 5 ? ` · ${alcanceAtaque(a)} ft` : ''}{a.rasgos.length ? ` · ${a.rasgos.join(', ')}` : ''}</span>
                       </span>
                       <span className="font-titulo text-[19px] font-bold text-peligro">{signo(valor)}</span>
                       <span className="w-6 text-right">{TECLAS[i] && <Tecla>{TECLAS[i]}</Tecla>}</span>
@@ -255,7 +255,7 @@ export function MenuCriatura({ estado, actor, objetivo, numero, onAtacar, onAcer
   const c = estado.combate;
   const libres = c ? c.acciones - c.usadas : null;
   const ataques = actor.criatura?.ataques ?? [];
-  const alcanceMax = Math.max(5, ...ataques.map((a) => a.distancia ?? 5));
+  const alcanceMax = Math.max(5, ...ataques.map((a) => alcanceAtaque(a)));
   const acercarse = (() => {
     if (pies <= 5 || turno || !libres) return null;
     const zona = alcanzables({ x: actor.x, y: actor.y }, velocidadDe(estado, actor), opcionesMovimiento(estado, actor));
@@ -288,7 +288,7 @@ export function MenuCriatura({ estado, actor, objetivo, numero, onAtacar, onAcer
       <ul className="mt-2 flex flex-col gap-1">
         {ataques.length === 0 && <li className="text-[13.5px] text-texto-suave">No tiene ataques cargados.</li>}
         {ataques.map((a) => {
-          const motivo = turno ?? motivoAlcance(actor, objetivo, a.distancia ?? 5);
+          const motivo = turno ?? motivoAlcance(actor, objetivo, alcanceAtaque(a));
           return (
             <li key={a.id}>
               <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-acento/10 disabled:hover:bg-transparent"

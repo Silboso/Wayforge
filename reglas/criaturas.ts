@@ -78,6 +78,16 @@ export const CRIATURA_VACIA: Criatura = {
   nivel: 0, salvaciones: { fortitude: 4, reflex: 4, will: 4 }, velocidad: 25, ataques: [], habilidades: [], rasgos: [], notas: '',
 };
 
+// Hasta dónde llega un ataque: lo cargado, o lo que dicen sus rasgos (thrown-30, range-60, reach-10); si no, al lado
+export function alcanceAtaque(a: Pick<AtaqueCriatura, 'distancia' | 'rasgos'>): number {
+  if (a.distancia) return a.distancia;
+  for (const r of a.rasgos ?? []) {
+    const m = /^(?:thrown|range|range-increment|reach)[- ](\d+)/i.exec(r);
+    if (m) return Math.min(1000, Math.max(5, Number(m[1])));
+  }
+  return 5;
+}
+
 // Los números de un ataque en el 1.º, 2.º y 3.º del turno
 export function penalizacionesAtaque(a: AtaqueCriatura): [number, number, number] {
   const paso = a.agil ? 4 : 5;
