@@ -588,7 +588,12 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
 
       {bienvenida && (
         <Bienvenida salaId={salaId} codigoGM={codigoGM} onCerrar={cerrarBienvenida}
-          onIr={(c) => { cerrarBienvenida(); setCajon(c); }} />
+          onIr={(c) => {
+            cerrarBienvenida();
+            setCajon(c);
+            // El mapa está más abajo en el panel de la mesa: se baja hasta él cuando el panel ya se dibujó
+            if (c === 'mesa') setTimeout(() => document.getElementById('mesa-mapa')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+          }} />
       )}
       {codigos && (
         <div className="fixed top-[64px] right-4 z-40 w-[300px]">
