@@ -22,6 +22,12 @@ const COLOR_GRADO: Record<Grado, string> = {
 };
 
 // "Éxito contra Goblin". La CA solo la ve el GM: para los jugadores es un secreto de los enemigos.
+// Contra qué se tiró: una CD si fue con una skill ("Treat Wounds (Medicine)", "Recall Knowledge (Society)"); si no, la CA
+const CON_SKILL = /((Acrobatics|Arcana|Athletics|Crafting|Deception|Diplomacy|Intimidation|Medicine|Nature|Occultism|Performance|Religion|Society|Stealth|Survival|Thievery|Perception))/;
+function siglaDe(t: Tirada) {
+  return CON_SKILL.test(t.etiqueta) ? 'CD' : 'CA';
+}
+
 // La CD de una salvación contra tu propio conjuro la conoces (es tuya); la CA y la CD de los demás, solo el GM
 function cdVisible(t: Tirada, verCd: boolean, mio?: string) {
   return verCd || (!!mio && !!t.objetivo?.salvacion && t.autorTokenId === mio);
@@ -34,7 +40,7 @@ function Resultado({ t, verCd }: { t: Tirada; verCd: boolean }) {
   return (
     <span className="mt-1 inline-flex flex-wrap items-center gap-1.5 text-xs">
       <span className={`rounded-full px-2 py-0.5 font-medium ${COLOR_GRADO[t.objetivo.grado]}`}>{t.objetivo.salvacion ? SELLO_SALVACION[t.objetivo.grado].texto : GRADOS[t.objetivo.grado]}</span>
-      <span className="text-texto-suave">{t.objetivo.salvacion ? `salvación${verCd ? ` contra CD ${t.objetivo.cd}` : ''}` : `contra ${t.objetivo.nombre}${verCd ? ` (CA ${t.objetivo.cd})` : ''}`}</span>
+      <span className="text-texto-suave">{t.objetivo.salvacion ? `salvación${verCd ? ` contra CD ${t.objetivo.cd}` : ''}` : `contra ${t.objetivo.nombre}${verCd ? ` (${siglaDe(t)} ${t.objetivo.cd})` : ''}`}</span>
       {t.resultado && <span className="font-medium text-peligro">{textoResultado(t.resultado)}</span>}
     </span>
   );
@@ -229,7 +235,7 @@ function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critic
         <div className="flex flex-wrap items-center gap-2">
           <Estampa color={sello.color}>{sello.texto}</Estampa>
           <span className="font-titulo text-[13px] text-texto-suave">
-            {t.objetivo!.salvacion ? (verCd && t.objetivo!.cd ? `contra CD ${t.objetivo!.cd}` : 'en su salvación') : `contra ${t.objetivo!.nombre}${verCd && t.objetivo!.cd ? ` (CA ${t.objetivo!.cd})` : ''}`}
+            {t.objetivo!.salvacion ? (verCd && t.objetivo!.cd ? `contra CD ${t.objetivo!.cd}` : 'en su salvación') : `contra ${t.objetivo!.nombre}${verCd && t.objetivo!.cd ? ` (${siglaDe(t)} ${t.objetivo!.cd})` : ''}`}
           </span>
         </div>
       )}

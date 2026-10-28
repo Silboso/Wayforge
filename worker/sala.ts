@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
-import { calcular, gradoDeExito, leerExpresion, type Personaje } from '../reglas/pf2e';
+import { calcular, gradoDeExito, HABILIDADES, leerExpresion, type Personaje } from '../reglas/pf2e';
+import { cdDeNivel, datosDeCriatura, skillsParaRecordar } from '../reglas/recordar';
 import {
   aplicar, BLOQUEO_ESCUDO, caDeToken, casillaLibre, puedeVerMensaje, puedeVerTirada, dentroDelTablero, ladoDe, ESPERA_MS, esAccionValida, estadoInicial, motivoAlcance, motivoParaActuar, motivoParaActuarToken, planMovimiento, preparacionDe, puede,
   puedeMoverToken, reaccionesPara, resumen, tokenDePersonaje, tokenEnTurno,
@@ -45,6 +46,11 @@ const BLOQUEO_MS = 60_000;
 
 // Una partida. Guarda el estado en su SQLite y lo reparte por WebSocket a quienes ya entraron.
 // Quien solo tiene el código de sala es un visitante: ve la lista de personajes y nada más.
+// Recall Knowledge necesita una criatura (con su ficha) como objetivo
+function objetivoRecordar(estado: EstadoSala, id: unknown) {
+  return typeof id === 'string' && !!estado.tokens[id]?.criatura;
+}
+
 export class Sala extends DurableObject<Env> {
   private estado: EstadoSala = estadoInicial();
   private codigos: Codigos | null = null;
@@ -473,6 +479,10 @@ export class Sala extends DurableObject<Env> {
     if (preparando && alEmpezar && preparando.usadas.includes(a.id)) return this.negar(ws, `${a.verbo || a.nombre}: ya la usaste para este combate.`);
     const disp = disponibilidad(p, a);
     if (!disp.puede) return this.negar(ws, `${a.verbo || a.nombre}: ${disp.texto}.`);
+    // Recall Knowledge, sobre una criatura del tablero (de un tema cualquiera, se le pregunta al GM por el chat)
+    if (a.id === 'basica:recall-knowledge' && !objetivoRecordar(this.estado, m.objetivo)) {
+      return this.negar(ws, 'Toca primero a la criatura de la que quieres acordarte. De otro tema, pregúntale al GM por el chat.');
+    }
     // Shield Block sin un escudo en la hoja no frenaría nada: mejor decirlo antes de gastar la reacción
     if (/shield block/i.test(a.nombre) && !p.escudo) return this.negar(ws, 'Para bloquear necesitas un escudo en tu hoja (ponlo al editar tu personaje).');
     if (a.requiere && !(token.condiciones ?? []).some((c) => c.clave === a.requiere)) {
@@ -559,6 +569,7 @@ export class Sala extends DurableObject<Env> {
       return;
     }
     if (a.id === 'basica:treat-wounds') return this.curarHeridas(ws, token, p, objetivo ?? token, m.nivel);
+    if (a.id === 'basica:recall-knowledge' && objetivo?.criatura) return this.recordar(token, p, objetivo);
 
     if (inter && alcance && !('motivo' in alcance)) {
       const numero = (miTurno ? Math.min(c!.ataques, 2) : 0) as 0 | 1 | 2;
@@ -824,6 +835,33 @@ export class Sala extends DurableObject<Env> {
         ...(t.objetivo ? { objetivo: { ...t.objetivo, ...(t.objetivo.cd !== undefined && t.objetivo.grado ? { grado: gradoDeExito(total, d, t.objetivo.cd) } : {}) } } : {}),
       },
     });
+  }
+
+  // Recall Knowledge: la mesa tira en secreto con la mejor skill que sirve para esa criatura, contra la CD de su nivel.
+  // El GM ve la tirada; al jugador le llega un susurro con lo que recuerda (un dato con éxito, dos con crítico).
+  private async recordar(token: Token, p: Personaje, objetivo: Token) {
+    const c = objetivo.criatura!;
+    const ficha = calcular(p, token.condiciones ?? [], token.efectos ?? []);
+    const mejor = skillsParaRecordar(c.rasgos).map((k) => ({ k, total: ficha.habilidades[k].total })).sort((x, y) => y.total - x.total)[0]!;
+    const cd = cdDeNivel(c.nivel);
+    const d = dado(20);
+    const total = d + mejor.total;
+    const grado = gradoDeExito(total, d, cd);
+    const cuantos = grado === 'critico' ? 2 : grado === 'exito' ? 1 : 0;
+    const datos = datosDeCriatura(c).slice(0, cuantos);
+    const skill = HABILIDADES.find((h) => h.clave === mejor.k)!.nombre;
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: `Recall Knowledge (${skill}) sobre ${objetivo.nombre}`, dados: [d], caras: 20,
+        modificador: mejor.total, total, cuando: Date.now(), personajeId: p.id, autorTokenId: token.id, secreta: true,
+        objetivo: { nombre: objetivo.nombre, tokenId: objetivo.id, cd, grado },
+        resultado: { nota: datos.length ? `le contamos: ${datos.join(' ')}` : grado === 'pifia' ? 'pifia: si quieres, cuéntale algo falso' : 'no recuerda nada útil' },
+      },
+    });
+    const texto = datos.length
+      ? `Sobre ${objetivo.nombre} recuerdas (${skill}): ${datos.map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(' ')}`
+      : `No recuerdas nada útil sobre ${objetivo.nombre}.`;
+    await this.guardarYRepartir({ tipo: 'chat', mensaje: { id: crypto.randomUUID(), quien: 'La mesa', rol: 'gm', texto: texto.slice(0, 500), cuando: Date.now(), para: p.id } });
   }
 
   // Treat Wounds: Medicine contra la dificultad elegida; cura (o, con pifia, hace daño). El curado queda inmune

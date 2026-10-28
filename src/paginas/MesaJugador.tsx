@@ -234,6 +234,9 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         return elegirObjetivo(a.id), false;
       }
     }
+    // Recall Knowledge: sobre la criatura elegida (sin una, se elige en el tablero)
+    const recordar = a.id === 'basica:recall-knowledge';
+    if (recordar && !objetivoId && hayOtros && miToken) return elegirObjetivo(a.id), false;
     const fila = todasFilas.find((f) => f.clave === a.id);
     const alcance = fila ? alcanceDe(p, fila) : null;
     if (alcance && !objetivoId && hayOtros && miToken) return elegirObjetivo(a.id), false;
@@ -242,7 +245,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     if (lejos) return sala.negarLocal(lejos), false;
     if (a.tirada?.tipo === 'golpe' && p.golpes[0]) { ultimoGolpe.current = p.golpes[0].id; ultimoConjuro.current = null; }
     if (a.tirada?.tipo === 'ataque-conjuro') ultimoConjuro.current = a;
-    const apunta = inter || (a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') ? objetivoId : undefined;
+    const apunta = inter || recordar || (a.tirada && a.tirada.tipo !== 'expresion' && a.tirada.tipo !== 'percepcion') ? objetivoId : undefined;
     lanzar(a, apunta, a.tirada ? a.verbo || a.nombre : undefined);
     setElegida(null);
     setMenuAbierto(false);
@@ -335,6 +338,10 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       }];
     }
     // Lo que dicen en el chat (si no lo dije yo y no lo estoy mirando)
+    // Lo que te cuenta la mesa (Recall Knowledge): entero y sin "Responder", que no hay a quién
+    if (e.tipo === 'chat' && e.mensaje.quien === 'La mesa' && e.mensaje.para === p.id) {
+      return [{ id: id(), tono: 'nota', titulo: 'Recuerdas…', cuerpo: e.mensaje.texto, dura: 14000 }];
+    }
     if (e.tipo === 'chat') {
       if (e.mensaje.personajeId === p.id || cajon === 'chat' || panelMovil === 'chat') return [];
       return [{
