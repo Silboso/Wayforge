@@ -239,8 +239,9 @@ function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critic
           </span>
         </div>
       )}
-      {!sello && t.objetivo && <span className="font-titulo text-[13px] text-texto-suave">{dano ? 'de daño a' : 'contra'} {t.objetivo.nombre}</span>}
-      {t.resultado && <span className="font-titulo text-[13px] font-semibold text-peligro">{textoResultado(t.resultado)}</span>}
+      {!sello && t.objetivo && <span className="font-titulo text-[13px] text-texto-suave">{dano ? 'de daño a' : t.resultado?.curacion ? 'curación a' : 'contra'} {t.objetivo.nombre}</span>}
+      {/* Lo que cura, en verde; lo que daña o pasa, en rojo */}
+      {t.resultado && <span className={`font-titulo text-[13px] font-semibold ${t.resultado.curacion && !t.resultado.dano ? 'text-exito' : 'text-peligro'}`}>{textoResultado(t.resultado)}</span>}
     </div>
   );
 }

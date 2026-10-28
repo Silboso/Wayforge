@@ -1174,7 +1174,8 @@ function MargenTiradas({ estado, onVerTodas, p, onRepetir }: { estado: EstadoSal
     : undefined;
   if (ultimas.length === 0) return null;
   return (
-    <aside className="absolute top-16 right-6 z-10 w-[260px] font-titulo">
+    // En pantallas medianas (una tableta apaisada) taparía el tablero: ahí las tiradas están en su panel
+    <aside className="absolute top-16 right-6 z-10 hidden w-[260px] font-titulo xl:block">
       <h2 className="mb-1 text-[15px] font-semibold text-texto-suave">Últimas tiradas</h2>
       <ul>
         {ultimas.map((t) => (

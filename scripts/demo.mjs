@@ -107,7 +107,7 @@ const personajes = [
           'Trigger You are about to roll initiative.\n\n—\nUna premonición te avisa del peligro: cada aliado a 20 ft gana +2 de estado a su iniciativa y PG temporales iguales a la mitad de tu nivel.',
           { disparadores: ['iniciativa'] }),
         aptitud('heal', 'Heal', 'Curar', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
-          'Energía vital cura a un aliado que tocas o a 30 ft: 1d8+8 PG.', { distancia: 30 }),
+          'Energía vital cura a un aliado que tocas o a 30 ft: 1d8+8 PG.', { distancia: 30, potenciado: { base: 1, cada: 1, mas: '1d8+8' } }),
         aptitud('bless', 'Bless', 'Bendecir', 'conjuro', 2, { tipo: 'espacio', rango: 1 },
           'Tú y tus aliados a 15 ft: +1 de estado a los ataques por 1 minuto.'),
         aptitud('daze', 'Daze', 'Aturdir', 'truco', 2, { tipo: 'siempre' },
@@ -151,6 +151,18 @@ enviar({ tipo: 'accion', accion: { tipo: 'nombrar-mesa', nombre: 'Mesa de prueba
 enviar({ tipo: 'accion', accion: { tipo: 'guardar-handout', handout: { id: 'carta-alcalde', titulo: 'La carta del alcalde', texto: 'Al grupo que limpió el camino:\n\nVengan solos al molino viejo cuando caiga la noche. No confíen en el herrero.\n\n— Alcalde Deverin' } } });
 await esperar(300);
 ws.close();
+
+// Que estén todos: si la sala rechazó un personaje (un dato que no pasó la validación), avisarlo ya
+const lobby = await new Promise((r) => {
+  const s = new WebSocket(`${base.replace(/^http/, 'ws')}/api/salas/${codigo}/ws`);
+  s.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.tipo === 'lobby') { r(m.personajes.map((p) => p.id)); s.close(); } });
+  setTimeout(() => r([]), 5000);
+});
+const faltan = personajes.map((p) => p.ficha.id).filter((id) => !lobby.includes(id));
+if (faltan.length) {
+  console.error(`La sala no aceptó a: ${faltan.join(', ')} (revisa que su ficha pase la validación de reglas/pf2e.ts).`);
+  process.exit(1);
+}
 
 console.log(`
 Mesa de prueba lista

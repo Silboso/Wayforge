@@ -15,6 +15,8 @@ describe('conjuros potenciados', () => {
     expect(sumarAFormula('1d8+8', '1d8', 1)).toBe('2d8+8');
     expect(sumarAFormula('2d4', '1d6', 1)).toBe('2d4+1d6');
     expect(sumarAFormula('1d4+1', '1', 3)).toBe('1d4+4');
+    // Heal a 2 acciones: +1d8+8 por rango
+    expect(sumarAFormula('1d8+8', '1d8+8', 2)).toBe('3d8+24');
     expect(sumarAFormula('6d6', '2d6', 0)).toBe('6d6');
   });
 

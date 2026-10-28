@@ -369,6 +369,9 @@ export function rangoDeLanzamiento(a: Aptitud, nivel: number, espacio?: number):
 // Suma `veces` veces `mas` ("2d6" o "3") a una fórmula ("6d6+2"): si el dado es el mismo, suma dados; si no, lo agrega
 export function sumarAFormula(formula: string, mas: string, veces: number): string {
   if (veces <= 0) return formula;
+  // Dados y un fijo ("1d8+8", la curación de Heal a 2 acciones): primero los dados, después el fijo
+  const mixto = /^(\d+d\d+)\+(\d+)$/.exec(mas);
+  if (mixto) return sumarAFormula(sumarAFormula(formula, mixto[1]!, veces), mixto[2]!, veces);
   const dado = /^(\d+)d(\d+)$/.exec(mas);
   if (!dado) {
     const m = /^(.*?)([+-]\d+)?$/.exec(formula)!;

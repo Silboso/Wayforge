@@ -289,7 +289,7 @@ export function esAptitudValida(valor: unknown, esClaveHabilidad: (c: unknown) =
   const requiereValido = a.requiere === undefined || (typeof a.requiere === 'string' && a.requiere in CONDICIONES);
   const pot = a.potenciado as Record<string, unknown> | undefined;
   const potenciadoValido = pot === undefined || (typeof pot === 'object' && pot !== null && entero(pot.base, 0, 10) && entero(pot.cada, 1, 10)
-    && typeof pot.mas === 'string' && /^(\d{1,2}d\d{1,2}|\d{1,3})$/.test(pot.mas));
+    && typeof pot.mas === 'string' && /^(\d{1,2}d\d{1,2}(\+\d{1,3})?|\d{1,3})$/.test(pot.mas));
   const tiradaValida = tirada === undefined || (
     (tirada.tipo === 'skill' && esClaveHabilidad(tirada.clave))
     || tirada.tipo === 'percepcion' || tirada.tipo === 'ataque-conjuro' || tirada.tipo === 'golpe'
