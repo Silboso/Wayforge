@@ -346,7 +346,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
         onAtacar={(a) => atacar(a, objetivo.id)} onAcercar={(c) => sala.mover(actor.id, c.x, c.y)} onCerrar={() => setObjetivoId(null)} />
     ),
   } : null;
-  const margen = actor ? (plegada ? 70 : 300) : 0;
+  // Lo que tapa la hoja de abajo: en el teléfono ocupa más de media pantalla
+  const margen = actor ? (plegada ? 70 : window.innerWidth < 1024 ? Math.round(window.innerHeight * 0.6) : 300) : 0;
 
   function seleccionar(id: string | null) {
     if (eligiendo) {

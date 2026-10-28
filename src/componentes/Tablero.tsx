@@ -216,6 +216,16 @@ export function Tablero({
   useEffect(() => {
     if (enfocar) irA(enfocar.tokenId);
   }, [enfocar?.n]);
+  // Si la hoja de abajo se pliega o se despliega: en el teléfono (donde tapa media pantalla) se vuelve a encuadrar;
+  // en pantalla grande, lo que estaba al centro de lo visible sigue al centro
+  const margenAntes = useRef(margenInferior);
+  useEffect(() => {
+    const delta = margenAntes.current - margenInferior;
+    margenAntes.current = margenInferior;
+    if (!delta || !medida.ancho) return;
+    if (medida.ancho < 1024) centrar();
+    else setVista((v) => ({ ...v, y: v.y + delta / 2 }));
+  }, [margenInferior]); // eslint-disable-line react-hooks/exhaustive-deps
   const seguido = seguir ? estado.tokens[seguir] : undefined;
   useEffect(() => {
     if (seguido) irA(seguido.id, true);
