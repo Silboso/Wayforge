@@ -208,6 +208,13 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       if (!t || t.personajeId) return [];
       return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
     }
+    // Un jugador descansó por su cuenta: el GM lo sabe (espacios y foco de vuelta)
+    if (e.tipo === 'descanso-propio') {
+      const p = estado.personajes[e.personajeId];
+      if (!p) return [];
+      return [{ id: id(), tono: 'nota', titulo: e.descanso === 'diario' ? `${p.nombre} descansó 8 horas` : `${p.nombre} hizo Refocus`,
+        cuerpo: e.descanso === 'diario' ? `Recuperó sus espacios, foco y lo diario${e.curo > 0 ? `, y ${e.curo} PG` : ''}. El reloj de la mesa no avanzó: si descansa el grupo, usa Mesa → Tiempo.` : 'Recuperó 1 punto de foco.', dura: 9000 }];
+    }
     if (e.tipo === 'fin-combate') {
       const n = Object.values(e.quitados).reduce((s, x) => s + x.length, 0);
       return [{ id: id(), tono: 'nota', titulo: 'Terminó el combate', cuerpo: n ? `Se quitaron ${n} efectos y condiciones de la pelea (escudos levantados, lo de un minuto…). Dying y Wounded quedan.` : 'Todos vuelven a moverse libres.', dura: 7000 }];

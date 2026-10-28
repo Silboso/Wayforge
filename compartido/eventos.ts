@@ -32,7 +32,9 @@ export type Evento =
   // Empezó el combate: el orden en que se juega, para mostrarlo a todos
   | { tipo: 'combate'; orden: { tokenId: string; iniciativa: number }[] }
   // Terminó: qué se le fue a cada uno (escudo levantado, Bless…)
-  | { tipo: 'fin-combate'; quitados: Record<string, string[]> };
+  | { tipo: 'fin-combate'; quitados: Record<string, string[]> }
+  // Un jugador descansó por su cuenta (Refocus o las 8 horas): cuánto se curó
+  | { tipo: 'descanso-propio'; personajeId: string; descanso: 'refocus' | 'diario'; curo: number };
 
 export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: EstadoSala): Evento[] {
   switch (accion.tipo) {
@@ -89,6 +91,11 @@ export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: Estad
       return !!anterior.telon !== accion.bajo ? [{ tipo: 'telon', bajo: accion.bajo }] : [];
     case 'descanso-grupo':
       return [{ tipo: 'descanso', descanso: accion.descanso }];
+    case 'descansar': {
+      const antes = anterior.personajes[accion.personajeId];
+      const despues = posterior.personajes[accion.personajeId];
+      return antes && despues ? [{ tipo: 'descanso-propio', personajeId: accion.personajeId, descanso: accion.descanso, curo: despues.pgActual - antes.pgActual }] : [];
+    }
     case 'mostrar-handout': {
       // Solo si lo puede ver (al jugador le llega su estado filtrado: si no se lo mostraron, no está)
       const h = (posterior.handouts ?? []).find((x) => x.id === accion.id);
