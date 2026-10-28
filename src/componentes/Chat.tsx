@@ -8,9 +8,15 @@ type Renglon = { tipo: 'mensaje'; m: MensajeChat } | { tipo: 'tirada'; t: Tirada
 
 // El chat de la mesa: los mensajes y las tiradas en el mismo registro, por orden de llegada. Se puede hablar a
 // todos o susurrar (al GM, a un personaje); los susurros y las tiradas secretas del GM se ven distintos.
-export function PanelChat({ estado, quien, onDecir }: { estado: EstadoSala; quien: Sesion; onDecir: (texto: string, para?: string) => void }) {
+export function PanelChat({ estado, quien, onDecir, paraInicial }: {
+  estado: EstadoSala;
+  quien: Sesion;
+  onDecir: (texto: string, para?: string) => void;
+  // Al responder un susurro: ya apunta a quien lo mandó
+  paraInicial?: string;
+}) {
   const [texto, setTexto] = useState('');
-  const [para, setPara] = useState('');
+  const [para, setPara] = useState(paraInicial ?? '');
   const final = useRef<HTMLDivElement>(null);
   const renglones = useMemo<Renglon[]>(() => [
     ...(estado.chat ?? []).map((m) => ({ tipo: 'mensaje' as const, m, cuando: m.cuando })),

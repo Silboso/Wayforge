@@ -97,6 +97,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   const [importando, setImportando] = useState(false);
   const [ayuda, setAyuda] = useState(false);
   const [codigos, setCodigos] = useState(false);
+  const [responderA, setResponderA] = useState('');
   // Una mesa recién creada: la bienvenida con los códigos y por dónde empezar (una sola vez por mesa)
   const [bienvenida, setBienvenida] = useState(() => leer(`wayforge:bienvenida:${salaId}`) !== '1' && Object.keys(estado.personajes).length === 0);
   const cerrarBienvenida = () => { setBienvenida(false); guardar(`wayforge:bienvenida:${salaId}`, '1'); };
@@ -219,7 +220,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
     if (e.tipo === 'chat') {
       if (e.mensaje.rol === 'gm' || cajon === 'chat') return [];
       return [{ id: id(), tono: 'nota', titulo: e.mensaje.para ? `${e.mensaje.quien} te susurra` : e.mensaje.quien, cuerpo: e.mensaje.texto.slice(0, 140), dura: 7000,
-        botones: [{ etiqueta: 'Responder', principal: true, hacer: () => setCajon('chat') }] }];
+        // A un susurro se responde en susurro, al personaje que lo mandó
+        botones: [{ etiqueta: 'Responder', principal: true, hacer: () => { setResponderA(e.mensaje.para ? e.mensaje.personajeId ?? '' : ''); setCajon('chat'); } }] }];
     }
     // La preparación del combate: lo que usan los jugadores y cuándo están todos listos
     if (e.tipo === 'preparativo') {
@@ -397,7 +399,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
           <ListaTiradas tiradas={estado.tiradas} verCd />
         </div>
       );
-      case 'chat': return <PanelChat estado={estado} quien={sala.quien} onDecir={sala.decir} />;
+      case 'chat': return <PanelChat key={responderA} estado={estado} quien={sala.quien} onDecir={sala.decir} paraInicial={responderA} />;
       case 'reglas': return <PanelReglas />;
     }
   };

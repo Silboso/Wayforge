@@ -122,6 +122,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   const [subiendoNivel, setSubiendoNivel] = useState(false);
   // Treat Wounds esperando que se elija la dificultad (a quién)
   const [curando, setCurando] = useState<string | null>(null);
+  const [responderA, setResponderA] = useState('');
   // Un conjuro esperando que se elija el rango del espacio (cuando hay libres de más de un rango)
   const [lanzando, setLanzando] = useState<{ a: Aptitud; objetivo?: string; etiqueta?: string; mas?: Parameters<typeof sala.usar>[3] } | null>(null);
 
@@ -365,7 +366,11 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       return [{
         id: id(), tono: 'nota', titulo: e.mensaje.para ? `${e.mensaje.quien} te susurra` : e.mensaje.quien,
         cuerpo: e.mensaje.texto.length > 140 ? `${e.mensaje.texto.slice(0, 139)}…` : e.mensaje.texto, dura: 7000,
-        botones: [{ etiqueta: 'Responder', principal: true, hacer: () => setCajon('chat') }],
+        botones: [{ etiqueta: 'Responder', principal: true, hacer: () => {
+          // A un susurro se responde en susurro, a quien lo mandó
+          setResponderA(e.mensaje.para ? (e.mensaje.rol === 'gm' ? 'gm' : e.mensaje.personajeId ?? '') : '');
+          if (matchMedia('(min-width: 1024px)').matches) setCajon('chat'); else setPanelMovil('chat');
+        } }],
       }];
     }
     // El GM hizo descansar al grupo: qué recuperó
@@ -598,7 +603,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     },
   };
   const panelDe = (c: Cajon) => c === 'ficha' ? fichaCompleta
-    : c === 'chat' ? <PanelChat estado={estado} quien={sala.quien} onDecir={sala.decir} />
+    : c === 'chat' ? <PanelChat key={responderA} estado={estado} quien={sala.quien} onDecir={sala.decir} paraInicial={responderA} />
     : c === 'tiradas' ? tiradas
     : c === 'grupo' ? <PanelGrupo estado={estado} presentes={sala.presentes} miId={p.id} />
     : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} onBuscar={() => { setCompendioEn('equipo'); setCajon('compendio'); }} />
