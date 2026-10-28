@@ -347,7 +347,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       const sirven = reaccionesPara(estado, p.id, 'enemigo-se-mueve').filter((a) => (a.id === 'basica:ready-strike' ? llega || salia : salia));
       if (sirven.length === 0) return [];
       return [{
-        id: id(), tono: 'peligro', titulo: llega ? `${t.nombre} llega a tu alcance` : `${t.nombre} se mueve a tu lado`, cuerpo: 'Puedes castigarlo con tu reacción.', dura: 15000,
+        id: id(), tono: 'peligro', titulo: llega ? `${t.nombre} llega a tu alcance` : aAlcance(miToken, t, e.hasta) ? `${t.nombre} se mueve a tu lado` : `${t.nombre} se aleja de ti`, cuerpo: 'Puedes castigarlo con tu reacción.', dura: 15000,
         botones: sirven.map((a, i) => ({ etiqueta: `Usar ${a.verbo || a.nombre}`, principal: i === 0, hacer: () => usarReaccion(a, t.id) })),
       }];
     }
