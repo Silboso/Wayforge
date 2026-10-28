@@ -638,7 +638,11 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     const salen: Record<string, Pista> = {};
     for (const t of Object.values(estado.tokens)) {
       const pista = pistaObjetivo(estado, miToken, aptitudEligiendo, inter, t, distancia);
-      // Sobre uno mismo solo se dice algo si sirve (curarse, ayudarse)
+      // Sobre uno mismo solo se dice algo si sirve (curarse, ayudarse). Lo que daña: sobre los aliados no se dice nada
+      // (se pueden tocar igual), así las etiquetas de los enemigos no se pisan con las del grupo
+      const dana = filaEligiendo.tipo === 'golpe' || (!!inter && (!!inter.dano || inter.modo.tipo !== 'ninguna') && !inter.curacion && !inter.efecto?.beneficioso);
+      const aliado = !!t.personajeId || t.tipo === 'personaje';
+      if (dana && aliado && t.id !== miToken.id) continue;
       if (t.id !== miToken.id || pista.valido) salen[t.id] = pista;
     }
     return salen;
