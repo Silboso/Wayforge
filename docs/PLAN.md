@@ -262,6 +262,24 @@ objetivo (−2 a su CA) y te delata; un Stride también.
   suben según su "Heightened"; los trucos y los de foco suben solos con el nivel.
 - **Retratos de los compañeros en el teléfono**, arriba de la hoja; tocar uno lleva a su token.
 
+### Afinado jugando sesiones simuladas
+
+Rondas de juego con varios navegadores a la vez (GM, jugadores, teléfono, tableta, tema claro) y lo que salió:
+
+- **Reglas que faltaban:** Delay (esperar y "Actuar ahora", para jugadores y criaturas); Recall Knowledge
+  automático (la mesa tira en secreto con la skill que sirve por los rasgos, contra la CD del nivel, y le susurra
+  al jugador datos ciertos); al terminar el combate se va lo que solo duraba en la pelea; quien se suma a un
+  combate empezado tira su iniciativa y, si su lugar ya pasó, juega desde la próxima ronda; Treat Wounds fuera de
+  combate llega a todo el grupo; un escudo comprado se embraza.
+- **Creador:** "Elegir por mí" en cada paso llena lo que falta con lo que mejor le queda a la clase (atributos,
+  skills, dotes, los conjuros que más rinden), sin tocar lo elegido.
+- **GM:** bienvenida en una mesa nueva (códigos, link y tres pasos); se entera de los bloqueos con escudo; en el
+  teléfono la hoja se baja sola para elegir objetivo y el tablero se reencuadra.
+- **Tablero:** los nombres se reparten sin chocar (debajo, arriba o al costado, cortados solo si no hay lugar);
+  un toque lanza un área una sola vez; el tablero se ajusta al tamaño de la imagen del mapa.
+- **Avisos que explican:** de dónde vino el daño, qué hace el daño persistente y si el chequeo lo apagó, la CD
+  de tu propio conjuro, CD (no CA) en las skills.
+
 ## Lo único que falta
 
 - **Dominio propio**: hay que elegirlo y comprarlo; después se conecta en Cloudflare (Workers → Dominios).
