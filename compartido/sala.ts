@@ -380,6 +380,8 @@ export type MensajeCliente =
   // `secreto`: solo el GM, y solo él la ve
   | { tipo: 'tirar'; personajeId?: string; que: QueTirar; secreto?: boolean }
   | { tipo: 'iniciar-combate'; tokens: string[] }
+  // Alguien llega con el combate empezado: la sala tira su iniciativa
+  | { tipo: 'sumar-a-combate'; tokenId: string }
   // Mover un token a una casilla: la sala calcula el camino, valida la Velocidad y gasta los Strides
   | { tipo: 'mover'; tokenId: string; x: number; y: number }
   // Usar una aptitud: la sala revisa turno, acciones, usos y alcance, y hace todo junto.

@@ -1299,7 +1299,7 @@ function CabeceraTurno({ contexto: { combate, miTurno, enTurno, miToken, sala } 
     return (
       <h3 className="mb-1 font-titulo text-[21px] font-semibold">
         Turno de <span className={enTurno?.personajeId ? 'text-acento' : 'text-peligro'}>{enTurno?.nombre ?? '…'}</span>
-        <span className="text-[14px] font-normal text-texto-suave"> · prepara tu próximo turno</span>
+        <span className="hidden text-[14px] font-normal text-texto-suave sm:inline"> · prepara tu próximo turno</span>
       </h3>
     );
   }

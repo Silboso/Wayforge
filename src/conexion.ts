@@ -351,6 +351,9 @@ export function useSala(salaId: string) {
   const iniciarCombate = useCallback((tokens: string[]) => {
     mandar({ tipo: 'iniciar-combate', tokens });
   }, [mandar]);
+  const sumarACombate = useCallback((tokenId: string) => {
+    mandar({ tipo: 'sumar-a-combate', tokenId });
+  }, [mandar]);
 
   // Abrir o cerrar una puerta (la sala revisa si estás al lado)
   const puerta = useCallback((id: string) => {
@@ -359,7 +362,7 @@ export function useSala(salaId: string) {
 
   return {
     fase, lobby, quien, estado, presentes, conectado, rechazo, eventos, negaciones, pendiente, punteros, senales, medir, exportar,
-    enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, responder, mover, usar, negarLocal,
+    enviar, entrarComoGM, entrarComoJugador, nuevoPersonaje, salir, tirar, iniciarCombate, sumarACombate, responder, mover, usar, negarLocal,
     moverPuntero, apuntar, senalar, puerta, decir, heroico,
     limpiarRechazo: () => setRechazo(null),
   };

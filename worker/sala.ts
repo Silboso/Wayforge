@@ -149,6 +149,8 @@ export class Sala extends DurableObject<Env> {
         return this.usar(ws, conexion.quien, m);
       case 'iniciar-combate':
         return this.iniciarCombate(conexion.quien, m);
+      case 'sumar-a-combate':
+        return this.sumarACombate(conexion.quien, m);
       case 'responder':
         return this.responder(conexion.quien, m.esperaId, m.aptitudId);
       case 'puerta':
@@ -689,6 +691,24 @@ export class Sala extends DurableObject<Env> {
     }
     const proxima = this.estado.esperas.reduce((min, e) => Math.min(min, e.vence), Infinity);
     if (Number.isFinite(proxima)) await this.ctx.storage.setAlarm(proxima);
+  }
+
+  // Alguien llega con el combate empezado: la sala le tira la iniciativa (Perception) y entra en su lugar del orden
+  private async sumarACombate(quien: Sesion, m: Record<string, unknown>) {
+    const c = this.estado.combate;
+    const token = typeof m.tokenId === 'string' ? this.estado.tokens[m.tokenId] : undefined;
+    if (quien.rol !== 'gm' || !c || !token || c.orden.some((x) => x.tokenId === token.id)) return;
+    const personaje = token.personajeId ? this.estado.personajes[token.personajeId] : undefined;
+    const { modificador, etiqueta } = iniciativaDe(token, personaje, 'percepcion');
+    const d = dado(20);
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada',
+      tirada: {
+        id: crypto.randomUUID(), quien: token.nombre, etiqueta: `${etiqueta} · se suma al combate`, dados: [d], caras: 20, modificador, total: d + modificador,
+        cuando: Date.now(), ...(personaje ? { personajeId: personaje.id } : {}), autorTokenId: token.id,
+      },
+    });
+    await this.guardarYRepartir({ tipo: 'agregar-a-combate', tokenId: token.id, iniciativa: d + modificador });
   }
 
   // El GM empieza el combate: la sala tira la iniciativa de cada uno con lo que eligió en la preparación

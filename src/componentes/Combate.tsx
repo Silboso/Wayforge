@@ -149,11 +149,12 @@ function PreparacionGM({ estado, enviar, onIniciar }: {
 }
 
 // Controles del GM: empezar el combate eligiendo quién entra, ajustar el orden y terminarlo
-export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
+export function PanelCombateGM({ estado, quien, enviar, onIniciar, onSumar }: {
   estado: EstadoSala;
   quien: Sesion;
   enviar: (accion: Accion) => void;
   onIniciar: (tokens: string[]) => void;
+  onSumar: (tokenId: string) => void;
 }) {
   const confirmar = useConfirmar();
   const tokens = Object.values(estado.tokens);
@@ -255,8 +256,8 @@ export function PanelCombateGM({ estado, quien, enviar, onIniciar }: {
         </ol>
         {sinCombate.length > 0 && (
           <select className={claseEntrada} value="" aria-label="Sumar al combate"
-            onChange={(e) => e.target.value && enviar({ tipo: 'agregar-a-combate', tokenId: e.target.value, iniciativa: 10 })}>
-            <option value="">+ Sumar al combate (iniciativa 10)…</option>
+            onChange={(e) => e.target.value && onSumar(e.target.value)}>
+            <option value="">+ Sumar al combate (la mesa tira su iniciativa)…</option>
             {sinCombate.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select>
         )}
