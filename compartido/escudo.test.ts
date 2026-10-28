@@ -34,3 +34,13 @@ describe('Shield Block al recibir daño', () => {
     expect(caida.tokens.kyra!.condiciones).toEqual(expect.arrayContaining([{ clave: 'dying', valor: 1 }, { clave: 'unconscious', valor: 1 }]));
   });
 });
+
+describe('el mismo daño no se resta dos veces', () => {
+  it('si el GM y el jugador tocan "Restar", cuenta una sola vez', () => {
+    let e = aplicar(mesa(), { tipo: 'registrar-tirada', tirada: { id: 't1', quien: 'Goblin', etiqueta: 'Daño de Dogslicer (slashing)', dados: [3], caras: 6, modificador: 2, total: 5, cuando: 1, objetivo: { nombre: 'Kyra', tokenId: 'kyra' } } });
+    e = aplicar(e, { tipo: 'danar', tokenId: 'kyra', cantidad: 5, tiradaId: 't1' });
+    e = aplicar(e, { tipo: 'danar', tokenId: 'kyra', cantidad: 5, tiradaId: 't1' });
+    expect(e.personajes.kyra!.pgActual).toBe(15);
+    expect(e.tiradas.find((t) => t.id === 't1')?.aplicada).toBe(true);
+  });
+});

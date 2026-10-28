@@ -108,6 +108,8 @@ export interface Tirada {
   resultado?: { dano?: number; curacion?: number; tipo?: string; nota?: string };
   // Tirada en secreto del GM (Recall Knowledge, Perception contra una trampa): solo la ve el GM
   secreta?: boolean;
+  // Su daño ya se restó (lo hizo el GM o el jugador): no se resta dos veces
+  aplicada?: boolean;
 }
 
 // Un mensaje del chat de la mesa. `para`: un susurro ("gm" o el id de un personaje); lo ven solo quien lo
@@ -301,7 +303,8 @@ export type Accion =
   | { tipo: 'poner-efecto'; tokenId: string; efecto: EfectoActivo }
   | { tipo: 'quitar-efecto'; tokenId: string; efectoId: string }
   // Daño ya ajustado (resistencias) y curación: PG temporales primero; a 0 PG un personaje queda Dying
-  | { tipo: 'danar'; tokenId: string; cantidad: number; critico?: boolean }
+  // `tiradaId`: el daño de esa tirada; si ya se restó, no hace nada (el GM y el jugador tienen el mismo botón)
+  | { tipo: 'danar'; tokenId: string; cantidad: number; critico?: boolean; tiradaId?: string }
   | { tipo: 'curar'; tokenId: string; cantidad: number }
   // Sustain: lo que mantiene ese token sigue una ronda más
   | { tipo: 'sostener'; tokenId: string }
@@ -985,6 +988,10 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
     case 'danar': {
       const token = estado.tokens[accion.tokenId];
       if (!token || accion.cantidad <= 0) return estado;
+      if (accion.tiradaId) {
+        if (estado.tiradas.some((t) => t.id === accion.tiradaId && t.aplicada)) return estado;
+        estado = { ...estado, tiradas: estado.tiradas.map((t) => (t.id === accion.tiradaId ? { ...t, aplicada: true } : t)) };
+      }
       const p = token.personajeId ? estado.personajes[token.personajeId] : undefined;
       if (p) {
         // Shield Block: el escudo absorbe tanto como su Dureza; lo que sobra lo reciben él y el escudo
@@ -1304,7 +1311,8 @@ export function esAccionValida(valor: unknown, estado: EstadoSala): valor is Acc
       return esTexto(a.tokenId) && esTexto(a.efectoId);
     case 'danar':
     case 'curar':
-      return esTexto(a.tokenId) && esEntero(a.cantidad, 0, 9999) && (a.critico === undefined || typeof a.critico === 'boolean');
+      return esTexto(a.tokenId) && esEntero(a.cantidad, 0, 9999) && (a.critico === undefined || typeof a.critico === 'boolean')
+        && (a.tiradaId === undefined || esTexto(a.tiradaId, 100));
     default:
       return false;
   }

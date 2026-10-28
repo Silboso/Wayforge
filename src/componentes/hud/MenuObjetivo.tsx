@@ -94,7 +94,7 @@ export function MenuObjetivo({ estado, p, miToken, objetivo, filas, ataquesHecho
         </button>
       )}
       <ul className="mt-2 flex flex-col gap-1">
-        {opciones.map((o) => (
+        {opciones.filter((o) => !o.motivo || turno).map((o) => (
           <li key={o.clave}>
             <button
               className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-acento/10 disabled:hover:bg-transparent"
@@ -113,6 +113,17 @@ export function MenuObjetivo({ estado, p, miToken, objetivo, filas, ataquesHecho
           </li>
         ))}
       </ul>
+      {/* Lo que no llega, en una sola línea (el porqué, al pasar el cursor): así el menú no tapa el tablero */}
+      {!turno && opciones.some((o) => o.motivo) && (
+        <div className="mt-2 border-t border-dashed border-borde pt-2">
+          <p className="font-titulo text-[12.5px] text-texto-suave">{opciones.every((o) => o.motivo) ? `Desde aquí no llegas con nada (está a ${pies} ft).` : 'Fuera de alcance:'}</p>
+          <p className="mt-1 flex flex-wrap gap-1">
+            {opciones.filter((o) => o.motivo).map((o) => (
+              <span key={o.clave} title={o.motivo ?? undefined} className="rounded-md bg-superficie-2 px-1.5 py-0.5 font-titulo text-[12.5px] text-texto-suave">{o.nombre}</span>
+            ))}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

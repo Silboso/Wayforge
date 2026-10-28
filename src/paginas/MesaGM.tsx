@@ -149,6 +149,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       critico ? 'Daño crítico' : 'Daño', caras);
   };
 
+  // El menú de ataques contra alguien: se abre al tocarlo; si se atacó con la tecla (eligiendo), no aparece encima
+  const [menuObjetivo, setMenuObjetivo] = useState(false);
   function atacar(a: AtaqueCriatura, objetivo?: string) {
     if (!actor) return;
     const motivo = motivoParaActuarToken(estado, actor, 1);
@@ -206,7 +208,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
     if (e.tipo === 'todos-listos') {
       const tokens = estado.preparacion?.tokens ?? [];
       return [{
-        id: id(), tono: 'turno', titulo: 'Todos listos', cuerpo: 'Los jugadores eligieron su tirada y usaron lo que querían.',
+        // Con id fijo: al empezar el combate se quita solo
+        id: 'todos-listos', tono: 'turno', titulo: 'Todos listos', cuerpo: 'Los jugadores eligieron su tirada y usaron lo que querían.',
         botones: tokens.length ? [{ etiqueta: 'Tirar iniciativa', principal: true, hacer: () => sala.iniciarCombate(tokens) }] : [],
       }];
     }
@@ -243,15 +246,21 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       // Resistencias, debilidades e inmunidades de la criatura, ya aplicadas al número del botón
       const tipo = /\(([^)]+)\)/.exec(t.etiqueta)?.[1] ?? null;
       const ajuste = p ? { total: t.total, nota: null } : danoAjustado(objetivo.criatura, t.total, tipo);
+      if (t.aplicada) return [];
       return [{
-        id: id(), tono: 'peligro', titulo: `${t.quien} le hace ${t.total} de daño a ${objetivo.nombre}`,
+        // Con el id de la tirada: si el jugador ya lo restó, el aviso se cierra solo
+        id: `dano-${t.id}`, tono: 'peligro', titulo: `${t.quien} le hace ${t.total} de daño a ${objetivo.nombre}`,
         cuerpo: `${ajuste.nota ? `Recibe ${ajuste.total} (${ajuste.nota}). ` : ''}${objetivo.nombre} tiene ${pg.actual} PG${p ? ' (también le avisamos al jugador)' : ''}.`,
-        botones: [{ etiqueta: ajuste.total ? `Restar ${ajuste.total} PG` : 'No le hace nada', principal: true, hacer: () => cambiarPG(objetivo.id, -ajuste.total) }],
+        botones: [{ etiqueta: ajuste.total ? `Restar ${ajuste.total} PG` : 'No le hace nada', principal: true, hacer: () => (p ? sala.enviar({ tipo: 'danar', tokenId: objetivo.id, cantidad: ajuste.total, tiradaId: t.id, ...(/crítico/i.test(t.etiqueta) ? { critico: true } : {}) }) : cambiarPG(objetivo.id, -ajuste.total)) }],
       }];
     }
     return [];
   };
   const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  // El daño que ya restó otro (el GM o el jugador): su aviso se va
+  const aplicadas = estado.tiradas.filter((t) => t.aplicada).map((t) => t.id).join(',');
+  useEffect(() => { for (const id of aplicadas.split(',')) if (id) cerrarAviso(`dano-${id}`); }, [aplicadas]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (combate) cerrarAviso('todos-listos'); }, [!!combate]); // eslint-disable-line react-hooks/exhaustive-deps
   useLlegadas(sala.presentes, 'GM', agregarAviso);
   const negacionVista = useRef(sala.negaciones.at(-1)?.id ?? 0);
   useEffect(() => {
@@ -265,6 +274,8 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
   useEffect(() => {
     function alPulsar(e: KeyboardEvent) {
       const destino = e.target as HTMLElement;
+      // Esc cierra el panel de la derecha, aunque el foco esté en su campo (el chat)
+      if (e.key === 'Escape' && cajon && !document.querySelector('[aria-modal]')) { setCajon(null); (document.activeElement as HTMLElement | null)?.blur?.(); return; }
       if (e.ctrlKey || e.metaKey || e.altKey || destino.closest('input, textarea, select') || document.querySelector('[aria-modal]')) return;
       const tecla = e.key.toUpperCase();
       const i = TECLAS.indexOf(tecla);
@@ -309,7 +320,7 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
     ? { tokenId: actor.id, pies: filaEligiendo.distancia ?? 5, etiqueta: `${actor.nombre}: ${filaEligiendo.nombre} · ${(filaEligiendo.distancia ?? 5) <= 5 ? 'cuerpo a cuerpo' : `${filaEligiendo.distancia} ft`}` }
     : null;
   const objetivo = objetivoId ? estado.tokens[objetivoId] : undefined;
-  const menu = actor?.criatura && objetivo && !eligiendo ? {
+  const menu = actor?.criatura && objetivo && !eligiendo && menuObjetivo ? {
     tokenId: objetivo.id,
     contenido: (
       <MenuCriatura estado={estado} actor={actor} objetivo={objetivo} numero={numero}
@@ -320,14 +331,14 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
 
   function seleccionar(id: string | null) {
     if (eligiendo) {
-      if (id && id !== actor?.id) atacar(eligiendo, id);
+      if (id && id !== actor?.id) { atacar(eligiendo, id); setMenuObjetivo(false); }
       return;
     }
     if (!id) return setObjetivoId(null);
     const t = estado.tokens[id];
     if (!t) return;
     // Tocar a alguien con una criatura en mano: su menú de ataques contra él. Tocar otra criatura: pasar a manejarla.
-    if (actor?.criatura && id !== actor.id && (t.personajeId || t.tipo !== actor.tipo)) return setObjetivoId(id);
+    if (actor?.criatura && id !== actor.id && (t.personajeId || t.tipo !== actor.tipo)) { setMenuObjetivo(true); return setObjetivoId(id); }
     setActorId(id);
     setObjetivoId(null);
     setPlegada(false);

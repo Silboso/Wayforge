@@ -278,8 +278,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       critico ? 'Daño crítico' : 'Daño', golpe ? leerDados(golpe.dados)?.caras : undefined);
   };
   // El daño lo aplica la sala: PG temporales primero, Shield Block si lo usaste, Dying a 0 PG
-  const restarPG = (n: number, critico = false) => {
-    if (miToken) sala.enviar({ tipo: 'danar', tokenId: miToken.id, cantidad: n, ...(critico ? { critico } : {}) });
+  const restarPG = (n: number, critico = false, tiradaId?: string) => {
+    if (miToken) sala.enviar({ tipo: 'danar', tokenId: miToken.id, cantidad: n, ...(critico ? { critico } : {}), ...(tiradaId ? { tiradaId } : {}) });
   };
 
   // Lo que pasa en la mesa, convertido en avisos para este personaje: el momento justo de cada aptitud
@@ -392,16 +392,21 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         // Con Shield Block puesto, el escudo frena tanto como su Dureza
         const bloquea = miToken.efectos?.some((x) => x.clave === BLOQUEO_ESCUDO) && p.escudo && p.escudo.pgActual > 0 ? p.escudo : null;
         const recibe = bloquea ? Math.max(0, t.total - bloquea.dureza) : t.total;
+        if (t.aplicada) return avisos;
         avisos.push({
-          id: id(), tono: 'peligro', titulo: `${t.quien} te hace ${t.total} de daño`,
+          // Con el id de la tirada: si el GM ya lo restó, el aviso se cierra solo
+          id: `dano-${t.id}`, tono: 'peligro', titulo: `${t.quien} te hace ${t.total} de daño`,
           cuerpo: bloquea ? `${t.etiqueta}. Tu escudo frena ${Math.min(t.total, bloquea.dureza)} (Dureza); recibes ${recibe}, y el escudo también.` : t.etiqueta,
-          botones: [{ etiqueta: recibe ? `Restar ${recibe} PG` : 'El escudo lo frena todo', principal: true, hacer: () => restarPG(t.total, /crítico/i.test(t.etiqueta)) }],
+          botones: [{ etiqueta: recibe ? `Restar ${recibe} PG` : 'El escudo lo frena todo', principal: true, hacer: () => restarPG(t.total, /crítico/i.test(t.etiqueta), t.id) }],
         });
       }
     }
     return avisos;
   };
   const { avisos, cerrar: cerrarAviso, agregar: agregarAviso } = useAvisos(sala.eventos, generar);
+  // El daño que ya restó otro (el GM o el jugador): su aviso se va
+  const aplicadas = estado.tiradas.filter((t) => t.aplicada).map((t) => t.id).join(',');
+  useEffect(() => { for (const id of aplicadas.split(',')) if (id) cerrarAviso(`dano-${id}`); }, [aplicadas]); // eslint-disable-line react-hooks/exhaustive-deps
   useLlegadas(sala.presentes, p.nombre, agregarAviso);
   // Lo que la sala (o la propia pantalla) no dejó hacer: un aviso con el motivo
   const negacionVista = useRef(sala.negaciones.at(-1)?.id ?? 0);
@@ -432,6 +437,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   useEffect(() => {
     function alPulsar(e: KeyboardEvent) {
       const destino = e.target as HTMLElement;
+      // Esc cierra el panel de la derecha, aunque el foco esté en su campo (el chat)
+      if (e.key === 'Escape' && cajon && !document.querySelector('[aria-modal]')) { setCajon(null); (document.activeElement as HTMLElement | null)?.blur?.(); return; }
       if (editando || e.ctrlKey || e.metaKey || e.altKey || destino.closest('input, textarea, select, [aria-modal]')) return;
       if (document.querySelector('[aria-modal]')) return;
       const tecla = e.key.toUpperCase();
