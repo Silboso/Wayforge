@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CaretDownIcon, CaretUpIcon, FootprintsIcon, PencilSimpleIcon, ShieldIcon, StickerIcon, XIcon, HourglassMediumIcon } from '@phosphor-icons/react';
 import { calcular, signo } from '../../../reglas/pf2e';
 import { penalizacionesAtaque, type AtaqueCriatura } from '../../../reglas/criaturas';
+import { queTiraCriatura } from '../../../compartido/tiradas';
 import { alcanzables, desdeClave, distanciaEntre, type Casilla } from '../../../reglas/movimiento';
 import {
   caDeToken, ladoDe, motivoAlcance, motivoParaActuarToken, opcionesMovimiento, tokenEnTurno, velocidadDe, type EstadoSala, type Token,
@@ -13,6 +14,11 @@ import { EfectosActivos } from '../EfectosActivos';
 type Chequeo = 'fortitude' | 'reflex' | 'will' | 'percepcion';
 
 // La hoja del token que maneja el GM, apoyada abajo como la del jugador: quién es, qué puede hacer y su estado
+// Lo que de verdad suma su ataque: la penalización por ataques seguidos y lo que le quitan sus condiciones (Frightened…)
+function bonoAtaque(actor: Token, a: AtaqueCriatura, numero: 0 | 1 | 2): number {
+  return queTiraCriatura(actor, { tipo: 'criatura', tokenId: actor.id, ataque: a.id, numero })?.modificador ?? penalizacionesAtaque(a)[numero]!;
+}
+
 export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtacar, onAsomar, onDano, onChequeo, onSkill, onPG, onCondiciones, onEditar, onTerminar, onEsperar, onVolver, onCerrar, onQuitarEfecto }: {
   // Quitar un efecto que le dejó una aptitud (el GM manda)
   onQuitarEfecto?: (efectoId: string) => void;
@@ -51,8 +57,10 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
   const ca = caDeToken(estado, actor)?.total ?? null;
   const salvaciones: [Chequeo, string, number | null][] = personaje && ficha
     ? [['fortitude', 'Fort', ficha.salvaciones.fortitude.total], ['reflex', 'Ref', ficha.salvaciones.reflex.total], ['will', 'Will', ficha.salvaciones.will.total], ['percepcion', 'Perc', ficha.percepcion.total]]
-    : [['fortitude', 'Fort', cr?.salvaciones.fortitude ?? null], ['reflex', 'Ref', cr?.salvaciones.reflex ?? null], ['will', 'Will', cr?.salvaciones.will ?? null], ['percepcion', 'Perc', actor.percepcion ?? null]];
+    : (['fortitude', 'reflex', 'will', 'percepcion'] as const).map((k): [Chequeo, string, number | null] => [k, { fortitude: 'Fort', reflex: 'Ref', will: 'Will', percepcion: 'Perc' }[k],
+      cr ? queTiraCriatura(actor, { tipo: 'chequeo-criatura', tokenId: actor.id, clave: k })?.modificador ?? null : null]);
   const condiciones = actor.condiciones ?? [];
+  const ajusteChequeos = cr ? (queTiraCriatura(actor, { tipo: 'chequeo-criatura', tokenId: actor.id, clave: 'percepcion' })?.modificador ?? 0) - (actor.percepcion ?? 0) : 0;
 
   return (
     <section aria-label={`Hoja de ${actor.nombre}`}
@@ -139,7 +147,7 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
             <ul className="mt-1 max-h-[180px] overflow-y-auto pr-1" onMouseLeave={() => onAsomar(null)}>
               {cr.ataques.map((a, i) => {
                 const sinAcciones = libres !== null && libres < 1;
-                const valor = penalizacionesAtaque(a)[numero];
+                const valor = bonoAtaque(actor, a, numero);
                 return (
                   <li key={a.id} className="flex items-center border-b border-dashed border-borde">
                     <button className="grid min-h-[38px] flex-1 grid-cols-[44px_minmax(0,1fr)_auto_auto] items-center gap-2 px-1 text-left transition hover:bg-acento/[0.06] disabled:opacity-50"
@@ -163,12 +171,16 @@ export function HojaCriatura({ estado, actor, plegada, onPlegar, numero, onAtaca
               {cr.habilidades.length > 0 && (
                 <li className="flex flex-wrap items-center gap-1.5 px-1 pt-1 text-[12.5px] text-texto-suave">
                   Skills:
-                  {cr.habilidades.map((h) => (
-                    <button key={h.nombre} className="rounded-md border border-borde px-1.5 py-0.5 font-titulo text-[13px] text-texto hover:border-acento hover:text-acento"
-                      onClick={() => onSkill(h.nombre, h.bono)} title={`Tirar ${h.nombre}`}>
-                      {h.nombre} {signo(h.bono)}
-                    </button>
-                  ))}
+                  {cr.habilidades.map((h) => {
+                    // Lo que le quitan sus condiciones a Perception vale igual para sus skills
+                    const bono = h.bono + ajusteChequeos;
+                    return (
+                      <button key={h.nombre} className="rounded-md border border-borde px-1.5 py-0.5 font-titulo text-[13px] text-texto hover:border-acento hover:text-acento"
+                        onClick={() => onSkill(h.nombre, bono)} title={`Tirar ${h.nombre}`}>
+                        {h.nombre} {signo(bono)}
+                      </button>
+                    );
+                  })}
                 </li>
               )}
               {cr.defensas && (
@@ -286,7 +298,7 @@ export function MenuCriatura({ estado, actor, objetivo, numero, onAtacar, onAcer
                   <span className={`block font-titulo text-[15px] font-semibold ${motivo ? 'text-texto-suave' : ''}`}>{a.nombre}</span>
                   {motivo && !turno && <span className="block text-[12px] leading-snug text-peligro">{motivo.replace('tienes que estar', 'tiene que estar').replace('Acércate', 'Acércalo').replace('tu alcance', 'su alcance')}</span>}
                 </span>
-                <span className={`font-titulo text-[18px] font-bold ${motivo ? 'text-texto-suave' : 'text-peligro'}`}>{signo(penalizacionesAtaque(a)[numero])}</span>
+                <span className={`font-titulo text-[18px] font-bold ${motivo ? 'text-texto-suave' : 'text-peligro'}`}>{signo(bonoAtaque(actor, a, numero))}</span>
               </button>
             </li>
           );
