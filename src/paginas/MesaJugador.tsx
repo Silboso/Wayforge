@@ -45,7 +45,7 @@ import { ElegirAtajo, Modal, useConfirmar } from '../componentes/hud/Modal';
 import { AyudaTeclas, ModalCondiciones, PanelGrupo, PanelMochila, PanelNotas, PanelReglas } from '../componentes/hud/Paneles';
 import { PanelCompendio, type AccionesCompendio } from '../componentes/compendio/PanelCompendio';
 import { conjuroAAptitud, doteAAptitud } from '../../reglas/compendio';
-import { agregarObjeto, comprarObjeto, consumibleDeCompendio, objetoDeCompendio, textoPrecio } from '../../reglas/objetos';
+import { agregarObjeto, comprarObjeto, consumibleDeCompendio, escudoDe, objetoDeCompendio, textoPrecio } from '../../reglas/objetos';
 import { PanelEspera, PilaAvisos, useAvisos, useLlegadas, type Aviso } from '../componentes/hud/Avisos';
 
 type Tema = ReturnType<typeof useTema>;
@@ -525,15 +525,17 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       const a = doteAAptitud(d);
       if (a) agregarAptitud(a);
     },
-    // A la mochila (lo encontró o se lo dieron); los consumibles llegan con su acción
+    // A la mochila (lo encontró o se lo dieron); los consumibles llegan con su acción, y el primer escudo queda embrazado
     onAgregarObjeto: (e) => {
-      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: agregarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e)) });
+      const escudo = !p.escudo && e.escudo ? escudoDe(e) : null;
+      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { ...agregarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e)), ...(escudo ? { escudo } : {}) } });
     },
     // Comprarlo: paga con sus monedas
     onComprarObjeto: (e) => {
       const cambios = comprarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e), e.precio);
       if (!cambios) { sala.negarLocal(`No te alcanza: ${e.nombre} cuesta ${textoPrecio(e.precio)}.`); return false; }
-      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios });
+      const escudo = !p.escudo && e.escudo ? escudoDe(e) : null;
+      sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios: { ...cambios, ...(escudo ? { escudo } : {}) } });
       return true;
     },
   };

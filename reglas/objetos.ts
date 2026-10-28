@@ -7,6 +7,7 @@ import type { EquipoCompendio } from './compendio';
 import type { Interaccion } from './interacciones';
 import type { Golpe, Personaje, Rango } from './pf2e';
 import { CLASES } from './datos/clases';
+import { ESCUDOS } from './datos/equipo';
 
 export type Objeto = NonNullable<Personaje['inventario']>[number];
 export type Monedas = NonNullable<Personaje['monedas']>;
@@ -104,6 +105,14 @@ export function consumibleDeCompendio(e: EquipoCompendio, cantidad = 1): Aptitud
 // Un objeto del compendio a la mochila (con su precio, para venderlo después)
 export function objetoDeCompendio(e: EquipoCompendio): Objeto {
   return { id: `compendio:${e.id}`.slice(0, 80), nombre: corto(e.nombre, 80), cantidad: 1, bulto: Math.min(50, Math.max(0, e.bulto)), ...(e.precio > 0 ? { precio: Math.min(1e7, e.precio) } : {}) };
+}
+
+// El escudo que se puede embrazar: el del compendio trae sus números; uno de la mochila se reconoce por su nombre
+export function escudoDe(x: { nombre: string; escudo?: { ca: number; dureza: number; pg: number } }): Personaje['escudo'] | null {
+  const datos = x.escudo ?? ESCUDOS.find((e) => e.nombre.toLowerCase() === x.nombre.trim().toLowerCase());
+  if (!datos) return null;
+  const n = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(v)));
+  return { nombre: corto(x.nombre, 60), ca: n(datos.ca, 4), dureza: n(datos.dureza, 50), pg: n(datos.pg, 500), pgActual: n(datos.pg, 500) };
 }
 
 // ---------- Cambios a la mochila ----------

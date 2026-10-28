@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { EquipoCompendio, Indice } from './compendio';
 import { disponibilidad, usar } from './aptitudes';
 import {
-  agregarObjeto, bultoDe, cambiarCantidad, cargado, comprarObjeto, consumibleDeCompendio, golpeDeBomba, objetoDeCompendio, pagar,
+  agregarObjeto, bultoDe, cambiarCantidad, cargado, comprarObjeto, consumibleDeCompendio, escudoDe, golpeDeBomba, objetoDeCompendio, pagar,
   rangoBombas, textoPrecio, venderObjeto,
 } from './objetos';
 import { calcular, personajeNuevo, type Personaje } from './pf2e';
@@ -103,5 +103,13 @@ describe('consumibles conectados a la mochila', () => {
     let s = aplicar(estadoInicial(), { tipo: 'crear-personaje', personaje: { ...p, ...agregarObjeto(p, objetoDeCompendio(e), consumibleDeCompendio(e), 2) }, x: 2, y: 2 });
     s = aplicar(s, { tipo: 'usar-aptitud', personajeId: 'kyra', aptitudId: 'objeto:healing-potion-minor' });
     expect(s.personajes.kyra!.inventario![0]!.cantidad).toBe(1);
+  });
+});
+
+describe('escudos', () => {
+  it('uno del compendio trae sus números y uno de la mochila se reconoce por su nombre', () => {
+    expect(escudoDe({ nombre: 'Steel Shield', escudo: { ca: 2, dureza: 5, pg: 20 } })).toEqual({ nombre: 'Steel Shield', ca: 2, dureza: 5, pg: 20, pgActual: 20 });
+    expect(escudoDe({ nombre: 'wooden shield' })).toMatchObject({ ca: 2, dureza: 3, pg: 12 });
+    expect(escudoDe({ nombre: 'Cuerda élfica' })).toBeNull();
   });
 });

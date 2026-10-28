@@ -4,7 +4,7 @@ import { calcular, signo, type Personaje } from '../../../reglas/pf2e';
 import { ACCIONES_BASICAS, todasLasAptitudes, type Aptitud } from '../../../reglas/aptitudes';
 import { CONDICIONES, type ClaveCondicion, type Condicion } from '../../../reglas/condiciones';
 import { estadoDeSalud } from '../../../reglas/criaturas';
-import { bultoDe, cambiarCantidad, limiteCarga, maximoCarga, precioDeVenta, textoPrecio, venderObjeto } from '../../../reglas/objetos';
+import { bultoDe, cambiarCantidad, escudoDe, limiteCarga, maximoCarga, precioDeVenta, textoPrecio, venderObjeto } from '../../../reglas/objetos';
 import { tokenEnTurno, type EstadoSala, type Presente } from '../../../compartido/sala';
 import { BarraPG, CostoAccion, PostitCondicion, Tecla } from './piezas';
 import { Modal } from './Modal';
@@ -127,6 +127,9 @@ export function PanelMochila({ p, onCambiar, onUsar, onBuscar }: {
           {inventario.map((x, i) => {
             const uso = x.aptitudId ? aptitudes.find((a) => a.id === x.aptitudId) : undefined;
             const venta = precioDeVenta(x);
+            // Un escudo: el que tiene embrazado, o uno para cambiarlo
+            const escudo = escudoDe(x);
+            const enUso = !!escudo && p.escudo?.nombre.toLowerCase() === x.nombre.toLowerCase();
             return (
               <li key={`${x.id}-${i}`} className="flex min-h-12 items-center gap-2 border-b border-dashed border-borde py-1">
                 {uso && <CostoAccion costo={uso.costo} />}
@@ -137,6 +140,13 @@ export function PanelMochila({ p, onCambiar, onUsar, onBuscar }: {
                   </span>
                 </span>
                 {uso && filaUsar(uso, x.cantidad)}
+                {enUso && <span className="flex shrink-0 items-center gap-1 font-titulo text-[12.5px] text-acento"><ShieldIcon size={14} aria-hidden /> en uso</span>}
+                {escudo && !enUso && (
+                  <button className="boli h-8 shrink-0 border-[1.5px] border-acento px-2 font-titulo text-[13px] font-semibold text-acento hover:bg-acento/10"
+                    onClick={() => onCambiar({ escudo })} title={`+${escudo.ca} a la CA levantado · Dureza ${escudo.dureza} · ${escudo.pg} PG`}>
+                    Embrazar
+                  </button>
+                )}
                 <span className="flex items-center gap-1">
                   <button className="flex size-7 items-center justify-center rounded-md border border-borde" onClick={() => onCambiar(cambiarCantidad(p, i, x.cantidad - 1))} aria-label={`Quitar un ${x.nombre}`}><MinusIcon size={12} /></button>
                   <span className="w-6 text-center font-titulo text-[15px] font-bold">{x.cantidad}</span>
