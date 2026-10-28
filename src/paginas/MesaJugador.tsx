@@ -598,6 +598,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       onPonerCondicion={(clave, valor) => miToken && sala.enviar({ tipo: 'poner-condicion', tokenId: miToken.id, clave, valor })}
       onTirar={tirar}
       onAbrirEditor={() => setEditando(true)}
+      onPegarCondicion={() => setViendoCondiciones(true)}
     />
   );
   // En su turno: su alcance de movimiento y la línea a su objetivo, dibujados en el tablero

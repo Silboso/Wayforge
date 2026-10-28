@@ -19,11 +19,13 @@ interface Props {
   onPonerCondicion: (clave: ClaveCondicion, valor: number) => void;
   onTirar: (que: QueTirar) => void;
   onAbrirEditor: () => void;
+  // Abre la ventana de post-its de condiciones (si no, una lista desplegable)
+  onPegarCondicion?: () => void;
 }
 
 // La ficha en juego. Pensada para el teléfono: lo que más se usa arriba y botones grandes para tirar.
 export function Ficha({
-  personaje: p, condiciones, puedeEditar, objetivo, siguienteAtaque, onCambiar, onPonerCondicion, onTirar, onAbrirEditor,
+  personaje: p, condiciones, puedeEditar, objetivo, siguienteAtaque, onCambiar, onPonerCondicion, onTirar, onAbrirEditor, onPegarCondicion,
 }: Props) {
   const ficha = calcular(p, condiciones);
   const { abierto, alternar } = useAbierto();
@@ -53,7 +55,7 @@ export function Ficha({
         explicar={abierto === 'pg'} onExplicar={() => alternar('pg')} desglose={<Desglose valor={ficha.pgMax} />} />
 
       <Bloque titulo="Condiciones" ayuda="Tócala para ver qué hace">
-        <EditorCondiciones condiciones={condiciones} puedeEditar={puedeEditar} onPoner={onPonerCondicion} />
+        <EditorCondiciones condiciones={condiciones} puedeEditar={puedeEditar} onPoner={onPonerCondicion} {...(onPegarCondicion ? { onPegar: onPegarCondicion } : {})} />
       </Bloque>
 
       <div className="grid grid-cols-3 gap-2">

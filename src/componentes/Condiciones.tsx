@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
+import { MinusIcon, PlusIcon, StickerIcon, XIcon } from '@phosphor-icons/react';
 import { CONDICIONES, type ClaveCondicion, type Condicion } from '../../reglas/condiciones';
 import { claseBotonIcono, claseEntrada } from './ui';
 
 // Condiciones activas de un token: cada una con su explicación, su número y cómo quitarla
-export function EditorCondiciones({ condiciones, puedeEditar, onPoner }: {
+export function EditorCondiciones({ condiciones, puedeEditar, onPoner, onPegar }: {
   condiciones: Condicion[];
   puedeEditar: boolean;
   onPoner: (clave: ClaveCondicion, valor: number) => void;
+  // Si viene: en vez de la lista desplegable, el botón que abre los post-its con su explicación (como en la hoja)
+  onPegar?: () => void;
 }) {
   const [abierta, setAbierta] = useState<ClaveCondicion | null>(null);
   const disponibles = (Object.keys(CONDICIONES) as ClaveCondicion[]).filter((c) => !condiciones.some((x) => x.clave === c));
@@ -46,7 +48,12 @@ export function EditorCondiciones({ condiciones, puedeEditar, onPoner }: {
           );
         })}
       </ul>
-      {puedeEditar && (
+      {puedeEditar && onPegar && (
+        <button type="button" className="flex items-center gap-1.5 self-start rounded-md px-1.5 py-1 font-titulo text-[14px] text-texto-suave hover:text-acento" onClick={onPegar}>
+          <StickerIcon size={16} aria-hidden /> Pegar una condición
+        </button>
+      )}
+      {puedeEditar && !onPegar && (
         <select
           className={claseEntrada}
           value=""
