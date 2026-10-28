@@ -481,6 +481,10 @@ export class Sala extends DurableObject<Env> {
     if (preparando && alEmpezar && preparando.usadas.includes(a.id)) return this.negar(ws, `${a.verbo || a.nombre}: ya la usaste para este combate.`);
     const disp = disponibilidad(p, a);
     if (!disp.puede) return this.negar(ws, `${a.verbo || a.nombre}: ${disp.texto}.`);
+    // Levantarse solo tiene sentido en el suelo
+    const enElSuelo = (token.condiciones ?? []).some((c) => c.clave === 'prone');
+    if (a.id === 'basica:stand' && !enElSuelo) return this.negar(ws, 'No estás en el suelo: no hace falta levantarte.');
+    if (a.id === 'basica:drop-prone' && enElSuelo) return this.negar(ws, 'Ya estás en el suelo.');
     // Recall Knowledge, sobre una criatura del tablero (de un tema cualquiera, se le pregunta al GM por el chat)
     if (a.id === 'basica:recall-knowledge' && !objetivoRecordar(this.estado, m.objetivo)) {
       return this.negar(ws, 'Toca primero a la criatura de la que quieres acordarte. De otro tema, pregúntale al GM por el chat.');
@@ -552,6 +556,9 @@ export class Sala extends DurableObject<Env> {
     if (a.costo === 'reaccion' && c) await this.guardarYRepartir({ tipo: 'usar-reaccion', tokenId: token.id, usada: true });
     if (typeof a.costo === 'number' && miTurno) await this.guardarYRepartir({ tipo: 'gastar-acciones', usadas: Math.min(c!.acciones, c!.usadas + a.costo) });
     if (a.efecto?.aplica) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: a.efecto.aplica, valor: 1, hasta: 'inicio-turno' });
+    // Stand y Drop Prone: quitan o ponen Prone
+    if (a.id === 'basica:stand') await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'prone', valor: 0 });
+    if (a.id === 'basica:drop-prone') await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: 'prone', valor: 1 });
     // Shield Block: el próximo daño lo frena el escudo (lo aplica la sala al restar)
     if (/shield block/i.test(a.nombre) && p.escudo) {
       await this.guardarYRepartir({ tipo: 'poner-efecto', tokenId: token.id, efecto: crearEfecto({

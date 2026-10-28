@@ -322,10 +322,20 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         if (cond.clave === 'dying') notas.push(`Dying ${cond.valor}: tira tu salvación de recuperación (flat check).`);
         if (cond.clave === 'frightened') notas.push(`Frightened ${cond.valor}: baja 1 al terminar este turno.`);
         if (cond.clave === 'slowed' || cond.clave === 'stunned') notas.push(`${CONDICIONES[cond.clave].nombre}: pierdes acciones este turno.`);
+        if (cond.clave === 'prone') notas.push('Estás en el suelo (Prone): −2 a tus ataques y off-guard. Levantarte cuesta 1 acción.');
+        if (cond.clave === 'grabbed' || cond.clave === 'restrained') notas.push(`Estás ${CONDICIONES[cond.clave].nombre}: no puedes moverte hasta soltarte (Escape).`);
       }
       const recordar = aptitudesPara(p, 'inicio-turno');
       if (recordar.length) notas.push(`Recuerda: ${nombres(recordar)}.`);
-      return [{ id: 'mi-turno', tono: 'turno', titulo: '¡Tu turno!', cuerpo: <ul className="list-disc pl-4">{notas.map((n) => <li key={n}>{n}</li>)}</ul>, dura: 4500 }];
+      // Lo primero que probablemente quiere hacer, a un toque
+      const todas = todasLasAptitudes(p);
+      const primero = condiciones.some((x) => x.clave === 'prone') ? todas.find((a) => a.id === 'basica:stand')
+        : condiciones.some((x) => x.clave === 'grabbed' || x.clave === 'restrained') ? todas.find((a) => a.id === 'basica:escape') : undefined;
+      return [{
+        id: 'mi-turno', tono: 'turno', titulo: '¡Tu turno!', cuerpo: <ul className="list-disc pl-4">{notas.map((n) => <li key={n}>{n}</li>)}</ul>,
+        ...(primero ? { botones: [{ etiqueta: `${primero.verbo} (1 acción)`, principal: true, hacer: () => usarAptitud(primero) }] } : {}),
+        dura: primero ? 9000 : 4500,
+      }];
     }
     if (e.tipo === 'movimiento') {
       const t = estado.tokens[e.tokenId];
