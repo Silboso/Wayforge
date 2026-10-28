@@ -60,8 +60,8 @@ export function BarraEstados({ efectos, condiciones, onQuitarEfecto, onCondicion
               </div>
             )}>
               <button onClick={onCondiciones} aria-label={`${def.nombre}${def.conValor ? ` ${c.valor}` : ''}: cambiar`}
-                className="flex h-[30px] min-w-[30px] items-center justify-center rounded-[3px] bg-[var(--postit)] px-1 font-titulo text-[12px] font-bold text-[#5a2a3a] shadow-sm transition hover:scale-110">
-                {def.nombre.slice(0, 1)}{def.conValor ? c.valor : ''}
+                className="flex h-[26px] items-center justify-center rounded-[3px] bg-[var(--postit)] px-1.5 font-titulo text-[12px] font-bold whitespace-nowrap text-[#5a2a3a] shadow-sm transition hover:scale-105">
+                {def.nombre}{def.conValor ? ` ${c.valor}` : ''}
               </button>
             </ConFlotante>
           );

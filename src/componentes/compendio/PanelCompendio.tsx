@@ -8,7 +8,7 @@ import {
   type EquipoCompendio, type GenericoCompendio, type Indice, type TipoCompendio,
 } from '../../../reglas/compendio';
 import { precioTexto } from '../../../reglas/datos/equipo';
-import { buscar, useEntrada, useIndice } from '../../compendio';
+import { buscar, useEntrada, useIndice, entradaDe } from '../../compendio';
 import { CostoAccion } from '../hud/piezas';
 import { IconoJuego, rutaAscendencia, rutaTipo, type TipoIcono } from '../Iconos';
 
@@ -66,7 +66,11 @@ export function PanelCompendio({ acciones = {}, tipoInicial = 'criaturas' }: { a
         {indice === null ? 'Abriendo el compendio…' : total === 0 ? 'Nada con eso.' : `${total.toLocaleString('es')} resultado${total === 1 ? '' : 's'}${total > resultados.length ? ` · se ven los primeros ${resultados.length}, afina la búsqueda` : ''}`}
       </p>
       <ul className="flex flex-col">
-        {resultados.map((x) => <Fila key={x.id} x={x} tipo={tipo} onAbrir={() => setAbierta(x.id)} />)}
+        {resultados.map((x) => (
+          <Fila key={x.id} x={x} tipo={tipo} onAbrir={() => setAbierta(x.id)}
+            // Las criaturas se ponen en el tablero en un toque, sin abrir su ficha
+            {...(tipo === 'criaturas' && acciones.onPonerCriatura ? { rapido: { etiqueta: 'Poner', ayuda: `Poner ${x.nombre} en el tablero`, hacer: async () => { const e = await entradaDe<CriaturaCompendio>('criaturas', x.id); if (e) acciones.onPonerCriatura!(e); } } } : {})} />
+        ))}
       </ul>
       <p className="text-[11.5px] leading-snug text-texto-suave">Contenido de Pathfinder 2e de Paizo, importado del sistema PF2e de Foundry (licencias ORC y OGL). Los textos van en inglés, como en los libros. Íconos de Lorc, Delapouite y colaboradores en game-icons.net (CC BY 3.0).</p>
     </div>
@@ -79,10 +83,11 @@ const ICONO_TIPO: Record<TipoCompendio, TipoIcono> = {
   ascendencias: 'ancestry', herencias: 'heritage', trasfondos: 'background', clases: 'class', 'rasgos-de-clase': 'class', deidades: 'deity', peligros: 'hazard',
 };
 
-function Fila({ x, tipo, onAbrir }: { x: Indice; tipo: TipoCompendio; onAbrir: () => void }) {
+function Fila({ x, tipo, onAbrir, rapido }: { x: Indice; tipo: TipoCompendio; onAbrir: () => void; rapido?: { etiqueta: string; ayuda: string; hacer: () => void | Promise<void> } }) {
+  const [hecho, setHecho] = useState(false);
   return (
-    <li>
-      <button className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 border-b border-dashed border-borde px-1 py-1.5 text-left transition hover:bg-acento/[0.06]" onClick={onAbrir}>
+    <li className="flex items-center border-b border-dashed border-borde">
+      <button className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 px-1 py-1.5 text-left transition hover:bg-acento/[0.06]" onClick={onAbrir}>
         <IconoJuego ruta={tipo === 'ascendencias' ? rutaAscendencia(x.id) : rutaTipo(ICONO_TIPO[tipo])} className="size-6 text-texto-suave" />
         <span className="min-w-0">
           <span className={`block truncate font-titulo text-[15.5px] font-semibold ${x.rareza === 'uncommon' ? 'text-[#b06d1a]' : x.rareza === 'rare' ? 'text-acento' : x.rareza === 'unique' ? 'text-[#8a4fd0]' : ''}`}>{x.nombre}</span>
@@ -90,6 +95,12 @@ function Fila({ x, tipo, onAbrir }: { x: Indice; tipo: TipoCompendio; onAbrir: (
         </span>
         {x.nivel !== null && <span className="rounded-sm border border-texto-suave/40 px-1.5 font-titulo text-[12.5px] text-texto-suave">{x.nivel === 0 && x.resumen.startsWith('truco') ? 'truco' : `nv ${x.nivel}`}</span>}
       </button>
+      {rapido && (
+        <button className="ml-1 h-8 shrink-0 rounded-md border-[1.5px] border-acento px-2.5 font-titulo text-[13px] font-semibold text-acento hover:bg-acento/10" title={rapido.ayuda}
+          onClick={async () => { await rapido.hacer(); setHecho(true); setTimeout(() => setHecho(false), 1500); }}>
+          {hecho ? '✓' : rapido.etiqueta}
+        </button>
+      )}
     </li>
   );
 }

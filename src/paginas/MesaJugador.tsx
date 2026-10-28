@@ -290,6 +290,19 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       if (!miToken || e.tokenId !== miToken.id) return [];
       const notas: string[] = [];
       const c = estado.combate;
+      const caido = condiciones.some((x) => x.clave === 'unconscious' || x.clave === 'dying');
+      if (caido) {
+        const muriendo = condiciones.find((x) => x.clave === 'dying');
+        const heroicos = p.puntosHeroicos ?? 0;
+        return [{
+          id: id(), tono: 'peligro', titulo: muriendo ? `Estás muriendo (Dying ${muriendo.valor})` : 'Estás inconsciente',
+          cuerpo: muriendo
+            ? `La mesa tira tu salvación de recuperación. ${heroicos ? 'Puedes gastar tus Hero Points para no morir.' : 'Tus aliados pueden curarte.'}`
+            : 'No puedes actuar: tu turno pasa. Con curación te despiertas.',
+          ...(muriendo && heroicos ? { botones: [{ etiqueta: `Gastar ${heroicos} Hero Point${heroicos === 1 ? '' : 's'} y no morir`, principal: true, hacer: () => sala.heroico('recuperar') }] } : {}),
+          dura: 8000,
+        }];
+      }
       if (c) notas.push(`Tienes ${c.acciones} ${c.acciones === 1 ? 'acción' : 'acciones'} y tu reacción está lista.`);
       for (const cond of condiciones) {
         if (cond.clave === 'dying') notas.push(`Dying ${cond.valor}: tira tu salvación de recuperación (flat check).`);
@@ -1275,6 +1288,11 @@ function CondicionesCompactas({ contexto, condiciones }: { contexto: Contexto; c
             </span>
           ))}
       </button>
+      {condiciones.some((c) => c.clave === 'dying') && (contexto.p.puntosHeroicos ?? 0) > 0 && (
+        <button className="flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-peligro px-3 font-titulo text-[13.5px] font-semibold text-sobre-acento" onClick={() => sala.heroico('recuperar')}>
+          Hero Points: no morir
+        </button>
+      )}
       {combate && miTurno && (
         <button className="boli flex h-9 shrink-0 items-center gap-1.5 bg-acento px-3 font-titulo text-[14px] font-bold text-sobre-acento" onClick={() => sala.enviar({ tipo: 'avanzar-turno' })}>
           Terminar <Tecla sobreTinta>Espacio</Tecla>

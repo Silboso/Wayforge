@@ -159,7 +159,8 @@ export function Creador({ salaId, id, error, onGuardar, onCancelar, onAMano, onI
             <p className="mt-4 font-titulo text-[14px] text-texto-suave">Falta: {faltaDe(paso).map((f) => f.falta).join(' · ')}</p>
           )}
 
-          <div className="mt-6 flex justify-between gap-2">
+          {/* Atrás y Siguiente quedan a la vista abajo, aunque el paso sea largo */}
+          <div className="sticky bottom-[60px] z-10 -mx-4 mt-6 flex justify-between gap-2 border-t lg:bottom-0 border-dashed border-borde bg-fondo/95 px-4 py-3 backdrop-blur-sm lg:-mx-8 lg:px-8">
             <button type="button" className="boli flex h-11 items-center gap-2 border-[1.5px] border-borde px-4 font-titulo text-[15px] disabled:opacity-40"
               disabled={i === 0} onClick={() => setPaso(pasos[i - 1]!)}>
               <ArrowLeftIcon size={18} aria-hidden /> Atrás
