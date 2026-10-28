@@ -270,7 +270,11 @@ Rondas de juego con varios navegadores a la vez (GM, jugadores, teléfono, table
   automático (la mesa tira en secreto con la skill que sirve por los rasgos, contra la CD del nivel, y le susurra
   al jugador datos ciertos); al terminar el combate se va lo que solo duraba en la pelea; quien se suma a un
   combate empezado tira su iniciativa y, si su lugar ya pasó, juega desde la próxima ronda; Treat Wounds fuera de
-  combate llega a todo el grupo; un escudo comprado se embraza.
+  combate llega a todo el grupo; un escudo comprado se embraza. Las acciones básicas que solo gastaban la acción
+  ahora hacen lo suyo: Stand quita Prone y Drop Prone lo pone; Escape tira contra la CD de quien te agarra y te
+  suelta; Take Cover da +2 a la CA; Aid tira contra CD 15 y le da +1 (o +2) al aliado; Ready prepara un Strike
+  que la mesa ofrece cuando un enemigo llega a tu alcance. Cada personaje empieza con 1 Hero Point. El GM da
+  botín desde el compendio (un objeto a un jugador) y reparte monedas entre todos.
 - **Creador:** "Elegir por mí" en cada paso llena lo que falta con lo que mejor le queda a la clase (atributos,
   skills, dotes, los conjuros que más rinden), sin tocar lo elegido.
 - **GM:** bienvenida en una mesa nueva (códigos, link y tres pasos); se entera de los bloqueos con escudo; en el
