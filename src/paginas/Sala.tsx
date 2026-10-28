@@ -1,11 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useSala } from '../conexion';
 import type { useTema } from '../tema';
 import { BotonTema } from '../componentes/BotonTema';
 import { Entrada } from '../componentes/Entrada';
 import { claseBotonSecundario } from '../componentes/ui';
-import { MesaJugador } from './MesaJugador';
-import { MesaGM } from './MesaGM';
+// Cada mesa se descarga solo cuando hace falta: un jugador no baja la del GM (ni el inicio, ninguna de las dos)
+const MesaJugador = lazy(() => import('./MesaJugador').then((m) => ({ default: m.MesaJugador })));
+const MesaGM = lazy(() => import('./MesaGM').then((m) => ({ default: m.MesaGM })));
 
 type Tema = ReturnType<typeof useTema>;
 
@@ -48,8 +49,13 @@ function MesaConectada({ salaId, tema }: { salaId: string; tema: Tema }) {
   if (sala.fase === 'conectando' || !sala.estado) return <Centro>Entrando a la mesa…</Centro>;
   const quien = sala.quien;
   const personaje = quien.rol === 'jugador' ? sala.estado.personajes[quien.personajeId] : undefined;
-  if (personaje) return <MesaJugador salaId={salaId} sala={sala} estado={sala.estado} personaje={personaje} tema={tema} />;
-  return <MesaGM salaId={salaId} sala={sala} estado={sala.estado} tema={tema} />;
+  return (
+    <Suspense fallback={<Centro>Abriendo la mesa…</Centro>}>
+      {personaje
+        ? <MesaJugador salaId={salaId} sala={sala} estado={sala.estado} personaje={personaje} tema={tema} />
+        : <MesaGM salaId={salaId} sala={sala} estado={sala.estado} tema={tema} />}
+    </Suspense>
+  );
 }
 
 function Centro({ children }: { children: ReactNode }) {

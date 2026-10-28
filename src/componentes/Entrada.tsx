@@ -1,11 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { CrownSimpleIcon, FileArrowUpIcon, PlusIcon } from '@phosphor-icons/react';
 import { personajeNuevo, type Personaje } from '../../reglas/pf2e';
 import type { ResumenPersonaje } from '../../compartido/sala';
 import type { Sala } from '../conexion';
 import { EditorFicha, EntradaCodigo } from './EditorFicha';
-import { Creador } from './creador/Creador';
-import { ImportarPathbuilder } from './ImportarPathbuilder';
+// El creador y el importador son grandes y solo los usa quien arma un personaje
+const Creador = lazy(() => import('./creador/Creador').then((m) => ({ default: m.Creador })));
+const ImportarPathbuilder = lazy(() => import('./ImportarPathbuilder').then((m) => ({ default: m.ImportarPathbuilder })));
 import { claseBotonPrincipal } from './ui';
 
 const MENSAJES: Record<string, string> = {
@@ -38,19 +39,23 @@ export function Entrada({ salaId, sala }: { salaId: string; sala: Sala }) {
 
   if (creando && importando) {
     return (
+      <Suspense fallback={<p className="p-6 text-center text-texto-suave">Abriendo…</p>}>
       <ImportarPathbuilder id={creando.id} error={error}
         onCancelar={() => { setCreando(null); setImportando(false); sala.limpiarRechazo(); }}
         onRevisar={(p) => { setCreando(p); setImportando(false); setAMano(true); }}
         onGuardar={(p, codigoNuevo) => sala.nuevoPersonaje(p, codigoNuevo)} />
+      </Suspense>
     );
   }
   if (creando && !aMano) {
     return (
+      <Suspense fallback={<p className="p-6 text-center text-texto-suave">Abriendo el creador…</p>}>
       <Creador salaId={salaId} id={creando.id} error={error}
         onCancelar={() => { setCreando(null); sala.limpiarRechazo(); }}
         onAMano={() => setAMano(true)}
         onImportar={() => setImportando(true)}
         onGuardar={(p, codigoNuevo) => sala.nuevoPersonaje(p, codigoNuevo)} />
+      </Suspense>
     );
   }
   if (creando) {
