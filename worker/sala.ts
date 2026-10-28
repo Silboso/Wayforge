@@ -485,6 +485,9 @@ export class Sala extends DurableObject<Env> {
     const enElSuelo = (token.condiciones ?? []).some((c) => c.clave === 'prone');
     if (a.id === 'basica:stand' && !enElSuelo) return this.negar(ws, 'No estás en el suelo: no hace falta levantarte.');
     if (a.id === 'basica:drop-prone' && enElSuelo) return this.negar(ws, 'Ya estás en el suelo.');
+    if (a.id === 'basica:escape' && !(token.condiciones ?? []).some((c) => c.clave === 'grabbed' || c.clave === 'restrained')) {
+      return this.negar(ws, 'Nadie te tiene agarrado: no hace falta escapar.');
+    }
     // Recall Knowledge, sobre una criatura del tablero (de un tema cualquiera, se le pregunta al GM por el chat)
     if (a.id === 'basica:recall-knowledge' && !objetivoRecordar(this.estado, m.objetivo)) {
       return this.negar(ws, 'Toca primero a la criatura de la que quieres acordarte. De otro tema, pregúntale al GM por el chat.');
@@ -578,6 +581,7 @@ export class Sala extends DurableObject<Env> {
       return;
     }
     if (a.id === 'basica:treat-wounds') return this.curarHeridas(ws, token, p, objetivo ?? token, m.nivel);
+    if (a.id === 'basica:escape') return this.escapar(token, p);
     if (a.id === 'basica:recall-knowledge' && objetivo?.criatura) return this.recordar(token, p, objetivo);
 
     if (inter && alcance && !('motivo' in alcance)) {
@@ -862,6 +866,41 @@ export class Sala extends DurableObject<Env> {
         ...(t.objetivo ? { objetivo: { ...t.objetivo, ...(t.objetivo.cd !== undefined && t.objetivo.grado ? { grado: gradoDeExito(total, d, t.objetivo.cd) } : {}) } } : {}),
       },
     });
+  }
+
+  // Escape: Athletics o Acrobatics (la mejor) contra la CD de Athletics de quien te tiene (el enemigo pegado más fuerte).
+  // Con éxito te sueltas. Tiene el rasgo attack: cuenta para la penalización por ataques seguidos.
+  private async escapar(token: Token, p: Personaje) {
+    const c = this.estado.combate;
+    const ficha = calcular(p, token.condiciones ?? [], token.efectos ?? []);
+    const [clave, mod] = ficha.habilidades.athletics.total >= ficha.habilidades.acrobatics.total
+      ? ['Athletics', ficha.habilidades.athletics.total] as const : ['Acrobatics', ficha.habilidades.acrobatics.total] as const;
+    const numero = c && tokenEnTurno(this.estado)?.id === token.id ? Math.min(c.ataques, 2) : 0;
+    const penalizacion = numero * 5;
+    const quienes = Object.values(this.estado.tokens).filter((t) => t.criatura && !motivoAlcance(t, token, 5));
+    const cdDe = (t: Token) => {
+      const at = t.criatura!.habilidades.find((h) => /athletics/i.test(h.nombre));
+      return at ? 10 + at.bono : cdDeNivel(t.criatura!.nivel);
+    };
+    const quien = quienes.sort((x, y) => cdDe(y) - cdDe(x))[0];
+    const d = dado(20);
+    const total = d + mod - penalizacion;
+    const cd = quien ? cdDe(quien) : 10;
+    const grado = gradoDeExito(total, d, cd);
+    await this.guardarYRepartir({
+      tipo: 'registrar-tirada', tirada: {
+        id: crypto.randomUUID(), quien: p.nombre, etiqueta: `Escape (${clave})${penalizacion ? ` · −${penalizacion} por ataques seguidos` : ''}`, dados: [d], caras: 20,
+        modificador: mod - penalizacion, total, cuando: Date.now(), personajeId: p.id, autorTokenId: token.id,
+        objetivo: { nombre: quien?.nombre ?? 'lo que te sujeta', ...(quien ? { tokenId: quien.id } : {}), cd, grado },
+        resultado: { nota: grado === 'critico' || grado === 'exito' ? 'te sueltas' : 'sigues agarrado' },
+      },
+    });
+    if (c && tokenEnTurno(this.estado)?.id === token.id) await this.guardarYRepartir({ tipo: 'contar-ataque', tokenId: token.id, gastaAccion: false });
+    if (grado === 'critico' || grado === 'exito') {
+      for (const clave2 of ['grabbed', 'restrained'] as const) {
+        if ((token.condiciones ?? []).some((x) => x.clave === clave2)) await this.guardarYRepartir({ tipo: 'poner-condicion', tokenId: token.id, clave: clave2, valor: 0 });
+      }
+    }
   }
 
   // Recall Knowledge: la mesa tira en secreto con la mejor skill que sirve para esa criatura, contra la CD de su nivel.

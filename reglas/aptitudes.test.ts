@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calcular, esPersonajeValido, personajeNuevo, type Personaje } from './pf2e';
-import { aptitudNueva, descansar, disponibilidad, grupoDe, todasLasAptitudes, usar, type Aptitud } from './aptitudes';
+import { ACCIONES_BASICAS, aptitudNueva, descansar, disponibilidad, grupoDe, todasLasAptitudes, usar, type Aptitud } from './aptitudes';
+import { interaccionDe } from './interacciones';
 
 const missile: Aptitud = { ...aptitudNueva('missile'), nombre: 'Force Barrage', verbo: 'Proyectiles mágicos', recuperacion: { tipo: 'espacio', rango: 1 } };
 const lance: Aptitud = { ...aptitudNueva('lance'), nombre: 'Lay on Hands', verbo: 'Imponer manos', categoria: 'foco', costo: 1, recuperacion: { tipo: 'foco' } };
@@ -86,5 +87,12 @@ describe('aptitudes', () => {
     expect(esPersonajeValido({ ...maga(), aptitudes: [{ ...missile, costo: 7 }] })).toBe(false);
     expect(esPersonajeValido({ ...maga(), aptitudes: [{ ...missile, tirada: { tipo: 'expresion', expresion: 'hola' } }] })).toBe(false);
     expect(esPersonajeValido({ ...maga(), recursos: { foco: { max: 9, actual: 0 }, espacios: [], usos: {} } })).toBe(false);
+  });
+});
+
+describe('acciones básicas con efecto', () => {
+  it('Take Cover trae su efecto (+2 a la CA hasta tu próximo turno)', () => {
+    const a = ACCIONES_BASICAS.find((x) => x.id === 'basica:take-cover')!;
+    expect(interaccionDe(a)?.efecto?.modificadores).toEqual([{ blanco: 'ca', tipo: 'circunstancia', valor: 2 }]);
   });
 });

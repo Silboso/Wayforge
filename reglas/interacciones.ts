@@ -205,6 +205,11 @@ export const CATALOGO_INTERACCIONES: Record<string, Interaccion> = {
     modo: { tipo: 'ninguna' }, objetivos: { tipo: 'uno', aliados: true },
     efecto: efecto({ clave: 'heroism', nombre: 'Heroism', beneficioso: true, modificadores: [{ blanco: 'chequeos', tipo: 'estado', valor: 1 }], rondas: 100, aspecto: 'bendicion' }),
   },
+  // Take Cover: te pegas a lo que te cubre (+2 a la CA hasta tu próximo turno; la mesa no sigue si te moviste)
+  'take-cover': {
+    modo: { tipo: 'ninguna' }, objetivos: { tipo: 'yo' },
+    efecto: efecto({ clave: 'take-cover', nombre: 'A cubierto', beneficioso: true, modificadores: [{ blanco: 'ca', tipo: 'circunstancia', valor: 2 }], rondas: 1, aspecto: 'escudo' }),
+  },
   shield: {
     modo: { tipo: 'ninguna' }, objetivos: { tipo: 'yo' },
     efecto: efecto({ clave: 'shield', nombre: 'Shield', beneficioso: true, modificadores: [{ blanco: 'ca', tipo: 'circunstancia', valor: 1 }], rondas: 1, aspecto: 'escudo' }),

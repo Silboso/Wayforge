@@ -198,6 +198,13 @@ const SELLO_SALVACION: Record<Grado, { texto: string; color: string }> = {
   pifia: { texto: '¡Falla feo!', color: 'var(--peligro)' },
 };
 
+// Verde lo que salió bien sin hacer daño: una curación, o un chequeo propio logrado (te sueltas, recuerdas algo)
+function bueno(t: Tirada) {
+  const r = t.resultado;
+  if (!r || r.dano) return false;
+  return !!r.curacion || (!t.objetivo?.salvacion && (t.objetivo?.grado === 'exito' || t.objetivo?.grado === 'critico'));
+}
+
 // Lo que el motor ya aplicó: "−9 acid · resistencia…", "+12 PG", "queda Frightened 2"
 function textoResultado(r: NonNullable<Tirada['resultado']>): string {
   return [r.dano !== undefined ? (r.dano ? `−${r.dano} PG${r.tipo ? ` (${r.tipo})` : ''}` : 'sin daño') : null, r.curacion ? `+${r.curacion} PG` : null, r.nota].filter(Boolean).join(' · ');
@@ -241,7 +248,7 @@ function NotaTirada({ t, verCd, nat }: { t: Tirada; verCd: boolean; nat: 'critic
       )}
       {!sello && t.objetivo && <span className="font-titulo text-[13px] text-texto-suave">{dano ? 'de daño a' : t.resultado?.curacion ? 'curación a' : 'contra'} {t.objetivo.nombre}</span>}
       {/* Lo que cura, en verde; lo que daña o pasa, en rojo */}
-      {t.resultado && <span className={`font-titulo text-[13px] font-semibold ${t.resultado.curacion && !t.resultado.dano ? 'text-exito' : 'text-peligro'}`}>{textoResultado(t.resultado)}</span>}
+      {t.resultado && <span className={`font-titulo text-[13px] font-semibold ${bueno(t) ? 'text-exito' : 'text-peligro'}`}>{textoResultado(t.resultado)}</span>}
     </div>
   );
 }
