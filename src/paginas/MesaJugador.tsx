@@ -84,6 +84,8 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
   // En el teléfono: la lista de "Más" y el panel abierto desde ahí
   const [masAbierto, setMasAbierto] = useState(false);
   const [panelMovil, setPanelMovil] = useState<Cajon | null>(null);
+  // Abre un panel donde se ve: a la derecha en pantalla grande, como ventana en el teléfono
+  const abrirPanel = (c: Cajon) => (matchMedia('(min-width: 1024px)').matches ? setCajon(c) : setPanelMovil(c));
   const [ayuda, setAyuda] = useState(false);
   // Tocar un nombre del orden de iniciativa lleva la vista a su token
   const [enfoque, setEnfoque] = useState<{ tokenId: string; n: number } | null>(null);
@@ -369,7 +371,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
         botones: [{ etiqueta: 'Responder', principal: true, hacer: () => {
           // A un susurro se responde en susurro, a quien lo mandó
           setResponderA(e.mensaje.para ? (e.mensaje.rol === 'gm' ? 'gm' : e.mensaje.personajeId ?? '') : '');
-          if (matchMedia('(min-width: 1024px)').matches) setCajon('chat'); else setPanelMovil('chat');
+          abrirPanel('chat');
         } }],
       }];
     }
@@ -606,7 +608,7 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
     : c === 'chat' ? <PanelChat key={responderA} estado={estado} quien={sala.quien} onDecir={sala.decir} paraInicial={responderA} />
     : c === 'tiradas' ? tiradas
     : c === 'grupo' ? <PanelGrupo estado={estado} presentes={sala.presentes} miId={p.id} />
-    : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} onBuscar={() => { setCompendioEn('equipo'); setCajon('compendio'); }} />
+    : c === 'mochila' ? <PanelMochila p={p} onCambiar={(cambios) => sala.enviar({ tipo: 'editar-personaje', id: p.id, cambios })} onUsar={usarObjeto} onBuscar={() => { setCompendioEn('equipo'); abrirPanel('compendio'); }} />
     : c === 'compendio' ? <PanelCompendio key={compendioEn} tipoInicial={compendioEn} acciones={accionesCompendio} />
     : c === 'notas' ? (
       <div className="flex h-full flex-col gap-5">
