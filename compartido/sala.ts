@@ -773,8 +773,18 @@ export function aplicar(estado: EstadoSala, accion: Accion): EstadoSala {
       const tokens = Object.fromEntries(Object.entries(estado.tokens).map(([id, t]) => [id, sinEfectos(t, (t.efectos ?? []).filter(soloIniciativa))]));
       return empezarTurno({ ...estado, tokens, preparacion: null }, { ronda: 1, turno: 0, orden, acciones: 3, usadas: 0, ataques: 0, reacciones: [] });
     }
-    case 'terminar-combate':
-      return { ...estado, combate: null };
+    case 'terminar-combate': {
+      if (!estado.combate) return estado;
+      // Lo que no sobrevive al combate: el escudo levantado y lo de "hasta tu turno", Frightened (se habría ido solo),
+      // los efectos de un minuto o menos, lo sostenido y lo persistente. Dying, Wounded y lo largo se quedan.
+      const tokens = Object.fromEntries(Object.entries(estado.tokens).map(([id, t]) => {
+        const condiciones = (t.condiciones ?? []).filter((c) => !c.hasta && c.clave !== 'frightened');
+        const efectos = (t.efectos ?? []).filter((e) => !e.persistente && e.duracion.tipo !== 'sostenido' && !(e.duracion.tipo === 'rondas' && e.duracion.rondas <= 10));
+        const cambia = condiciones.length !== (t.condiciones ?? []).length || efectos.length !== (t.efectos ?? []).length;
+        return [id, cambia ? { ...t, condiciones, efectos } : t];
+      }));
+      return { ...estado, tokens, combate: null };
+    }
     case 'crear-escena': {
       const escenas = estado.escenas ?? [];
       if (escenas.length >= MAX_ESCENAS || escenas.some((e) => e.id === accion.id) || estado.escena?.id === accion.id) return estado;

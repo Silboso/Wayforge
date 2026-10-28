@@ -194,6 +194,10 @@ export function MesaGM({ salaId, sala, estado, tema }: { salaId: string; sala: S
       if (!t || t.personajeId) return [];
       return [{ id: id(), tono: 'turno', titulo: `Turno de ${t.nombre}`, cuerpo: `Tiene ${estado.combate?.acciones ?? 3} acciones. Toca a un personaje para atacarlo o arrastra su token.`, dura: 5000 }];
     }
+    if (e.tipo === 'fin-combate') {
+      const n = Object.values(e.quitados).reduce((s, x) => s + x.length, 0);
+      return [{ id: id(), tono: 'nota', titulo: 'Terminó el combate', cuerpo: n ? `Se quitaron ${n} efectos y condiciones de la pelea (escudos levantados, lo de un minuto…). Dying y Wounded quedan.` : 'Todos vuelven a moverse libres.', dura: 7000 }];
+    }
     if (e.tipo === 'efecto' && !e.quitado && e.nombre.startsWith('Shield Block')) {
       const t = estado.tokens[e.tokenId];
       return t ? [{ id: id(), tono: 'nota', titulo: `${t.nombre} bloquea con el escudo`, cuerpo: `${e.nombre.replace('Shield Block ', '')}: al aplicar el daño, la mesa resta la Dureza y daña el escudo.`, dura: 7000 }] : [];

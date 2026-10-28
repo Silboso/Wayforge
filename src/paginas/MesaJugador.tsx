@@ -338,6 +338,10 @@ export function MesaJugador({ salaId, sala, estado, personaje: p, tema }: {
       }];
     }
     // Lo que dicen en el chat (si no lo dije yo y no lo estoy mirando)
+    if (e.tipo === 'fin-combate') {
+      const mios = miToken ? e.quitados[miToken.id] ?? [] : [];
+      return [{ id: id(), tono: 'nota', titulo: 'Terminó el combate', cuerpo: mios.length ? `Se te fue lo que duraba solo en la pelea: ${mios.join(', ')}.` : 'Ya puedes moverte libre, descansar o curar heridas.', dura: 7000 }];
+    }
     // Lo que te cuenta la mesa (Recall Knowledge): entero y sin "Responder", que no hay a quién
     if (e.tipo === 'chat' && e.mensaje.quien === 'La mesa' && e.mensaje.para === p.id) {
       return [{ id: id(), tono: 'nota', titulo: 'Recuerdas…', cuerpo: e.mensaje.texto, dura: 14000 }];

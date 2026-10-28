@@ -202,3 +202,20 @@ describe('Delay (esperar)', () => {
     expect(puede({ rol: 'jugador', personajeId: 'kyra' }, { tipo: 'demorar', tokenId: 'g1' }, estado)).toBe(false);
   });
 });
+
+describe('terminar el combate', () => {
+  it('se va lo que dura solo en la pelea; Dying, Wounded y lo largo se quedan', () => {
+    let estado = aplicar(conKyra(), { tipo: 'iniciar-combate', orden: [{ tokenId: 'kyra', iniciativa: 20 }, { tokenId: 'g1', iniciativa: 5 }] });
+    estado = aplicar(estado, { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'shield-raised', valor: 1, hasta: 'inicio-turno' });
+    estado = aplicar(estado, { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'frightened', valor: 2 });
+    estado = aplicar(estado, { tipo: 'poner-condicion', tokenId: 'kyra', clave: 'wounded', valor: 1 });
+    const corto = { id: 'e1', clave: 'bless', nombre: 'Bless', beneficioso: true, modificadores: [], duracion: { tipo: 'rondas' as const, rondas: 10 } };
+    const largo = { id: 'e2', clave: 'heroism', nombre: 'Heroism', beneficioso: true, modificadores: [], duracion: { tipo: 'rondas' as const, rondas: 100 } };
+    estado = aplicar(estado, { tipo: 'poner-efecto', tokenId: 'kyra', efecto: corto });
+    estado = aplicar(estado, { tipo: 'poner-efecto', tokenId: 'kyra', efecto: largo });
+    estado = aplicar(estado, { tipo: 'terminar-combate' });
+    expect(estado.combate).toBeNull();
+    expect(estado.tokens.kyra?.condiciones?.map((c) => c.clave)).toEqual(['wounded']);
+    expect(estado.tokens.kyra?.efectos?.map((e) => e.nombre)).toEqual(['Heroism']);
+  });
+});

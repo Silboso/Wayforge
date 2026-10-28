@@ -2,6 +2,7 @@
 // De aquí salen los avisos ("te atacaron", "se movió a tu lado") y las animaciones del tablero.
 
 import type { Aspecto } from '../reglas/efectos';
+import { CONDICIONES } from '../reglas/condiciones';
 import { TAMANOS, tokenEnTurno, type Accion, type EstadoSala, type MensajeChat, type Tirada, type Token } from './sala';
 
 export type Evento =
@@ -29,12 +30,27 @@ export type Evento =
   // El GM mostró un handout (a quien lo recibe se le abre)
   | { tipo: 'handout'; id: string; titulo: string }
   // Empezó el combate: el orden en que se juega, para mostrarlo a todos
-  | { tipo: 'combate'; orden: { tokenId: string; iniciativa: number }[] };
+  | { tipo: 'combate'; orden: { tokenId: string; iniciativa: number }[] }
+  // Terminó: qué se le fue a cada uno (escudo levantado, Bless…)
+  | { tipo: 'fin-combate'; quitados: Record<string, string[]> };
 
 export function eventosDe(anterior: EstadoSala, accion: Accion, posterior: EstadoSala): Evento[] {
   switch (accion.tipo) {
     case 'registrar-tirada':
       return [{ tipo: 'tirada', tirada: accion.tirada }];
+    case 'terminar-combate': {
+      if (!anterior.combate) return [];
+      const quitados: Record<string, string[]> = {};
+      for (const [id, t] of Object.entries(anterior.tokens)) {
+        const despues = posterior.tokens[id];
+        const nombres = [
+          ...(t.condiciones ?? []).filter((c) => !despues?.condiciones?.some((x) => x.clave === c.clave)).map((c) => CONDICIONES[c.clave]?.nombre ?? c.clave),
+          ...(t.efectos ?? []).filter((e) => !despues?.efectos?.some((x) => x.id === e.id)).map((e) => e.nombre),
+        ];
+        if (nombres.length) quitados[id] = nombres;
+      }
+      return [{ tipo: 'fin-combate', quitados }];
+    }
     case 'mover-token': {
       const antes = anterior.tokens[accion.id];
       if (!antes || (antes.x === accion.x && antes.y === accion.y)) return [];
